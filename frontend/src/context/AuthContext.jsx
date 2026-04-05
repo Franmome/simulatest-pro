@@ -32,14 +32,15 @@ export const AuthProvider = ({ children }) => {
   }
 
   // ─── LOGIN GOOGLE ─────────────────────────────────────────
-  const loginWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/dashboard` },
-    })
-    if (error) throw error
-  }
-
+ const loginWithGoogle = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { 
+      redirectTo: `https://simulatest-pro-production.up.railway.app/dashboard`
+    }
+  })
+  if (error) throw error
+}
   // ─── REGISTRO ─────────────────────────────────────────────
   const register = async (email, password, fullName) => {
     const { data, error } = await supabase.auth.signUp({
