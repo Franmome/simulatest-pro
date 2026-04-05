@@ -1,0 +1,84 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
+import PrivateRoute from './components/PrivateRoute'
+import Layout from './components/Layout'
+import AdminLayout from './components/AdminLayout'
+
+// ── Páginas públicas ──────────────────────────────────────────────────────
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Catalogo from './pages/Catalogo'
+import DetallePrueba from './pages/DetallePrueba'
+
+// ── Páginas privadas ──────────────────────────────────────────────────────
+import Dashboard from './pages/Dashboard'
+import Simulacro from './pages/Simulacro'
+import Resultados from './pages/Resultados'
+import ResultadoFinal from './pages/ResultadoFinal'
+import Suscripciones from './pages/Suscripciones'
+import Perfil from './pages/Perfil'
+import Estudio       from './pages/Estudio'
+import Configuracion from './pages/Configuracion'
+// ── Panel Admin ───────────────────────────────────────────────────────────
+import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminUsuarios from './pages/admin/AdminUsuarios'
+import AdminPaquetes from './pages/admin/AdminPaquetes'
+import AdminTesoreria from './pages/admin/AdminTesoreria'
+import AdminEditor from './pages/admin/AdminEditor'
+import AdminErrores from './pages/admin/AdminErrores'
+import EvaluacionesList from './pages/admin/EvaluacionesList'
+import EvaluacionForm from './pages/admin/EvaluacionForm'
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+
+          {/* ── Rutas públicas sin Layout ── */}
+          <Route path="/login"    element={<Login />} />
+          <Route path="/registro" element={<Register />} />
+
+          {/* ── Rutas públicas con Layout ── */}
+          <Route element={<Layout title="SimulaTest Pro" />}>
+            <Route path="/" element={<Navigate to="/catalogo" replace />} />
+            <Route path="/catalogo"    element={<Catalogo />} />
+            <Route path="/prueba/:id"  element={<DetallePrueba />} />
+          </Route>
+
+          {/* ── Rutas privadas (usuarios normales) ── */}
+          <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
+          <Route path="/dashboard"       element={<Dashboard />} />
+          <Route path="/simulacro/:id"   element={<Simulacro />} />
+          <Route path="/resultados"      element={<Resultados />} />
+          <Route path="/resultado-final" element={<ResultadoFinal />} />
+          <Route path="/planes"          element={<Suscripciones />} />
+          <Route path="/perfil"          element={<Perfil />} />
+          <Route path="/estudio"         element={<Estudio />} />        
+         <Route path="/configuracion"   element={<Configuracion />} />  
+         </Route>  
+          {/* ── Panel Admin (solo admins) ── */}
+          <Route
+            path="/admin"
+            element={
+              <PrivateRoute requireAdmin>
+                <AdminLayout />
+              </PrivateRoute>
+            }
+          >
+            <Route index                          element={<AdminDashboard />} />
+            <Route path="evaluaciones"            element={<EvaluacionesList />} />
+            <Route path="evaluaciones/nueva"      element={<EvaluacionForm />} />
+            <Route path="evaluaciones/:id/editar" element={<EvaluacionForm />} />
+            <Route path="usuarios"                element={<AdminUsuarios />} />
+            <Route path="paquetes"                element={<AdminPaquetes />} />
+            <Route path="tesoreria"               element={<AdminTesoreria />} />
+            <Route path="editor"                  element={<AdminEditor />} />
+            <Route path="errores"                 element={<AdminErrores />} />
+          </Route>
+
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  )
+}
