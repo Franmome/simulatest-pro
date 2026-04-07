@@ -90,7 +90,6 @@ export default function DetallePrueba() {
     }
   }
 
-  // ── Conteo de preguntas por nivel ───────────────────────────────────────
   async function cargarPreguntasPorNivel(levels) {
     const counts = await Promise.all(
       levels.map(lv =>
@@ -110,7 +109,6 @@ export default function DetallePrueba() {
     setTotalPregs(total)
   }
 
-  // ── Últimos intentos del usuario por nivel ─────────────────────────────
   async function cargarIntentosPorNivel(levels) {
     if (!user?.id) return
     const levelIds = levels.map(l => l.id)
@@ -122,7 +120,6 @@ export default function DetallePrueba() {
       .order('start_time', { ascending: false })
 
     if (!data) return
-    // Guardar solo el intento más reciente por nivel
     const mapa = {}
     data.forEach(intento => {
       if (!mapa[intento.level_id]) mapa[intento.level_id] = intento
@@ -140,23 +137,38 @@ export default function DetallePrueba() {
     setTienePlan((count || 0) > 0)
   }
 
-  // ── Iniciar simulacro ───────────────────────────────────────────────────
+  // ── Iniciar simulacro (práctica) ──
   async function iniciarSimulacro(levelId) {
     if (!user) { navigate('/login'); return }
     if (!tienePlan) { navigate('/planes'); return }
 
     setIniciando(levelId)
-    // Verificar que hay preguntas antes de navegar
     const pregs = pregsPorNivel[levelId] || 0
     if (pregs === 0) {
       alert('Este nivel aún no tiene preguntas disponibles.')
       setIniciando(null)
       return
     }
-    navigate(`/simulacro/${levelId}`)
+    // ✅ FIX: agregar modo=practica
+    navigate(`/simulacro/${levelId}?modo=practica`)
   }
 
-  // ── Loading ─────────────────────────────────────────────────────────────
+  // ── Iniciar modo examen (sin ayudas) ──
+  async function iniciarExamen(levelId) {
+    if (!user) { navigate('/login'); return }
+    if (!tienePlan) { navigate('/planes'); return }
+
+    setIniciando(levelId)
+    const pregs = pregsPorNivel[levelId] || 0
+    if (pregs === 0) {
+      alert('Este nivel aún no tiene preguntas disponibles.')
+      setIniciando(null)
+      return
+    }
+    navigate(`/simulacro/${levelId}?modo=examen`)
+  }
+
+  // ── Loading ──
   if (loading) {
     return (
       <div className="p-8 pb-20 max-w-4xl animate-pulse space-y-6">
@@ -201,7 +213,6 @@ export default function DetallePrueba() {
     ? `${Math.max(...niveles.map(l => l.passing_score ?? 0))}%`
     : '—'
 
-  // Stats de intentos del usuario
   const totalIntentos  = Object.values(intentosPorNivel).length
   const nivCompletados = Object.values(intentosPorNivel).filter(a => a.status === 'completed').length
   const mejorScore     = Object.values(intentosPorNivel)
@@ -211,7 +222,6 @@ export default function DetallePrueba() {
   return (
     <div className="p-8 pb-20 max-w-4xl animate-fade-in">
 
-      {/* ── Volver ── */}
       <button
         onClick={() => navigate('/catalogo')}
         className="flex items-center gap-2 text-on-surface-variant hover:text-primary
@@ -222,7 +232,7 @@ export default function DetallePrueba() {
         Volver al catálogo
       </button>
 
-      {/* ── Cabecera ── */}
+      {/* Cabecera */}
       <div className="flex items-start gap-6 mb-8">
         <div className={`w-20 h-20 rounded-2xl bg-gradient-to-b ${colorGrad}
                          flex items-center justify-center shrink-0 shadow-lg`}>
@@ -260,7 +270,7 @@ export default function DetallePrueba() {
         </div>
       </div>
 
-      {/* ── Stats del simulacro ── */}
+      {/* Stats del simulacro */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { val: totalPregs || '—',       label: 'Preguntas',  color: 'text-primary',        icon: 'quiz'       },
@@ -278,7 +288,7 @@ export default function DetallePrueba() {
         ))}
       </div>
 
-      {/* ── Tu historial en este simulacro ── */}
+      {/* Tu historial en este simulacro */}
       {user && totalIntentos > 0 && (
         <div className="bg-surface-container-low rounded-2xl p-6 mb-8
                         border border-outline-variant/15">
@@ -305,7 +315,7 @@ export default function DetallePrueba() {
         </div>
       )}
 
-      {/* ── Niveles ── */}
+      {/* Niveles */}
       <h2 className="text-xl font-bold mb-4">Selecciona tu nivel</h2>
 
       {niveles.length === 0 ? (
@@ -328,130 +338,140 @@ export default function DetallePrueba() {
             const sinPregs     = pregsNivel === 0
 
             return (
-              <button
+              <div
                 key={nv.id}
-                onClick={() => iniciarSimulacro(nv.id)}
-                disabled={iniciando === nv.id || sinPregs}
-                className={`flex items-center gap-4 p-5 rounded-2xl border-2 text-left
-                            transition-all group disabled:opacity-50 disabled:cursor-not-allowed
+                className={`flex flex-col p-5 rounded-2xl border-2
+                            transition-all group
                   ${esPrimero && !completado
                     ? 'border-primary shadow-md bg-surface-container-lowest'
                     : completado
                     ? 'border-secondary/30 bg-secondary-container/10'
                     : 'border-transparent hover:border-primary hover:shadow-md bg-surface-container-lowest'
-                  }`}>
-
-                {/* Ícono del nivel */}
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center
-                                 transition-colors flex-shrink-0
-                  ${completado
-                    ? 'bg-secondary text-white'
-                    : esPrimero
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-container text-on-surface group-hover:bg-primary group-hover:text-white'
-                  }`}>
-                  <span className="material-symbols-outlined"
-                        style={{ fontVariationSettings: completado || esPrimero ? "'FILL' 1" : "'FILL' 0" }}>
-                    {completado ? 'check_circle'
-                     : enProgreso ? 'pending'
-                     : esPrimero ? 'play_circle'
-                     : esUltimo  ? 'workspace_premium'
-                     : 'school'}
-                  </span>
-                </div>
-
-                {/* Info del nivel */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`font-bold truncate
-                      ${completado ? 'text-secondary' : esPrimero ? 'text-primary' : 'text-on-surface'}`}>
-                      {nv.name}
-                    </p>
-                    {esPrimero && !completado && (
-                      <span className="text-[9px] font-bold text-primary bg-primary-fixed
-                                       px-2 py-0.5 rounded-full flex-shrink-0">
-                        RECOMENDADO
-                      </span>
-                    )}
-                    {completado && (
-                      <span className="text-[9px] font-bold text-secondary bg-secondary-container
-                                       px-2 py-0.5 rounded-full flex-shrink-0">
-                        COMPLETADO
-                      </span>
-                    )}
-                    {enProgreso && (
-                      <span className="text-[9px] font-bold text-tertiary bg-tertiary-fixed
-                                       px-2 py-0.5 rounded-full flex-shrink-0">
-                        EN PROGRESO
-                      </span>
-                    )}
-                    {sinPregs && (
-                      <span className="text-[9px] font-bold text-on-surface-variant bg-surface-container
-                                       px-2 py-0.5 rounded-full flex-shrink-0">
-                        PRÓXIMAMENTE
-                      </span>
-                    )}
+                  }`}
+              >
+                {/* Contenido principal clickeable (modo práctica) */}
+                <div
+                  onClick={() => iniciarSimulacro(nv.id)}
+                  className="flex items-center gap-4 cursor-pointer"
+                >
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center
+                                   transition-colors flex-shrink-0
+                    ${completado
+                      ? 'bg-secondary text-white'
+                      : esPrimero
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-container text-on-surface group-hover:bg-primary group-hover:text-white'
+                    }`}>
+                    <span className="material-symbols-outlined"
+                          style={{ fontVariationSettings: completado || esPrimero ? "'FILL' 1" : "'FILL' 0" }}>
+                      {completado ? 'check_circle'
+                       : enProgreso ? 'pending'
+                       : esPrimero ? 'play_circle'
+                       : esUltimo  ? 'workspace_premium'
+                       : 'school'}
+                    </span>
                   </div>
 
-                  <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
-                    {nv.description || `Nivel ${idx + 1} · Aprobación ${nv.passing_score ?? 70}%`}
-                  </p>
-
-                  {/* Meta-info del nivel */}
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    {pregsNivel > 0 && (
-                      <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-sm">quiz</span>
-                        {pregsNivel} preguntas
-                      </span>
-                    )}
-                    {nv.time_limit > 0 && (
-                      <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-sm">timer</span>
-                        {formatTiempo(nv.time_limit)}
-                      </span>
-                    )}
-                    {nv.passing_score > 0 && (
-                      <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-sm">verified</span>
-                        {nv.passing_score}%
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Score del último intento */}
-                  {intentoNivel && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full
-                        ${completado && intentoNivel.score >= (nv.passing_score || 70)
-                          ? 'bg-secondary-container text-on-secondary-container'
-                          : 'bg-error-container text-error'}`}>
-                        Último: {intentoNivel.score ?? '—'}%
-                      </span>
-                      <span className="text-[10px] text-on-surface-variant">
-                        {tiempoRelativo(intentoNivel.start_time)}
-                      </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className={`font-bold truncate
+                        ${completado ? 'text-secondary' : esPrimero ? 'text-primary' : 'text-on-surface'}`}>
+                        {nv.name}
+                      </p>
+                      {esPrimero && !completado && (
+                        <span className="text-[9px] font-bold text-primary bg-primary-fixed
+                                         px-2 py-0.5 rounded-full flex-shrink-0">
+                          RECOMENDADO
+                        </span>
+                      )}
+                      {completado && (
+                        <span className="text-[9px] font-bold text-secondary bg-secondary-container
+                                         px-2 py-0.5 rounded-full flex-shrink-0">
+                          COMPLETADO
+                        </span>
+                      )}
+                      {enProgreso && (
+                        <span className="text-[9px] font-bold text-tertiary bg-tertiary-fixed
+                                         px-2 py-0.5 rounded-full flex-shrink-0">
+                          EN PROGRESO
+                        </span>
+                      )}
+                      {sinPregs && (
+                        <span className="text-[9px] font-bold text-on-surface-variant bg-surface-container
+                                         px-2 py-0.5 rounded-full flex-shrink-0">
+                          PRÓXIMAMENTE
+                        </span>
+                      )}
                     </div>
+
+                    <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+                      {nv.description || `Nivel ${idx + 1} · Aprobación ${nv.passing_score ?? 70}%`}
+                    </p>
+
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      {pregsNivel > 0 && (
+                        <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm">quiz</span>
+                          {pregsNivel} preguntas
+                        </span>
+                      )}
+                      {nv.time_limit > 0 && (
+                        <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm">timer</span>
+                          {formatTiempo(nv.time_limit)}
+                        </span>
+                      )}
+                      {nv.passing_score > 0 && (
+                        <span className="text-[10px] font-bold text-on-surface-variant flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm">verified</span>
+                          {nv.passing_score}%
+                        </span>
+                      )}
+                    </div>
+
+                    {intentoNivel && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full
+                          ${completado && intentoNivel.score >= (nv.passing_score || 70)
+                            ? 'bg-secondary-container text-on-secondary-container'
+                            : 'bg-error-container text-error'}`}>
+                          Último: {intentoNivel.score ?? '—'}%
+                        </span>
+                        <span className="text-[10px] text-on-surface-variant">
+                          {tiempoRelativo(intentoNivel.start_time)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {iniciando === nv.id ? (
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent
+                                    rounded-full animate-spin flex-shrink-0" />
+                  ) : (
+                    <span className="material-symbols-outlined text-on-surface-variant
+                                     group-hover:text-primary transition-colors flex-shrink-0">
+                      chevron_right
+                    </span>
                   )}
                 </div>
 
-                {/* Flecha o spinner */}
-                {iniciando === nv.id ? (
-                  <div className="w-5 h-5 border-2 border-primary border-t-transparent
-                                  rounded-full animate-spin flex-shrink-0" />
-                ) : (
-                  <span className="material-symbols-outlined text-on-surface-variant
-                                   group-hover:text-primary group-disabled:hidden transition-colors flex-shrink-0">
-                    chevron_right
-                  </span>
+                {/* ✅ Segundo botón: Modo examen */}
+                {tienePlan && pregsNivel > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); iniciarExamen(nv.id); }}
+                    className="mt-2 w-full text-xs font-bold text-on-surface-variant border border-outline-variant/30 py-2 rounded-xl hover:bg-surface-container transition-all flex items-center justify-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">timer</span>
+                    Modo examen (sin ayudas)
+                  </button>
                 )}
-              </button>
+              </div>
             )
           })}
         </div>
       )}
 
-      {/* ── CTA principal o aviso de plan ── */}
+      {/* CTA principal o aviso de plan */}
       {niveles.length > 0 && (
         tienePlan ? (
           <button
