@@ -1,52 +1,45 @@
 import { useState } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 import Header from './Header.jsx'
+import BottomNav from './BottomNav.jsx'
 import APP from '../utils/app.config.js'
 
-const navItems = [
-  { icon: 'home',              label: 'Inicio',     path: '/dashboard' },
-  { icon: 'assignment',        label: 'Simulacros', path: '/catalogo'  },
-  { icon: 'workspace_premium', label: 'Planes',     path: '/planes'    },
-  { icon: 'leaderboard',       label: 'Progreso',   path: '/perfil'    },
-  { icon: 'menu_book',         label: 'Estudio',    path: '/estudio'   },
-]
-
-function BottomNav() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const isActive = (path) => location.pathname.startsWith(path)
-  return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 flex justify-around items-center h-16">
-      {navItems.map(item => (
-        <button key={item.path} onClick={() => navigate(item.path)}
-          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${isActive(item.path) ? 'text-primary' : 'text-slate-400'}`}>
-          <span className="material-symbols-outlined text-[22px]"
-            style={{ fontVariationSettings: isActive(item.path) ? "'FILL' 1" : "'FILL' 0" }}>
-            {item.icon}
-          </span>
-          <span className="text-[9px] font-bold">{item.label}</span>
-        </button>
-      ))}
-    </nav>
-  )
-}
-
-export default function Layout({ title, headerChildren }) {
+export default function Layout({ title }) {
   const [expanded, setExpanded] = useState(false)
-  const sideW = expanded ? '16rem' : '4.5rem'
+  const [mobileMenu, setMobileMenu] = useState(false)
 
   return (
     <div className="flex min-h-screen bg-surface">
+      {/* Sidebar: oculto en móvil, visible en md+ */}
       <div className="hidden md:block">
         <Sidebar expanded={expanded} setExpanded={setExpanded} />
       </div>
 
-      <div className="flex-1 flex flex-col md:transition-all md:duration-300"
-           style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 ? sideW : 0 }}>
-        <Header title={title} sideW={sideW}>{headerChildren}</Header>
+      {/* Overlay móvil con Sidebar */}
+      {mobileMenu && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div className="w-64 bg-white h-full shadow-xl">
+            <Sidebar expanded={true} setExpanded={() => {}} />
+          </div>
+          <div className="flex-1 bg-black/40" onClick={() => setMobileMenu(false)} />
+        </div>
+      )}
 
-        <main className="flex-1 animate-fade-in pt-[4rem] pb-20 md:pb-0 md:pt-[4.5rem]">
+      {/* Contenedor principal */}
+      <div
+        className={`
+          flex-1 flex flex-col transition-all duration-300
+          ${expanded ? 'md:ml-64' : 'md:ml-[4.5rem]'}
+        `}
+      >
+        <Header 
+          title={title} 
+          expanded={expanded} 
+          onMenuClick={() => setMobileMenu(v => !v)} 
+        />
+
+        <main className="flex-1 animate-fade-in pt-[4.5rem] pb-20 md:pb-0">
           <Outlet />
         </main>
 
@@ -60,6 +53,7 @@ export default function Layout({ title, headerChildren }) {
         </footer>
       </div>
 
+      {/* Bottom Nav: solo móvil */}
       <BottomNav />
     </div>
   )

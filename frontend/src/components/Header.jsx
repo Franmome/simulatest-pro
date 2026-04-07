@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-export default function Header({ title, children, sideW, onMenuToggle, mobileMenuOpen }) {
+export default function Header({ title, children, expanded, onMenuClick }) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -45,23 +45,19 @@ export default function Header({ title, children, sideW, onMenuToggle, mobileMen
     }
   }
 
-  // Calcular el left del header: en móvil cuando el menú está abierto, left = 0; en escritorio usa sideW
-  const getHeaderLeft = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return mobileMenuOpen ? '0' : '0'
-    }
-    return sideW
-  }
+  // Clase dinámica para el left en desktop según sidebar expandido
+  const leftClass = expanded ? 'md:left-64' : 'md:left-[4.5rem]'
 
   return (
     <header
-      className="fixed top-0 right-0 z-40 glass-effect shadow-sm flex items-center justify-between px-4 md:px-6 py-3 transition-all duration-300"
-      style={{ left: getHeaderLeft() }}
+      className={`fixed top-0 right-0 left-0 z-40 glass-effect shadow-sm 
+                  flex items-center justify-between px-4 md:px-6 py-3 
+                  transition-all duration-300 ${leftClass}`}
     >
       <div className="flex items-center gap-4 md:gap-8">
         {/* Botón hamburguesa para móvil */}
         <button
-          onClick={onMenuToggle}
+          onClick={onMenuClick}
           className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all"
         >
           <span className="material-symbols-outlined">menu</span>

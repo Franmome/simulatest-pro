@@ -188,11 +188,11 @@ export default function Dashboard() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex" style={{ paddingBottom: '3rem' }}>
+   <div className="flex flex-col md:flex-row" style={{ paddingBottom: '3rem' }}>
 
       {/* ── Contenido principal ── */}
       {/* ✅ Cambio 1: padding responsivo: px-4 md:px-8 en lugar de p-8 fijo */}
-      <section className="flex-1 px-4 md:px-8 py-8 overflow-y-auto">
+      <section className="flex-1 p-4 md:p-8 overflow-y-auto">
 
         {/* Saludo */}
         <div className="mb-10 flex items-center justify-between">
@@ -490,7 +490,7 @@ export default function Dashboard() {
       </section>
 
       {/* ── Sidebar derecho ── */}
-      <aside className="w-80 border-l border-slate-100 bg-white p-8 flex flex-col gap-10 min-h-screen">
+      <aside className="w-full md:w-80 md:shrink-0">
 
         {/* Progreso real */}
         <div className="bg-surface-container-low rounded-3xl p-6 text-center">
