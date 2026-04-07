@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../utils/supabase'
 
 const AuthContext = createContext(null)
@@ -6,6 +6,9 @@ const AuthContext = createContext(null)
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null)
   const [loading, setLoading] = useState(true)
+  const [inactivo, setInactivo] = useState(false)
+  const timerInactividad = useRef(null)
+  const LIMITE = 15 * 60 * 1000 // 15 minutos
 
   // ─── ROL DESDE TABLA USERS ───────────────────────────────
   const fetchUserRole = async (userId) => {
@@ -32,15 +35,16 @@ export const AuthProvider = ({ children }) => {
   }
 
   // ─── LOGIN GOOGLE ─────────────────────────────────────────
- const loginWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { 
-      redirectTo: `https://simulatest-pro-production.up.railway.app/dashboard`
-    }
-  })
-  if (error) throw error
-}
+  const loginWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { 
+        redirectTo: `https://simulatest-pro-production.up.railway.app/dashboard`
+      }
+    })
+    if (error) throw error
+  }
+
   // ─── REGISTRO ─────────────────────────────────────────────
   const register = async (email, password, fullName) => {
     const { data, error } = await supabase.auth.signUp({
@@ -54,13 +58,31 @@ export const AuthProvider = ({ children }) => {
   }
 
   // ─── LOGOUT ROBUSTO ──────────────────────────────────────
-  // Limpia el estado ANTES de llamar a Supabase para evitar
-  // condiciones de carrera con onAuthStateChange
   const logout = useCallback(async () => {
-    setUser(null)                      // 1. limpia estado local inmediatamente
-    await supabase.auth.signOut()      // 2. invalida sesión en Supabase
-    // El redirect lo hace cada componente con navigate('/login')
+    setUser(null)
+    await supabase.auth.signOut()
   }, [])
+
+  // ─── RESET TIMER DE INACTIVIDAD ───────────────────────────
+  const resetTimer = useCallback(() => {
+    setInactivo(false)
+    clearTimeout(timerInactividad.current)
+    timerInactividad.current = setTimeout(() => {
+      setInactivo(true)
+    }, LIMITE)
+  }, [])
+
+  // ─── DETECTAR ACTIVIDAD DEL USUARIO ───────────────────────
+  useEffect(() => {
+    if (!user) return
+    const eventos = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
+    eventos.forEach(e => window.addEventListener(e, resetTimer))
+    resetTimer()
+    return () => {
+      eventos.forEach(e => window.removeEventListener(e, resetTimer))
+      clearTimeout(timerInactividad.current)
+    }
+  }, [user, resetTimer])
 
   // ─── SESIÓN PERSISTENTE ───────────────────────────────────
   useEffect(() => {
@@ -114,6 +136,31 @@ export const AuthProvider = ({ children }) => {
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
           <p className="text-on-surface-variant font-medium text-sm">Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── MODAL DE INACTIVIDAD ─────────────────────────────────
+  if (inactivo) {
+    return (
+      <div className="fixed inset-0 z-[999] bg-black/60 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+          <span className="material-symbols-outlined text-5xl text-error mb-4 block">timer_off</span>
+          <h2 className="font-bold text-xl mb-2">Sesión inactiva</h2>
+          <p className="text-on-surface-variant text-sm mb-6">
+            Tu sesión se cerró por inactividad de 15 minutos.
+          </p>
+          <button
+            onClick={() => { logout(); setInactivo(false) }}
+            className="w-full py-3 bg-primary text-white rounded-xl font-bold">
+            Ir al login
+          </button>
+          <button
+            onClick={() => { setInactivo(false); resetTimer() }}
+            className="w-full py-3 mt-2 border border-outline-variant rounded-xl font-bold text-sm">
+            Seguir en la sesión
+          </button>
         </div>
       </div>
     )

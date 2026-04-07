@@ -140,10 +140,10 @@ export default function Perfil() {
   }
 
   return (
-    <div className="p-8 pb-20 max-w-4xl animate-fade-in">
+    
+    <div className="p-4 md:p-8 pb-24 max-w-4xl animate-fade-in">
 
       {/* ── Info del usuario ── */}
-      {/* ✅ Cambio 1: Header responsivo con flex-wrap */}
       <div className="flex flex-wrap items-center gap-4 mb-10">
         {/* Avatar — foto de Google o iniciales */}
         {avatarUrl ? (
@@ -159,8 +159,10 @@ export default function Perfil() {
         )}
 
         <div>
-          {/* Nombre real desde Supabase */}
-          <h1 className="text-3xl font-extrabold text-on-background">{nombreCompleto}</h1>
+          {/* ✅ CAMBIO 2: Nombre responsivo y con break-all */}
+          <h1 className="text-lg md:text-3xl font-extrabold text-on-background break-all">
+            {nombreCompleto}
+          </h1>
           <p className="text-on-surface-variant">{user?.email}</p>
           <div className="flex items-center gap-2 mt-2">
             {/* Plan activo */}
@@ -174,7 +176,6 @@ export default function Perfil() {
           </div>
         </div>
 
-        {/* ✅ Cambio 2: Botón Editar perfil con margen responsivo */}
         <button className="mt-2 md:mt-0 md:ml-auto border border-outline-variant text-on-surface-variant font-semibold px-5 py-2 rounded-full hover:bg-surface-container transition-colors text-sm">
           Editar perfil
         </button>
@@ -182,7 +183,6 @@ export default function Perfil() {
 
       {/* ── Estadísticas reales ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-        {/* ✅ Cambio 3: Tamaño de fuente responsivo en todas las stats */}
         <div className="card p-5 text-center">
           <span className="text-2xl md:text-3xl font-extrabold text-primary">{stats?.total ?? 0}</span>
           <p className="text-xs text-on-surface-variant mt-1 font-semibold">Simulacros hechos</p>
@@ -212,7 +212,6 @@ export default function Perfil() {
         <h3 className="font-bold text-lg mb-5">Historial de simulacros</h3>
 
         {historial.length === 0 ? (
-          // Estado vacío — aún no ha hecho ningún simulacro
           <div className="text-center py-10">
             <span className="material-symbols-outlined text-5xl text-outline mb-3 block">
               assignment
