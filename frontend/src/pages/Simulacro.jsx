@@ -305,13 +305,7 @@ export default function Simulacro() {
     setMarcadas(prev => prev.includes(pregActual) ? prev.filter(i => i !== pregActual) : [...prev, pregActual])
   }, [pregActual])
 
-  // Avanzar automático en práctica al responder
-  useEffect(() => {
-    if (esPractica && seleccion[pregActual] && pregActual < preguntas.length - 1) {
-      const t = setTimeout(() => setPregActual(p => p + 1), 1500)
-      return () => clearTimeout(t)
-    }
-  }, [seleccion[pregActual]])
+  
 
   if (loading) return <LoadingScreen />
   if (error) return <ErrorScreen mensaje={error} onVolver={() => navigate('/catalogo')} />
