@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-export default function Header({ title, children, sideW }) {
+export default function Header({ title, children, sideW, onMenuToggle, mobileMenuOpen }) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -45,20 +45,36 @@ export default function Header({ title, children, sideW }) {
     }
   }
 
+  // Calcular el left del header: en móvil cuando el menú está abierto, left = 0; en escritorio usa sideW
+  const getHeaderLeft = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return mobileMenuOpen ? '0' : '0'
+    }
+    return sideW
+  }
+
   return (
     <header
-      className="fixed top-0 right-0 z-40 glass-effect shadow-sm flex items-center justify-between px-6 py-3 transition-all duration-300"
-      style={{ left: sideW }}
+      className="fixed top-0 right-0 z-40 glass-effect shadow-sm flex items-center justify-between px-4 md:px-6 py-3 transition-all duration-300"
+      style={{ left: getHeaderLeft() }}
     >
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-4 md:gap-8">
+        {/* Botón hamburguesa para móvil */}
+        <button
+          onClick={onMenuToggle}
+          className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+        >
+          <span className="material-symbols-outlined">menu</span>
+        </button>
         <span className="text-xl font-bold tracking-tight text-blue-700 font-headline">
           {title}
         </span>
         {children}
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative">
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Barra de búsqueda: oculta en móvil */}
+        <div className="relative hidden md:block">
           <input
             className="bg-surface-container-low border-none rounded-full py-2 px-10 text-sm focus:ring-2 focus:ring-primary w-56 transition-all"
             placeholder="Buscar simulacros..."
@@ -86,7 +102,7 @@ export default function Header({ title, children, sideW }) {
                 {iniciales}
               </div>
             )}
-            <span className="material-symbols-outlined text-slate-400 text-lg">
+            <span className="material-symbols-outlined text-slate-400 text-lg hidden sm:inline">
               {menuOpen ? 'expand_less' : 'expand_more'}
             </span>
           </button>

@@ -241,14 +241,17 @@ export default function Perfil() {
                       </span>
                     </div>
                     <div>
-                      <p className="font-bold text-sm">{titulo} – {nivel}</p>
-                      <p className="text-xs text-on-surface-variant">
+                      {/* ✅ Cambio 1: título y nivel separados para evitar corte en móvil */}
+                      <p className="font-bold text-sm leading-tight">{titulo}</p>
+                      <p className="text-xs text-on-surface-variant">{nivel}</p>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
                         {fechaRelativa(intento.created_at)}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className={`text-2xl font-extrabold ${aprobado ? 'text-secondary' : 'text-error'}`}>
+                    {/* ✅ Cambio 2: score de text-2xl a text-xl */}
+                    <span className={`text-xl font-extrabold ${aprobado ? 'text-secondary' : 'text-error'}`}>
                       {score}%
                     </span>
                     <p className={`text-[10px] font-bold uppercase ${aprobado ? 'text-secondary' : 'text-error'}`}>

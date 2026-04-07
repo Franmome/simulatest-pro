@@ -115,10 +115,80 @@ function ModalEnvio({ totalPregs, respondidas, sinResponder, onConfirmar, onCanc
   )
 }
 
+// ── Modal móvil para mapa de preguntas ───────────────────────────────────────
+function MobileMapModal({ preguntas, seleccion, marcadas, pregActual, onSelectPregunta, onClose }) {
+  const getMapClass = (i) => {
+    if (i === pregActual)     return 'q-map-item current'
+    if (seleccion[i] && marcadas.includes(i)) return 'q-map-item answered flagged'
+    if (seleccion[i])         return 'q-map-item answered'
+    if (marcadas.includes(i)) return 'q-map-item flagged'
+    return 'q-map-item'
+  }
+
+  const respondidas = Object.keys(seleccion).length
+  const total = preguntas.length
+  const sinResponder = total - respondidas
+  const pctProgreso = total > 0 ? (respondidas / total) * 100 : 0
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/50 flex items-end md:hidden">
+      <div className="bg-white rounded-t-3xl w-full max-h-[85vh] overflow-y-auto animate-slide-up">
+        <div className="sticky top-0 bg-white border-b border-slate-100 p-4 flex justify-between items-center">
+          <h3 className="font-bold text-lg">Mapa de preguntas</h3>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          {/* Progreso */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs font-bold">
+              <span>{respondidas} respondidas</span>
+              <span>{sinResponder} restantes</span>
+            </div>
+            <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${pctProgreso}%` }} />
+            </div>
+          </div>
+          {/* Cuadrícula */}
+          <div className="grid grid-cols-5 gap-2">
+            {preguntas.map((_, i) => (
+              <button
+                key={i}
+                className={getMapClass(i)}
+                onClick={() => {
+                  onSelectPregunta(i)
+                  onClose()
+                }}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          {/* Leyenda */}
+          <div className="pt-4 border-t border-slate-200 flex flex-wrap gap-3 text-[10px] font-bold">
+            {[
+              { color: 'bg-secondary-container', label: 'Respondida' },
+              { color: 'bg-primary',             label: 'Actual'     },
+              { color: 'bg-tertiary-container',  label: 'Marcada'    },
+              { color: 'bg-surface-container-high border border-slate-200', label: 'Sin responder' },
+            ].map(({ color, label }) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <span className={`w-3 h-3 rounded ${color} inline-block flex-shrink-0`} />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function Simulacro() {
   const navigate = useNavigate()
-  const { id }   = useParams()   // id = level_id
+  const { id }   = useParams()
   const { user } = useAuth()
 
   // ── Estado de carga ──
@@ -126,6 +196,7 @@ export default function Simulacro() {
   const [error,    setError]    = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [modalEnvio, setModalEnvio] = useState(false)
+  const [mapaAbierto, setMapaAbierto] = useState(false) // para móvil
 
   // ── Datos ──
   const [nivel,     setNivel]     = useState(null)
@@ -134,7 +205,7 @@ export default function Simulacro() {
 
   // ── Estado del simulacro ──
   const [pregActual,  setPregActual]  = useState(0)
-  const [seleccion,   setSeleccion]   = useState({})  // { pregIdx: option_id }
+  const [seleccion,   setSeleccion]   = useState({})
   const [marcadas,    setMarcadas]    = useState([])
   const [segundos,    setSegundos]    = useState(0)
   const [timerWarn,   setTimerWarn]   = useState(false)
@@ -165,7 +236,6 @@ export default function Simulacro() {
     setLoading(true)
     setError(null)
     try {
-      // 1. Cargar nivel
       const { data: lvData, error: lvErr } = await supabase
         .from('levels')
         .select('*, evaluations(id, title, categories(name))')
@@ -173,7 +243,6 @@ export default function Simulacro() {
         .single()
       if (lvErr) throw lvErr
 
-      // 2. Cargar preguntas con opciones
       const { data: qData, error: qErr } = await supabase
         .from('questions')
         .select('id, text, explanation, question_type, options(id, text, letter, is_correct)')
@@ -183,7 +252,6 @@ export default function Simulacro() {
 
       if (!qData?.length) throw new Error('Este nivel aún no tiene preguntas cargadas.')
 
-      // Ordenar opciones por letra
       const preguntasOrdenadas = qData.map(q => ({
         ...q,
         options: [...(q.options || [])].sort((a, b) =>
@@ -191,7 +259,6 @@ export default function Simulacro() {
         ),
       }))
 
-      // 3. Crear attempt
       const { data: attempt, error: attErr } = await supabase
         .from('attempts')
         .insert({
@@ -204,7 +271,6 @@ export default function Simulacro() {
         .single()
       if (attErr) throw attErr
 
-      // 4. Arrancar timer
       const tiempoTotal = (lvData.time_limit ?? 60) * 60
       setSegundos(tiempoTotal)
 
@@ -213,7 +279,6 @@ export default function Simulacro() {
           const nuevo = s - 1
           if (nuevo <= 0) {
             clearInterval(intervalRef.current)
-            // Envío automático usando refs (sin stale closure)
             if (!enviandoRef.current) {
               enviandoRef.current = true
               ejecutarEnvio(
@@ -221,7 +286,7 @@ export default function Simulacro() {
                 preguntasRef.current,
                 seleccionRef.current,
                 nivelRef.current,
-                true // forzado por tiempo
+                true
               )
             }
             return 0
@@ -252,7 +317,6 @@ export default function Simulacro() {
     setModalEnvio(false)
 
     try {
-      // 1. Construir respuestas
       const respuestas = prList.map((preg, idx) => {
         const selectedOptionId = selMap[idx] ?? null
         const opcionCorrecta   = preg.options?.find(o => o.is_correct)
@@ -266,18 +330,15 @@ export default function Simulacro() {
         }
       })
 
-      // 2. Insertar respuestas
       const { error: ansErr } = await supabase
         .from('answers')
         .insert(respuestas)
       if (ansErr) throw ansErr
 
-      // 3. Calcular score
       const correctas = respuestas.filter(r => r.is_correct).length
       const score     = Math.round((correctas / prList.length) * 100)
       const aprueba   = score >= (nv?.passing_score ?? 70)
 
-      // 4. Actualizar attempt
       const { error: updErr } = await supabase
         .from('attempts')
         .update({
@@ -288,7 +349,6 @@ export default function Simulacro() {
         .eq('id', aId)
       if (updErr) throw updErr
 
-      // 5. Navegar a resultado final
       navigate('/resultado-final', {
         state: {
           attemptId:   aId,
@@ -298,14 +358,13 @@ export default function Simulacro() {
           aprueba,
           nivelNombre: nv?.name ?? '',
           evalTitulo:  nv?.evaluations?.title ?? '',
-          forzado,     // indica si se envió por tiempo agotado
+          forzado,
         },
       })
     } catch (err) {
       console.error('Error enviando prueba:', err)
       setEnviando(false)
       enviandoRef.current = false
-      // Reactivar timer si falla
       setSegundos(s => s)
       intervalRef.current = setInterval(() => {
         setSegundos(s => {
@@ -337,7 +396,7 @@ export default function Simulacro() {
     ejecutarEnvio(attemptId, preguntas, seleccion, nivel)
   }
 
-  // ── Clases mapa de preguntas ──────────────────────────────────────────────
+  // ── Clases mapa de preguntas (para desktop y modal) ──────────────────────
   function getMapClass(i) {
     if (i === pregActual)     return 'q-map-item current'
     if (seleccion[i] && marcadas.includes(i)) return 'q-map-item answered flagged'
@@ -375,16 +434,14 @@ export default function Simulacro() {
         />
       )}
 
-      {/* ── Sidebar mapa ── */}
-      <aside className="fixed left-0 top-0 h-full w-64 z-50 bg-slate-50
-                        border-r border-slate-200/50 flex flex-col p-4 gap-4">
-        {/* Logo */}
+      {/* ── Sidebar mapa (solo desktop) ── */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 z-50 bg-slate-50
+                        border-r border-slate-200/50 flex-col p-4 gap-4">
         <div className="px-2">
           <h2 className="text-lg font-extrabold text-blue-800 font-headline">{APP.name}</h2>
           <p className="text-xs font-medium text-slate-500 uppercase tracking-widest">Modo Examen</p>
         </div>
 
-        {/* Progreso */}
         <div className="px-2 space-y-1">
           <div className="flex justify-between text-xs font-bold text-on-surface-variant">
             <span>{respondidas} respondidas</span>
@@ -401,7 +458,6 @@ export default function Simulacro() {
           </p>
         </div>
 
-        {/* Mapa de preguntas */}
         <div className="flex-1 overflow-y-auto">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
             Mapa de preguntas
@@ -420,7 +476,6 @@ export default function Simulacro() {
           </div>
         </div>
 
-        {/* Leyenda */}
         <div className="pt-4 border-t border-slate-200 flex flex-col gap-1.5 text-[10px] font-bold text-on-surface-variant">
           {[
             { color: 'bg-secondary-container', label: 'Respondida' },
@@ -435,7 +490,6 @@ export default function Simulacro() {
           ))}
         </div>
 
-        {/* Botón enviar desde sidebar */}
         <button
           onClick={solicitarEnvio}
           disabled={enviando}
@@ -448,11 +502,32 @@ export default function Simulacro() {
         </button>
       </aside>
 
-      {/* ── Header ── */}
+      {/* ── Botón flotante "Ver mapa" (solo móvil) ── */}
+      <button
+        className="md:hidden fixed bottom-20 left-4 z-40 bg-primary text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2"
+        onClick={() => setMapaAbierto(true)}
+      >
+        <span className="material-symbols-outlined text-sm">map</span>
+        Ver mapa
+      </button>
+
+      {/* ── Modal móvil del mapa ── */}
+      {mapaAbierto && (
+        <MobileMapModal
+          preguntas={preguntas}
+          seleccion={seleccion}
+          marcadas={marcadas}
+          pregActual={pregActual}
+          onSelectPregunta={setPregActual}
+          onClose={() => setMapaAbierto(false)}
+        />
+      )}
+
+      {/* ── Header responsivo ── */}
       <header
-        className="fixed top-0 right-0 z-40 glass-effect shadow-sm
-                   flex items-center justify-between px-6 py-3"
-        style={{ left: '16rem' }}>
+        className="fixed top-0 right-0 left-0 md:left-64 z-40 glass-effect shadow-sm
+                   flex items-center justify-between px-4 md:px-6 py-3"
+      >
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <span className="text-base font-bold tracking-tight text-blue-700
@@ -465,7 +540,6 @@ export default function Simulacro() {
           </div>
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
-          {/* Timer */}
           <div className={`flex items-center gap-2 font-bold transition-colors
             ${timerCritico
               ? 'text-error animate-pulse'
@@ -479,7 +553,6 @@ export default function Simulacro() {
             <span className="font-headline text-xl">{formatTimer(segundos)}</span>
           </div>
 
-          {/* Alerta tiempo */}
           {timerCritico && (
             <span className="text-xs font-bold text-error bg-error-container px-3 py-1 rounded-full
                              hidden sm:flex items-center gap-1">
@@ -490,7 +563,6 @@ export default function Simulacro() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Marcar pregunta */}
           <button
             onClick={toggleMarcada}
             className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all
@@ -506,7 +578,6 @@ export default function Simulacro() {
             </span>
           </button>
 
-          {/* Enviar */}
           <button
             onClick={solicitarEnvio}
             disabled={enviando}
@@ -523,9 +594,9 @@ export default function Simulacro() {
 
       {/* ── Contenido principal ── */}
       <main
-        className="flex-1 flex flex-col p-8 gap-8 max-w-4xl w-full animate-fade-in"
-        style={{ marginLeft: '16rem', paddingTop: '5rem', paddingBottom: '3rem' }}>
-
+        className="flex-1 flex flex-col p-4 md:p-8 gap-8 max-w-4xl w-full animate-fade-in
+                   pt-[5rem] md:pt-[5rem] pb-20 md:pb-8 md:ml-64"
+      >
         {/* Encabezado pregunta */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -612,7 +683,6 @@ export default function Simulacro() {
             Anterior
           </button>
 
-          {/* Indicador central */}
           <div className="flex flex-col items-center gap-1">
             <span className="text-xs font-bold text-on-surface-variant">
               {respondidas} / {totalPregs} respondidas
@@ -646,7 +716,6 @@ export default function Simulacro() {
           )}
         </div>
 
-        {/* Info de navegación rápida */}
         {sinResponder > 0 && pregActual === totalPregs - 1 && (
           <div className="bg-surface-container-low rounded-xl p-4 flex items-center gap-3">
             <span className="material-symbols-outlined text-on-surface-variant">info</span>

@@ -191,7 +191,8 @@ export default function Dashboard() {
     <div className="flex" style={{ paddingBottom: '3rem' }}>
 
       {/* ── Contenido principal ── */}
-      <section className="flex-1 p-8 overflow-y-auto">
+      {/* ✅ Cambio 1: padding responsivo: px-4 md:px-8 en lugar de p-8 fijo */}
+      <section className="flex-1 px-4 md:px-8 py-8 overflow-y-auto">
 
         {/* Saludo */}
         <div className="mb-10 flex items-center justify-between">
@@ -448,9 +449,10 @@ export default function Dashboard() {
         <div>
           <h3 className="text-2xl font-bold text-on-background mb-6">Próximas convocatorias</h3>
           <div className="space-y-4">
+            {/* ✅ Cambio 3: gap responsivo en el contenedor de cada convocatoria */}
             <div className="bg-white p-4 rounded-xl flex items-center justify-between
                             border-l-4 border-error shadow-sm hover:translate-x-1 transition-transform">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-4">
                 <div className="bg-error-container text-error p-3 rounded-xl">
                   <span className="material-symbols-outlined">timer</span>
                 </div>
@@ -459,16 +461,17 @@ export default function Dashboard() {
                   <p className="text-xs text-on-surface-variant">Próxima convocatoria disponible</p>
                 </div>
               </div>
+              {/* ✅ Cambio 2: botón VER con padding responsivo y shrink-0 */}
               <button
                 onClick={() => navigate('/catalogo')}
-                className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full
-                           hover:shadow-lg transition-shadow">
+                className="px-3 md:px-6 py-2 bg-error text-white text-xs font-bold rounded-full
+                           hover:shadow-lg transition-shadow shrink-0">
                 VER
               </button>
             </div>
             <div className="bg-white p-4 rounded-xl flex items-center justify-between
                             border-l-4 border-primary shadow-sm hover:translate-x-1 transition-transform">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-4">
                 <div className="bg-primary-fixed text-primary p-3 rounded-xl">
                   <span className="material-symbols-outlined">event</span>
                 </div>

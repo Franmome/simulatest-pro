@@ -96,7 +96,7 @@ export default function AdminLayout() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="ml-64 flex-1 min-h-screen bg-background">
+      <main className="md:ml-64 flex-1 min-h-screen bg-background">
         <Outlet />
       </main>
     </div>

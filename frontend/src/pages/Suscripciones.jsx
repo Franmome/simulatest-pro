@@ -134,11 +134,13 @@ export default function Suscripciones() {
   const maxPrecio = Math.max(...planes.map(p => p.price ?? 0), 0)
 
   return (
-    <div className="p-8 pb-20 max-w-5xl animate-fade-in">
+    // ✅ Cambio 1: padding responsivo
+    <div className="p-4 md:p-8 pb-20 max-w-5xl animate-fade-in">
 
-      {/* Hero — textos desde page_content */}
-      <div className="premium-gradient rounded-3xl p-10 text-white mb-10">
-        <h2 className="font-headline font-extrabold text-4xl leading-tight mb-4 tracking-tight">
+      {/* ✅ Cambio 2: padding y margen responsivos en hero */}
+      <div className="premium-gradient rounded-3xl p-6 md:p-10 text-white mb-8">
+        {/* ✅ Cambio 3: tamaño de fuente responsivo en título */}
+        <h2 className="font-headline font-extrabold text-2xl md:text-4xl leading-tight mb-4 tracking-tight">
           {hero.hero_titulo}
         </h2>
         <p className="text-primary-fixed opacity-90 text-lg mb-6 leading-relaxed max-w-2xl">
