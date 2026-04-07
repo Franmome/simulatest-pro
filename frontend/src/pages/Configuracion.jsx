@@ -21,7 +21,7 @@ function fechaLegible(iso) {
 function Toast({ msg, tipo }) {
   if (!msg) return null
   return (
-    <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl font-semibold text-sm animate-fade-in
+    <div className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl font-semibold text-sm animate-fade-in
       ${tipo === 'ok' ? 'bg-secondary text-white' : 'bg-error text-white'}`}>
       <span className="material-symbols-outlined text-lg"
         style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -93,7 +93,7 @@ function TabPerfil({ user, perfil, onSave, saving }) {
           <h3 className="text-xl font-bold font-headline">Información de Perfil</h3>
         </div>
 
-        <div className="card p-8 space-y-8">
+        <div className="card p-4 md:p-8 space-y-6 md:space-y-8">
           {/* Avatar */}
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative group">
@@ -225,7 +225,7 @@ function TabSeguridad({ user, onToast }) {
     <div className="space-y-6">
       <h3 className="text-xl font-bold font-headline">Seguridad</h3>
 
-      <div className="card p-8 space-y-6">
+      <div className="card p-4 md:p-8 space-y-6 md:space-y-8">
         {esGoogle ? (
           <div className="flex items-start gap-4 p-4 rounded-xl bg-surface-container border border-outline-variant/20">
             <span className="material-symbols-outlined text-tertiary mt-0.5">info</span>
@@ -627,17 +627,17 @@ export default function Configuracion() {
   const nombreMostrado = perfil?.full_name || user?.user_metadata?.full_name || user?.email || 'Usuario'
 
   return (
-    <div className="p-6 pb-24 max-w-5xl animate-fade-in">
+    <div className="p-4 md:p-6 pb-24 max-w-5xl animate-fade-in">
 
-      {/* ── Header de usuario ──────────────────────────────────────────────── */}
-      <div className="flex items-center gap-5 mb-8 p-6 card">
+      {/* ── Header de usuario ── */}
+      <div className="flex items-center gap-3 mb-6 p-4 card overflow-hidden">
         <img
           src={avatarSrc}
           alt="Avatar"
-          className="w-16 h-16 rounded-full object-cover border-4 border-surface-container-low flex-shrink-0"
+          className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover border-4 border-surface-container-low flex-shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-extrabold font-headline truncate">{nombreMostrado}</h1>
+          <h1 className="text-base md:text-2xl font-extrabold font-headline truncate">{nombreMostrado}</h1>
           <p className="text-sm text-on-surface-variant truncate">{user?.email}</p>
           <div className="flex items-center gap-2 mt-1">
             <span className="w-2 h-2 rounded-full bg-secondary" />
@@ -654,7 +654,7 @@ export default function Configuracion() {
 
       <div className="flex flex-col lg:flex-row gap-8">
 
-        {/* ── Sidebar de tabs ──────────────────────────────────────────────── */}
+        {/* ── Sidebar de tabs ── */}
         <nav className="lg:w-56 flex flex-row lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 flex-shrink-0">
           {TABS.map(t => (
             <button
@@ -675,7 +675,7 @@ export default function Configuracion() {
           ))}
         </nav>
 
-        {/* ── Contenido del tab ────────────────────────────────────────────── */}
+        {/* ── Contenido del tab ── */}
         <div className="flex-1 min-w-0">
           {tabActiva === 'perfil' && (
             <TabPerfil user={user} perfil={perfil} onSave={onSave} saving={saving} />

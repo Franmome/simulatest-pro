@@ -121,9 +121,9 @@ export default function Dashboard() {
         {guardandoPerfil && <span className="text-xs text-on-surface-variant animate-pulse ml-auto">Guardando...</span>}
       </div>
 
-      {/* Perfil y nivel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="card p-4">
+      {/* Perfil y nivel - con overflow-hidden en grid y cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 overflow-hidden">
+        <div className="card p-4 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold uppercase tracking-wider text-primary">Perfil de Usuario</span>
             <span className="material-symbols-outlined text-primary-container text-lg">person_search</span>
@@ -140,7 +140,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="card p-4">
+        <div className="card p-4 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold uppercase tracking-wider text-tertiary">Nivel de Aspiración</span>
             <span className="material-symbols-outlined text-tertiary text-lg">military_tech</span>
@@ -155,8 +155,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Progreso */}
-      <div className="card p-4 mb-8 flex items-center gap-4">
+      {/* Progreso - card con overflow-hidden */}
+      <div className="card p-4 mb-8 flex items-center gap-4 overflow-hidden">
         <div className="relative inline-flex items-center justify-center shrink-0">
           <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 128 128">
             <circle cx="64" cy="64" r={radio} fill="transparent" stroke="currentColor" strokeWidth="10" className="text-surface-container-highest" />
@@ -228,13 +228,13 @@ export default function Dashboard() {
             })}
             {!tienePlan && (
               <div onClick={() => navigate('/planes')}
-                className="bg-gradient-to-br from-primary to-primary-container rounded-2xl cursor-pointer p-6 flex items-center gap-4">
-                <span className="material-symbols-outlined text-white text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
-                <div className="text-white">
+                className="bg-gradient-to-br from-primary to-primary-container rounded-2xl cursor-pointer p-6 flex items-center gap-4 overflow-hidden">
+                <span className="material-symbols-outlined text-white text-3xl shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+                <div className="text-white min-w-0">
                   <h4 className="font-bold text-sm">Desbloquear todo el catálogo</h4>
                   <p className="text-xs opacity-80">Desde $19.900 COP/mes</p>
                 </div>
-                <span className="ml-auto bg-white text-primary font-bold px-4 py-2 rounded-full text-xs">Ver →</span>
+                <span className="ml-auto bg-white text-primary font-bold px-4 py-2 rounded-full text-xs shrink-0">Ver →</span>
               </div>
             )}
           </div>
@@ -250,7 +250,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {intentos.slice(0, 3).map(intento => (
-              <div key={intento.id} className="bg-white p-3 rounded-xl flex items-center gap-3 border border-outline-variant/15">
+              <div key={intento.id} className="bg-white p-3 rounded-xl flex items-center gap-3 border border-outline-variant/15 overflow-hidden">
                 <div className={`p-2 rounded-xl shrink-0 ${intento.status === 'completed' ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container text-on-surface-variant'}`}>
                   <span className="material-symbols-outlined text-sm">{intento.status === 'completed' ? 'check_circle' : 'pending'}</span>
                 </div>
@@ -277,7 +277,7 @@ export default function Dashboard() {
       <div className="mb-8">
         <h3 className="text-lg font-bold mb-4">Próximas convocatorias</h3>
         <div className="space-y-3">
-          <div className="bg-white p-3 rounded-xl flex items-center gap-3 border-l-4 border-error shadow-sm">
+          <div className="bg-white p-3 rounded-xl flex items-center gap-3 border-l-4 border-error shadow-sm overflow-hidden">
             <div className="bg-error-container text-error p-2 rounded-xl shrink-0"><span className="material-symbols-outlined text-sm">timer</span></div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm truncate">Simulacro Nacional CNSC</p>
@@ -285,7 +285,7 @@ export default function Dashboard() {
             </div>
             <button onClick={() => navigate('/catalogo')} className="px-3 py-1.5 bg-error text-white text-xs font-bold rounded-full shrink-0">VER</button>
           </div>
-          <div className="bg-white p-3 rounded-xl flex items-center gap-3 border-l-4 border-primary shadow-sm">
+          <div className="bg-white p-3 rounded-xl flex items-center gap-3 border-l-4 border-primary shadow-sm overflow-hidden">
             <div className="bg-primary-fixed text-primary p-2 rounded-xl shrink-0"><span className="material-symbols-outlined text-sm">event</span></div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm truncate">Prueba Saber Pro 2025</p>
@@ -302,12 +302,12 @@ export default function Dashboard() {
           <span className="material-symbols-outlined text-tertiary">gavel</span>Novedades
         </h4>
         <div className="space-y-4">
-          <article className="group cursor-pointer p-4 card">
+          <article className="group cursor-pointer p-4 card overflow-hidden">
             <p className="text-[10px] font-bold text-tertiary mb-1">DECRETO 452 - 2024</p>
             <h5 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors">Modificación en el régimen de carrera administrativa...</h5>
             <p className="text-xs text-on-surface-variant mt-1">Nuevas directrices para el proceso de selección en entidades territoriales.</p>
           </article>
-          <article className="group cursor-pointer p-4 card">
+          <article className="group cursor-pointer p-4 card overflow-hidden">
             <p className="text-[10px] font-bold text-tertiary mb-1">CIRCULAR CNSC</p>
             <h5 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors">Nuevas fechas para convocatoria Territorial 8...</h5>
             <p className="text-xs text-on-surface-variant mt-1">La CNSC anuncia ajustes en el cronograma de pruebas escritas.</p>
@@ -316,7 +316,7 @@ export default function Dashboard() {
       </div>
 
       {/* Frase motivacional */}
-      <div className="p-5 bg-primary-container rounded-2xl text-white">
+      <div className="p-5 bg-primary-container rounded-2xl text-white overflow-hidden">
         <span className="material-symbols-outlined mb-2 block" style={{ fontVariationSettings: "'FILL' 1" }}>format_quote</span>
         <p className="text-sm font-medium italic leading-relaxed">"La preparación es la clave del éxito. Tu esfuerzo de hoy es el cargo de mañana."</p>
       </div>
