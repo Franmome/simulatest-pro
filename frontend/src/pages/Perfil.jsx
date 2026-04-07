@@ -143,7 +143,8 @@ export default function Perfil() {
     <div className="p-8 pb-20 max-w-4xl animate-fade-in">
 
       {/* ── Info del usuario ── */}
-      <div className="flex items-center gap-6 mb-10">
+      {/* ✅ Cambio 1: Header responsivo con flex-wrap */}
+      <div className="flex flex-wrap items-center gap-4 mb-10">
         {/* Avatar — foto de Google o iniciales */}
         {avatarUrl ? (
           <img
@@ -173,31 +174,33 @@ export default function Perfil() {
           </div>
         </div>
 
-        <button className="ml-auto border border-outline-variant text-on-surface-variant font-semibold px-5 py-2 rounded-full hover:bg-surface-container transition-colors text-sm">
+        {/* ✅ Cambio 2: Botón Editar perfil con margen responsivo */}
+        <button className="mt-2 md:mt-0 md:ml-auto border border-outline-variant text-on-surface-variant font-semibold px-5 py-2 rounded-full hover:bg-surface-container transition-colors text-sm">
           Editar perfil
         </button>
       </div>
 
       {/* ── Estadísticas reales ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        {/* ✅ Cambio 3: Tamaño de fuente responsivo en todas las stats */}
         <div className="card p-5 text-center">
-          <span className="text-3xl font-extrabold text-primary">{stats?.total ?? 0}</span>
+          <span className="text-2xl md:text-3xl font-extrabold text-primary">{stats?.total ?? 0}</span>
           <p className="text-xs text-on-surface-variant mt-1 font-semibold">Simulacros hechos</p>
         </div>
         <div className="card p-5 text-center">
-          <span className="text-3xl font-extrabold text-secondary">
+          <span className="text-2xl md:text-3xl font-extrabold text-secondary">
             {stats?.total > 0 ? `${stats.promedio}%` : '—'}
           </span>
           <p className="text-xs text-on-surface-variant mt-1 font-semibold">Promedio general</p>
         </div>
         <div className="card p-5 text-center">
-          <span className="text-3xl font-extrabold text-tertiary">
+          <span className="text-2xl md:text-3xl font-extrabold text-tertiary">
             {stats?.horas > 0 ? `${stats.horas}h` : '0h'}
           </span>
           <p className="text-xs text-on-surface-variant mt-1 font-semibold">Tiempo estudiado</p>
         </div>
         <div className="card p-5 text-center">
-          <span className="text-3xl font-extrabold text-on-background">
+          <span className="text-2xl md:text-3xl font-extrabold text-on-background">
             🏆 {stats?.aprobados ?? 0}
           </span>
           <p className="text-xs text-on-surface-variant mt-1 font-semibold">Aprobados</p>
@@ -241,7 +244,6 @@ export default function Perfil() {
                       </span>
                     </div>
                     <div>
-                      {/* ✅ Cambio 1: título y nivel separados para evitar corte en móvil */}
                       <p className="font-bold text-sm leading-tight">{titulo}</p>
                       <p className="text-xs text-on-surface-variant">{nivel}</p>
                       <p className="text-xs text-on-surface-variant mt-0.5">
@@ -250,7 +252,6 @@ export default function Perfil() {
                     </div>
                   </div>
                   <div className="text-right">
-                    {/* ✅ Cambio 2: score de text-2xl a text-xl */}
                     <span className={`text-xl font-extrabold ${aprobado ? 'text-secondary' : 'text-error'}`}>
                       {score}%
                     </span>

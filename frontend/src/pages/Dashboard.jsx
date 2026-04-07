@@ -197,10 +197,11 @@ export default function Dashboard() {
         {/* Saludo */}
         <div className="mb-10 flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-on-background mb-2">
+            {/* ✅ Cambio: tamaño de fuente responsivo en título y subtítulo */}
+            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight text-on-background mb-2">
               {getSaludo()}, {primerNombre}! 👋
             </h1>
-            <p className="text-on-surface-variant text-lg font-light">
+            <p className="text-on-surface-variant text-sm md:text-lg font-light">
               Hoy es un excelente día para avanzar hacia tu meta profesional.
             </p>
           </div>
