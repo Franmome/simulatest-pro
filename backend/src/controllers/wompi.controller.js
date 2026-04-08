@@ -9,22 +9,27 @@ export const webhookWompi = async (req, res) => {
     console.log('📦 Evento:', event, '| Status:', data?.transaction?.status)
     console.log('🔑 Reference:', data?.transaction?.reference)
 
-    // 1. Verificar firma (versión simple)
-    const checksum = signature?.checksum
-    const cadena = `${sent_at}${process.env.WOMPI_EVENTS_SECRET}`
+    // 1. Verificar firma (método oficial con signature.properties)
+    const tx = data?.transaction
+    const props = signature?.properties || []
+    const valoresFirma = props.map(p => {
+      const keys = p.split('.')
+      return keys.reduce((obj, key) => obj?.[key], data)
+    })
+    const cadena = [...valoresFirma, sent_at, process.env.WOMPI_EVENTS_SECRET].join('')
     const hash = crypto.createHash('sha256').update(cadena).digest('hex')
-    if (hash !== checksum) return res.status(401).json({ error: 'Firma inválida' })
+    if (hash !== signature?.checksum) return res.status(401).json({ error: 'Firma inválida' })
 
     // 2. Solo procesar pagos aprobados
     if (event !== 'transaction.updated') return res.sendStatus(200)
-    const tx = data?.transaction
     if (tx?.status !== 'APPROVED') return res.sendStatus(200)
 
-    // 3. Leer referencia (formato: userId-packageId-timestamp)
+    // 3. Leer referencia (formato: UUID-packageId-timestamp)
     const reference = tx.reference || ''
     const partes = reference.split('-')
-    const user_id = partes[0]
-    const package_id = parseInt(partes[1])
+    // UUID tiene 5 partes, luego viene package_id y timestamp
+    const user_id = partes.slice(0, 5).join('-')
+    const package_id = parseInt(partes[5])
     if (!user_id || !package_id) return res.sendStatus(200)
 
     // 4. Obtener paquete
