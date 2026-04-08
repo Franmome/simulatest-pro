@@ -3,9 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom'
 const navItems = [
   { icon: 'home',              label: 'Inicio',     path: '/dashboard' },
   { icon: 'assignment',        label: 'Simulacros', path: '/catalogo'  },
-  { icon: 'groups',            label: 'Salas',      path: '/salas'     },
   { icon: 'workspace_premium', label: 'Planes',     path: '/planes'    },
   { icon: 'menu_book',         label: 'Estudio',    path: '/estudio'   },
+  { icon: 'leaderboard',       label: 'Progreso',   path: '/perfil'    },
 ]
 
 export default function BottomNav() {
