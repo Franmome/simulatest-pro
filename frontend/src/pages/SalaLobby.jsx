@@ -16,6 +16,7 @@ export default function SalaLobby() {
   const [msgInput, setMsgInput] = useState('')
   const [chatAbierto, setChatAbierto] = useState(false)
   const [yo, setYo] = useState(null)
+  const [toast, setToast] = useState(null) // ✅ FIX 3: estado para toast
   const chatRef = useRef(null)
 
   useEffect(() => {
@@ -27,11 +28,19 @@ export default function SalaLobby() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
         () => cargarParticipantes())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${roomId}` },
-        (payload) => setMessages(prev => [...prev, payload.new]))
+        (payload) => {
+          setMessages(prev => [...prev, payload.new])
+          // ✅ FIX 3: mostrar toast en móvil si chat cerrado y el mensaje no es propio
+          if (!chatAbierto && payload.new.participant_id !== participantId) {
+            setToast(`${payload.new.display_name}: ${payload.new.message}`)
+            setTimeout(() => setToast(null), 2500)
+          }
+        })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
-          if (payload.new.status === 'starting') iniciarCountdown()
-          if (payload.new.status === 'active') {
+          // ✅ FIX 2: los no-host también inician countdown al recibir status 'starting'
+          if (payload.new.status === 'starting' && !isHost) iniciarCountdown()
+          if (payload.new.status === 'active' && !isHost) {
             navigate(`/sala/${roomId}/juego`, { state: { participantId, isHost, displayName } })
           }
         })
@@ -73,9 +82,11 @@ export default function SalaLobby() {
 
   async function iniciarCompetencia() {
     await supabase.from('rooms').update({ status: 'starting' }).eq('id', roomId)
+    // El host inicia su propio countdown aquí también (para no esperar el realtime)
     iniciarCountdown()
   }
 
+  // ✅ FIX 2: countdown mejorado y navegación directa
   function iniciarCountdown() {
     let c = 5
     setCountdown(c)
@@ -84,7 +95,16 @@ export default function SalaLobby() {
       setCountdown(c)
       if (c <= 0) {
         clearInterval(t)
-        supabase.from('rooms').update({ status: 'active' }).eq('id', roomId)
+        setCountdown(0)
+        if (isHost) {
+          // Host actualiza status a 'active' y navega
+          supabase.from('rooms').update({ status: 'active' }).eq('id', roomId).then(() => {
+            navigate(`/sala/${roomId}/juego`, { state: { participantId, isHost, displayName } })
+          })
+        } else {
+          // No-host navegan directamente (el listener ya haría lo mismo, pero por si acaso)
+          navigate(`/sala/${roomId}/juego`, { state: { participantId, isHost, displayName } })
+        }
       }
     }, 1000)
   }
@@ -113,21 +133,43 @@ export default function SalaLobby() {
   const todosListos = participants.filter(p => !p.is_host).every(p => p.is_ready)
   const noHost = participants.filter(p => !p.is_host)
 
-  // Countdown overlay
+  // ✅ FIX 1: Countdown con animación estilo "buscando partida"
   if (countdown !== null && countdown > 0) {
     return (
       <div className="fixed inset-0 z-[200] bg-primary flex flex-col items-center justify-center text-white animate-fade-in">
-        <p className="text-xl font-bold mb-4 opacity-80">¡La sala está iniciando!</p>
-        <div className="text-[120px] font-extrabold font-headline animate-pulse leading-none">
-          {countdown}
+        <div className="max-w-md w-full px-6">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+            <div className="flex-1">
+              <p className="font-extrabold text-lg leading-none">¡Iniciando sala!</p>
+              <p className="text-white/70 text-sm">Prepárate para competir...</p>
+              {/* Barra de progreso */}
+              <div className="w-full h-1.5 bg-white/20 rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full bg-white rounded-full transition-all duration-1000"
+                  style={{ width: `${((5 - countdown) / 5) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="text-5xl font-extrabold font-headline shrink-0 animate-pulse">
+              {countdown}
+            </div>
+          </div>
         </div>
-        <p className="mt-6 text-lg opacity-70">Prepárate...</p>
       </div>
     )
   }
 
   return (
     <div className="p-4 md:p-8 pb-24 max-w-2xl animate-fade-in">
+
+      {/* ✅ FIX 3: Toast para notificaciones de chat en móvil */}
+      {toast && (
+        <div className="md:hidden fixed top-4 left-4 right-4 z-[300] bg-on-surface text-surface px-4 py-3 rounded-2xl shadow-xl animate-fade-in flex items-center gap-3">
+          <span className="material-symbols-outlined text-sm shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>chat</span>
+          <p className="text-sm font-medium truncate">{toast}</p>
+        </div>
+      )}
 
       {/* Header sala */}
       <div className="card p-6 mb-4">
@@ -157,7 +199,6 @@ export default function SalaLobby() {
           {participants.map(p => (
             <div key={p.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl">
               <div className="flex items-center gap-3">
-                {/* Punto online */}
                 <div className="relative">
                   <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm">
                     {p.display_name[0].toUpperCase()}
@@ -176,7 +217,6 @@ export default function SalaLobby() {
                   ? <span className="text-[10px] font-bold text-secondary bg-secondary-container px-2 py-0.5 rounded-full flex items-center gap-1">✓ Listo</span>
                   : <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">Esperando...</span>
                 }
-                {/* Echar participante (solo host, no a sí mismo) */}
                 {isHost && !p.is_host && (
                   <button onClick={() => echarParticipante(p.id)}
                     className="p-1 rounded-full hover:bg-error-container text-error transition-colors">
@@ -285,14 +325,10 @@ export default function SalaLobby() {
             </div>
           </div>
         )}
+        {/* ✅ FIX 3: botón de chat sin número, solo ícono (en desktop se mantiene igual) */}
         <button onClick={() => setChatAbierto(v => !v)}
           className="w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center relative">
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>chat</span>
-          {messages.length > 0 && !chatAbierto && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-error rounded-full text-[10px] font-bold text-white flex items-center justify-center">
-              {messages.length > 9 ? '9+' : messages.length}
-            </span>
-          )}
         </button>
       </div>
     </div>
