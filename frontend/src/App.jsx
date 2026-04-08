@@ -4,28 +4,23 @@ import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
 
-// ── Páginas públicas ──────────────────────────────────────────────────────
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Catalogo from './pages/Catalogo'
 import DetallePrueba from './pages/DetallePrueba'
 
-// ── Páginas privadas ──────────────────────────────────────────────────────
 import Dashboard from './pages/Dashboard'
 import Simulacro from './pages/Simulacro'
 import Resultados from './pages/Resultados'
 import ResultadoFinal from './pages/ResultadoFinal'
 import Suscripciones from './pages/Suscripciones'
 import Perfil from './pages/Perfil'
-import Estudio       from './pages/Estudio'
+import Estudio from './pages/Estudio'
 import Configuracion from './pages/Configuracion'
-
-// ── Nuevas páginas de salas ───────────────────────────────────────────────
 import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
 
-// ── Panel Admin ───────────────────────────────────────────────────────────
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminUsuarios from './pages/admin/AdminUsuarios'
 import AdminPaquetes from './pages/admin/AdminPaquetes'
@@ -40,46 +35,30 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-
-          {/* ── Rutas públicas sin Layout ── */}
           <Route path="/login"    element={<Login />} />
           <Route path="/registro" element={<Register />} />
 
-          {/* ── Rutas públicas con Layout ── */}
           <Route element={<Layout title="SimulaTest Pro" />}>
             <Route path="/" element={<Navigate to="/catalogo" replace />} />
-            <Route path="/catalogo"    element={<Catalogo />} />
-            <Route path="/prueba/:id"  element={<DetallePrueba />} />
+            <Route path="/catalogo"   element={<Catalogo />} />
+            <Route path="/prueba/:id" element={<DetallePrueba />} />
           </Route>
 
-          {/* ── Rutas privadas (usuarios normales) ── */}
-          <Route element={<PrivateRoute />}>
-            <Route element={<Layout title="Dashboard" />}>
-              <Route path="/dashboard"       element={<Dashboard />} />
-              <Route path="/simulacro/:id"   element={<Simulacro />} />
-              <Route path="/resultados"      element={<Resultados />} />
-              <Route path="/resultado-final" element={<ResultadoFinal />} />
-              <Route path="/planes"          element={<Suscripciones />} />
-              <Route path="/perfil"          element={<Perfil />} />
-              <Route path="/estudio"         element={<Estudio />} />
-              <Route path="/configuracion"   element={<Configuracion />} />
-
-              {/* Nuevas rutas de salas */}
-              <Route path="/salas"                element={<Salas />} />
-              <Route path="/sala/:roomId/lobby"   element={<SalaLobby />} />
-              <Route path="/sala/:roomId/juego"   element={<SalaSimulacro />} />
-            </Route>
+          <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
+            <Route path="/dashboard"       element={<Dashboard />} />
+            <Route path="/simulacro/:id"   element={<Simulacro />} />
+            <Route path="/resultados"      element={<Resultados />} />
+            <Route path="/resultado-final" element={<ResultadoFinal />} />
+            <Route path="/planes"          element={<Suscripciones />} />
+            <Route path="/perfil"          element={<Perfil />} />
+            <Route path="/estudio"         element={<Estudio />} />
+            <Route path="/configuracion"   element={<Configuracion />} />
+            <Route path="/salas"               element={<Salas />} />
+            <Route path="/sala/:roomId/lobby"  element={<SalaLobby />} />
+            <Route path="/sala/:roomId/juego"  element={<SalaSimulacro />} />
           </Route>
 
-          {/* ── Panel Admin (solo admins) ── */}
-          <Route
-            path="/admin"
-            element={
-              <PrivateRoute requireAdmin>
-                <AdminLayout />
-              </PrivateRoute>
-            }
-          >
+          <Route path="/admin" element={<PrivateRoute requireAdmin><AdminLayout /></PrivateRoute>}>
             <Route index                          element={<AdminDashboard />} />
             <Route path="evaluaciones"            element={<EvaluacionesList />} />
             <Route path="evaluaciones/nueva"      element={<EvaluacionForm />} />
@@ -90,7 +69,6 @@ export default function App() {
             <Route path="editor"                  element={<AdminEditor />} />
             <Route path="errores"                 element={<AdminErrores />} />
           </Route>
-
         </Routes>
       </BrowserRouter>
     </AuthProvider>
