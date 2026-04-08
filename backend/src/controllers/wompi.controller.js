@@ -32,6 +32,10 @@ export const webhookWompi = async (req, res) => {
     const package_id = parseInt(partes[5])
     if (!user_id || !package_id) return res.sendStatus(200)
 
+    // Logs adicionales
+    console.log('👤 user_id:', user_id)
+    console.log('📦 package_id:', package_id)
+
     // 4. Obtener paquete
     const { data: pkg } = await supabase
       .from('packages')
@@ -51,6 +55,7 @@ export const webhookWompi = async (req, res) => {
       wompi_transaction_id: tx.id,
       amount: tx.amount_in_cents / 100
     })
+    console.log('✅ Purchase insertado')
 
     // 6. Registrar transacción
     await supabase.from('transactions').insert({
@@ -61,6 +66,7 @@ export const webhookWompi = async (req, res) => {
       wompi_transaction_id: tx.id,
       created_at: new Date().toISOString()
     })
+    console.log('✅ Transaction insertada')
 
     return res.sendStatus(200)
   } catch (err) {
