@@ -12,7 +12,12 @@ const app  = express()
 const PORT = process.env.PORT || 3000
 
 // ─── Middlewares globales ──────────────────────────────────
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://simulatest-pro-production.up.railway.app'
+  ]
+}))
 app.use(express.json())
 
 // ─── Rutas ────────────────────────────────────────────────
