@@ -19,6 +19,12 @@ import Suscripciones from './pages/Suscripciones'
 import Perfil from './pages/Perfil'
 import Estudio       from './pages/Estudio'
 import Configuracion from './pages/Configuracion'
+
+// ── Nuevas páginas de salas ───────────────────────────────────────────────
+import Salas from './pages/Salas'
+import SalaLobby from './pages/SalaLobby'
+import SalaSimulacro from './pages/SalaSimulacro'
+
 // ── Panel Admin ───────────────────────────────────────────────────────────
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminUsuarios from './pages/admin/AdminUsuarios'
@@ -47,16 +53,24 @@ export default function App() {
           </Route>
 
           {/* ── Rutas privadas (usuarios normales) ── */}
-          <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
-          <Route path="/dashboard"       element={<Dashboard />} />
-          <Route path="/simulacro/:id"   element={<Simulacro />} />
-          <Route path="/resultados"      element={<Resultados />} />
-          <Route path="/resultado-final" element={<ResultadoFinal />} />
-          <Route path="/planes"          element={<Suscripciones />} />
-          <Route path="/perfil"          element={<Perfil />} />
-          <Route path="/estudio"         element={<Estudio />} />        
-         <Route path="/configuracion"   element={<Configuracion />} />  
-         </Route>  
+          <Route element={<PrivateRoute />}>
+            <Route element={<Layout title="Dashboard" />}>
+              <Route path="/dashboard"       element={<Dashboard />} />
+              <Route path="/simulacro/:id"   element={<Simulacro />} />
+              <Route path="/resultados"      element={<Resultados />} />
+              <Route path="/resultado-final" element={<ResultadoFinal />} />
+              <Route path="/planes"          element={<Suscripciones />} />
+              <Route path="/perfil"          element={<Perfil />} />
+              <Route path="/estudio"         element={<Estudio />} />
+              <Route path="/configuracion"   element={<Configuracion />} />
+
+              {/* Nuevas rutas de salas */}
+              <Route path="/salas"                element={<Salas />} />
+              <Route path="/sala/:roomId/lobby"   element={<SalaLobby />} />
+              <Route path="/sala/:roomId/juego"   element={<SalaSimulacro />} />
+            </Route>
+          </Route>
+
           {/* ── Panel Admin (solo admins) ── */}
           <Route
             path="/admin"
