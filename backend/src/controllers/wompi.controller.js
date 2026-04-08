@@ -6,14 +6,9 @@ export const webhookWompi = async (req, res) => {
   try {
     const { event, data, sent_at, signature } = req.body
 
-    // 1. Verificar firma (nuevo método)
+    // 1. Verificar firma (versión simple)
     const checksum = signature?.checksum
-    const properties = Object.keys(req.body)
-      .filter(k => k !== 'signature')
-      .sort()
-      .map(k => JSON.stringify(req.body[k]))
-      .join('')
-    const cadena = `${properties}${sent_at}${process.env.WOMPI_EVENTS_SECRET}`
+    const cadena = `${sent_at}${process.env.WOMPI_EVENTS_SECRET}`
     const hash = crypto.createHash('sha256').update(cadena).digest('hex')
     if (hash !== checksum) return res.status(401).json({ error: 'Firma inválida' })
 
