@@ -50,7 +50,8 @@ export default function SalaSimulacro() {
     const sub = supabase.channel(`sala-juego-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
-          if (payload.new.status === 'finished' && !terminadoRef.current) {
+          // ✅ FIX: eliminada la condición && !terminadoRef.current
+          if (payload.new.status === 'finished') {
             mostrarResultados()
           }
           if (payload.new.rematch_requested_by && payload.new.rematch_requested_by !== participantId) {
