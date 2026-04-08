@@ -43,18 +43,37 @@ export default function SalaSimulacro() {
     return () => { supabase.removeChannel(sub); clearInterval(intervalRef.current) }
   }, [roomId])
 
+  // ✅ FUNCIÓN INICIAR CORREGIDA
   async function iniciar() {
-    const { data: roomData } = await supabase.from('rooms').select('*, levels(id, timer_per_question)').eq('id', roomId).single()
+    // 1. Obtener datos de la sala (sin join incorrecto)
+    const { data: roomData } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single()
+    
+    if (!roomData) return
     setRoom(roomData)
 
-    const { data: qData } = await supabase
-      .from('questions').select('id, text, options(id, text, letter, is_correct)')
-      .eq('level_id', roomData.level_id).limit(roomData.max_questions)
-    const shuffled = qData?.sort(() => Math.random() - 0.5) || []
+    // 2. Cargar preguntas del nivel seleccionado
+    const { data: qData, error } = await supabase
+      .from('questions')
+      .select('id, text, options(id, text, letter, is_correct)')
+      .eq('level_id', roomData.level_id)
+      .limit(roomData.max_questions)
+
+    if (error || !qData?.length) {
+      console.error('Error cargando preguntas:', error)
+      return
+    }
+
+    // 3. Mezclar preguntas
+    const shuffled = [...qData].sort(() => Math.random() - 0.5)
     setPreguntas(shuffled)
 
-    cargarParticipantes()
-    iniciarTimer(roomData.timer_per_question)
+    // 4. Cargar participantes y luego iniciar timer
+    await cargarParticipantes()
+    iniciarTimer(roomData.timer_per_question || 90)
   }
 
   function iniciarTimer(seg) {
