@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Catalogo from './pages/Catalogo'
 import DetallePrueba from './pages/DetallePrueba'
+import PagoResultado from './pages/PagoResultado'   // ✅ Import agregado
 
 import Dashboard from './pages/Dashboard'
 import Simulacro from './pages/Simulacro'
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/catalogo" replace />} />
             <Route path="/catalogo"   element={<Catalogo />} />
             <Route path="/prueba/:id" element={<DetallePrueba />} />
+            <Route path="/pago-resultado" element={<PagoResultado />} />   {/* ✅ Ruta agregada */}
           </Route>
 
           <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>

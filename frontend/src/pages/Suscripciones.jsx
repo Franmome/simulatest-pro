@@ -4,12 +4,14 @@ import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 
 const HERO_DEFAULTS = {
-  hero_titulo:       'Invierte en tu futuro profesional.',
-  hero_subtitulo:    'Desbloquea las herramientas que usan los candidatos más exitosos. Domina tus exámenes de estado con precisión y confianza.',
-  hero_badge:        'Acceso Premium Incluido',
-  testimonio:        '"Los simulacros son idénticos al examen real del ICFES. Totalmente vale la pena."',
-  testimonio_autor:  '— María G., Puntaje 472',
+  hero_titulo:      'Invierte en tu futuro profesional.',
+  hero_subtitulo:   'Desbloquea las herramientas que usan los candidatos más exitosos. Domina tus exámenes de estado con precisión y confianza.',
+  hero_badge:       'Acceso Premium Incluido',
+  testimonio:       '"Los simulacros son idénticos al examen real. Totalmente vale la pena."',
+  testimonio_autor: '— María G., Puntaje 472',
 }
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 function formatPrecio(precio) {
   if (!precio && precio !== 0) return '—'
@@ -33,58 +35,44 @@ export default function Suscripciones() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  const [planes,     setPlanes]     = useState([])
-  const [hero,       setHero]       = useState(HERO_DEFAULTS)
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState(null)
-  const [planActivo, setPlanActivo] = useState(null)
-  const [procesando, setProcesando] = useState(null)
+  const [planes,      setPlanes]      = useState([])
+  const [hero,        setHero]        = useState(HERO_DEFAULTS)
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
+  const [planActivo,  setPlanActivo]  = useState(null)
+  const [procesando,  setProcesando]  = useState(null)
 
   useEffect(() => { cargarDatos() }, [])
 
   async function cargarDatos() {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
-      // 1. Textos del hero desde page_content
       const { data: contenido } = await supabase
-        .from('page_content')
-        .select('field_key, value')
-        .eq('page_key', 'suscripciones')
-        .eq('is_draft', false)
-
+        .from('page_content').select('field_key, value')
+        .eq('page_key', 'suscripciones').eq('is_draft', false)
       if (contenido?.length) {
         const textos = {}
         contenido.forEach(({ field_key, value }) => { textos[field_key] = value })
         setHero(prev => ({ ...prev, ...textos }))
       }
 
-      // 2. Paquetes activos
       const { data: pkgs, error: pkgErr } = await supabase
-        .from('packages')
-        .select('*')
-        .eq('is_active', true)
-        .order('price', { ascending: true })
+        .from('packages').select('*').eq('is_active', true).order('price', { ascending: true })
       if (pkgErr) throw pkgErr
 
-      // 3. Plan activo del usuario
       if (user) {
         const { data: purchase } = await supabase
-          .from('purchases')
-          .select('package_id, end_date, status')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
+          .from('purchases').select('package_id, end_date, status')
+          .eq('user_id', user.id).eq('status', 'active')
           .gte('end_date', new Date().toISOString())
-          .order('end_date', { ascending: false })
-          .limit(1)
-          .single()
+          .order('end_date', { ascending: false }).limit(1).single()
         if (purchase) setPlanActivo(purchase.package_id)
       }
 
       setPlanes(pkgs || [])
     } catch (err) {
-      console.error('Error cargando planes:', err)
-      setError('No se pudieron cargar los planes.')
+      console.error(err)
+      setError('No se pudieron cargar los paquetes.')
     } finally {
       setLoading(false)
     }
@@ -95,17 +83,39 @@ export default function Suscripciones() {
     if (planActivo === pkg.id) return
     setProcesando(pkg.id)
     try {
-      const { data: wa } = await supabase
-        .from('page_content')
-        .select('value')
-        .eq('page_key', 'config')
-        .eq('field_key', 'whatsapp_numero')
-        .single()
-      const numero  = wa?.value || '573000000000'
-      const mensaje = encodeURIComponent(
-        `Hola, quiero adquirir el plan "${pkg.name}" por ${formatPrecio(pkg.price)}. Mi correo es ${user.email}`
-      )
-      window.open(`https://wa.me/${numero}?text=${mensaje}`, '_blank')
+      // 1. Pedir firma al backend
+      const token = (await supabase.auth.getSession()).data.session?.access_token
+      const res = await fetch(`${API}/api/paquetes/comprar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ package_id: pkg.id })
+      })
+      const datos = await res.json()
+      if (!res.ok) throw new Error(datos.error)
+
+      // 2. Abrir widget de Wompi
+      const checkout = new window.WidgetCheckout({
+        currency:        'COP',
+        amountInCents:   datos.amount_in_cents,
+        reference:       datos.reference,
+        publicKey:       datos.public_key,
+        signature:       { integrity: datos.signature },
+        customerData: {
+          email: user.email,
+        },
+        redirectUrl:     datos.redirect_url,
+      })
+      checkout.open(result => {
+        const { transaction } = result
+        if (transaction?.status === 'APPROVED') {
+          navigate('/pago-resultado?status=approved')
+        } else {
+          navigate('/pago-resultado?status=declined')
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      setError('Error al iniciar el pago. Intenta de nuevo.')
     } finally {
       setProcesando(null)
     }
@@ -117,9 +127,8 @@ export default function Suscripciones() {
       if (lineas.length > 1) return lineas
     }
     const base = ['Simulacros ilimitados', 'Retroalimentación inmediata', 'Historial de resultados']
-    if (pkg.type === 'premium' || pkg.price > 50000) {
+    if (pkg.type === 'premium' || pkg.price > 50000)
       return [...base, 'Retroalimentación IA completa', 'Salas de competición', 'Certificados de participación']
-    }
     return [...base, 'Retroalimentación IA básica']
   }
 
@@ -134,12 +143,9 @@ export default function Suscripciones() {
   const maxPrecio = Math.max(...planes.map(p => p.price ?? 0), 0)
 
   return (
-    // ✅ Cambio 1: padding responsivo
     <div className="p-4 md:p-8 pb-20 max-w-5xl animate-fade-in">
 
-      {/* ✅ Cambio 2: padding y margen responsivos en hero */}
       <div className="premium-gradient rounded-3xl p-6 md:p-10 text-white mb-8">
-        {/* ✅ Cambio 3: tamaño de fuente responsivo en título */}
         <h2 className="font-headline font-extrabold text-2xl md:text-4xl leading-tight mb-4 tracking-tight">
           {hero.hero_titulo}
         </h2>
@@ -158,8 +164,8 @@ export default function Suscripciones() {
           <span className="material-symbols-outlined text-secondary text-3xl"
             style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
           <div>
-            <p className="font-bold text-secondary">Tienes un plan activo</p>
-            <p className="text-sm text-on-surface-variant">Sigue disfrutando de todos los beneficios premium.</p>
+            <p className="font-bold text-secondary">Tienes un paquete activo</p>
+            <p className="text-sm text-on-surface-variant">Sigue disfrutando de todos los beneficios.</p>
           </div>
         </div>
       )}
@@ -178,10 +184,7 @@ export default function Suscripciones() {
         {!loading && planes.length === 0 && (
           <div className="col-span-full card p-10 text-center text-on-surface-variant">
             <span className="material-symbols-outlined text-4xl opacity-40 mb-2 block">inventory_2</span>
-            <p className="font-semibold">No hay planes disponibles en este momento</p>
-            <p className="text-xs mt-1 text-on-surface-variant">
-              El administrador debe crear paquetes desde el panel admin
-            </p>
+            <p className="font-semibold">No hay paquetes disponibles en este momento</p>
           </div>
         )}
 
@@ -194,19 +197,17 @@ export default function Suscripciones() {
           return (
             <div key={pkg.id}
               className={`rounded-2xl p-6 relative overflow-hidden transition-all
-                ${destacado
-                  ? 'bg-white border-2 border-primary shadow-[0_20px_40px_rgba(0,61,155,0.10)] hover:shadow-xl'
-                  : 'card hover:shadow-md'}
-                ${esActivo ? 'ring-2 ring-secondary' : ''}`}
-            >
+                ${destacado ? 'bg-white border-2 border-primary shadow-[0_20px_40px_rgba(0,61,155,0.10)] hover:shadow-xl' : 'card hover:shadow-md'}
+                ${esActivo ? 'ring-2 ring-secondary' : ''}`}>
+
               {esActivo && (
                 <div className="absolute top-0 left-0 bg-secondary text-on-secondary px-4 py-1.5 rounded-br-xl text-[10px] font-bold uppercase tracking-widest">
-                  Tu plan actual
+                  Tu paquete actual
                 </div>
               )}
               {destacado && !esActivo && (
                 <div className="absolute top-0 right-0 bg-primary text-on-primary px-4 py-1.5 rounded-bl-xl text-[10px] font-bold uppercase tracking-widest">
-                  Mejor valor
+                  Más popular
                 </div>
               )}
 
@@ -241,15 +242,12 @@ export default function Suscripciones() {
                 onClick={() => seleccionarPlan(pkg)}
                 disabled={esActivo || enProceso}
                 className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2
-                  ${esActivo
-                    ? 'bg-secondary-container text-secondary cursor-default'
-                    : destacado
-                      ? 'btn-primary hover:scale-105 active:scale-95'
-                      : 'bg-surface-container-high text-primary hover:bg-primary-fixed'}
-                  disabled:opacity-60`}
-              >
+                  ${esActivo ? 'bg-secondary-container text-secondary cursor-default'
+                    : destacado ? 'btn-primary hover:scale-105 active:scale-95'
+                    : 'bg-surface-container-high text-primary hover:bg-primary-fixed'}
+                  disabled:opacity-60`}>
                 {enProceso && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
-                {esActivo ? '✓ Plan activo' : enProceso ? 'Procesando...' : destacado ? 'Comenzar ahora' : 'Seleccionar plan'}
+                {esActivo ? '✓ Paquete activo' : enProceso ? 'Abriendo pago...' : destacado ? 'Adquirir ahora' : 'Seleccionar'}
               </button>
             </div>
           )
