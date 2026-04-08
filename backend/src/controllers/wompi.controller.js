@@ -3,8 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
 export const webhookWompi = async (req, res) => {
+  console.log('🔔 Webhook recibido:', JSON.stringify(req.body, null, 2))
   try {
     const { event, data, sent_at, signature } = req.body
+    console.log('📦 Evento:', event, '| Status:', data?.transaction?.status)
+    console.log('🔑 Reference:', data?.transaction?.reference)
 
     // 1. Verificar firma (versión simple)
     const checksum = signature?.checksum
