@@ -24,10 +24,11 @@ export default function SalaSimulacro() {
   const [miScore, setMiScore] = useState({ correct: 0, wrong: 0 })
   const [esperandoOtros, setEsperandoOtros] = useState(false)
 
-  // Estados para revancha
+  // Estados para revancha (FIX 3)
   const [revanchaPropia, setRevanchaPropia] = useState(false)
   const [revanchaContrario, setRevanchaContrario] = useState(false)
-  const [nombreContrario, setNombreContrario] = useState('')
+  const [jugadoresRevancha, setJugadoresRevancha] = useState([])
+  const [nuevaSalaId, setNuevaSalaId] = useState(null)
 
   // Estados de chat solo para resultados
   const [messages, setMessages] = useState([])
@@ -58,10 +59,14 @@ export default function SalaSimulacro() {
             if (esperandoOtros) setEsperandoOtros(false)
             mostrarResultados()
           }
-          // Detectar revancha en resultados
-          if (terminado && payload.new.rematch_requested_by && payload.new.rematch_requested_by !== participantId) {
-            setRevanchaContrario(true)
-            if (revanchaPropia) crearSalaRevancha()
+          // FIX 3: Detectar revancha en resultados
+          if (terminado && payload.new.rematch_requested_by) {
+            const solicitantes = payload.new.rematch_requested_by // array de IDs
+            setJugadoresRevancha(solicitantes)
+            if (!solicitantes.includes(participantId)) setRevanchaContrario(true)
+            if (payload.new.rematch_room_id) {
+              navigate(`/sala/${payload.new.rematch_room_id}/lobby`, { state: { participantId, isHost, displayName } })
+            }
           }
         })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
@@ -129,7 +134,6 @@ export default function SalaSimulacro() {
     await registrarRespuestaSinAvanzar(op.id, esCorrecta)
   }
 
-  // Registra la respuesta pero NO avanza automáticamente
   async function registrarRespuestaSinAvanzar(optionId, esCorrecta) {
     await supabase.from('room_answers').insert({
       room_id: roomId,
@@ -149,15 +153,12 @@ export default function SalaSimulacro() {
     }).eq('id', participantId)
   }
 
-  // Avance manual (siguiente o finalizar)
   async function avanzarManual() {
     const siguiente = pregActualRef.current + 1
     pregActualRef.current = siguiente
 
     if (siguiente >= preguntas.length) {
-      // Terminó todas sus preguntas
       if (isHost) {
-        // El host verifica si todos terminaron y finaliza la sala
         const { data: allParticipants } = await supabase
           .from('room_participants')
           .select('correct, wrong')
@@ -166,7 +167,6 @@ export default function SalaSimulacro() {
         if (todosTerminaron) {
           await supabase.from('rooms').update({ status: 'finished' }).eq('id', roomId)
         } else {
-          // El host también espera a los demás
           setEsperandoOtros(true)
         }
       } else {
@@ -179,7 +179,6 @@ export default function SalaSimulacro() {
     }
   }
 
-  // Función para finalizar desde esperandoOtros (cuando llega status finished)
   function mostrarResultados() {
     clearInterval(intervalRef.current)
     setTerminado(true)
@@ -189,7 +188,7 @@ export default function SalaSimulacro() {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Pantalla de espera (cuando termina antes que otros)
+  // Pantalla de espera
   // ──────────────────────────────────────────────────────────────
   if (esperandoOtros) {
     const otros = participantes.filter(p => p.id !== participantId)
@@ -216,37 +215,36 @@ export default function SalaSimulacro() {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Pantalla de resultados (con chat integrado y revancha)
+  // Pantalla de resultados
   // ──────────────────────────────────────────────────────────────
   if (terminado) {
     const ordenados = [...participantes].sort((a, b) => b.score - a.score)
     const miPosicion = ordenados.findIndex(p => p.id === participantId) + 1
-    const contrincante = participantes.find(p => p.id !== participantId) // para revancha
+    const contrincante = participantes.find(p => p.id !== participantId)
 
     async function pedirRevancha() {
       setRevanchaPropia(true)
-      await supabase.from('rooms').update({ rematch_requested_by: participantId }).eq('id', roomId)
-      if (revanchaContrario) crearSalaRevancha()
-    }
+      const nuevosRevancha = [...jugadoresRevancha, participantId]
+      setJugadoresRevancha(nuevosRevancha)
+      
+      await supabase.from('rooms').update({ 
+        rematch_requested_by: nuevosRevancha 
+      }).eq('id', roomId)
 
-    async function crearSalaRevancha() {
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase()
-      const { data: newRoom } = await supabase.from('rooms')
-        .insert({
-          id: code, code, host_id: room.host_id, level_id: room.level_id,
-          timer_per_question: room.timer_per_question, max_questions: room.max_questions, status: 'lobby'
-        })
-        .select('id').single()
-      const { data: part } = await supabase.from('room_participants')
-        .insert({ room_id: newRoom.id, user_id: participantId, display_name: displayName, is_host: isHost })
-        .select('id').single()
-      navigate(`/sala/${newRoom.id}/lobby`, { state: { participantId: part.id, isHost, displayName } })
+      if (isHost && nuevosRevancha.length >= 2) {
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase()
+        const { data: newRoom } = await supabase.from('rooms')
+          .insert({ id: code, code, host_id: room.host_id, level_id: room.level_id,
+            timer_per_question: room.timer_per_question, max_questions: room.max_questions, status: 'lobby' })
+          .select('id').single()
+        await supabase.from('rooms').update({ rematch_room_id: code }).eq('id', roomId)
+      }
     }
 
     return (
-      <div className="p-4 md:p-8 pb-24 max-w-5xl animate-fade-in md:flex md:gap-6">
-
-        {/* Columna izquierda: ranking y acciones */}
+      // FIX 2: padding top condicional cuando hay countdown (aunque countdown solo está en juego, no en resultados, pero se aplica por si acaso)
+      <div className={`p-4 md:p-8 pb-24 max-w-5xl animate-fade-in md:flex md:gap-6`}>
+        {/* Columna izquierda */}
         <div className="flex-1">
           <div className="card p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
@@ -289,18 +287,37 @@ export default function SalaSimulacro() {
             </div>
           </div>
 
-          {/* Botones: Revancha e Ir al inicio */}
-          <div className="flex flex-col gap-3">
+          {/* Botones: Revancha + Cajita animada */}
+          <div className="space-y-3">
             {contrincante && (
               <button
                 onClick={pedirRevancha}
+                disabled={revanchaPropia}
                 className={`w-full py-3 rounded-xl font-bold text-sm transition-all
-                  ${revanchaContrario ? 'animate-bounce bg-secondary text-white' : 'bg-primary text-white'}`}
+                  ${revanchaContrario ? 'bg-secondary text-white animate-bounce' 
+                  : revanchaPropia ? 'bg-surface-container text-on-surface-variant' 
+                  : 'bg-primary text-white'}`}
               >
-                {revanchaContrario
-                  ? `⚔️ ¡${contrincante.display_name} quiere revancha! ¡Acepta!`
-                  : revanchaPropia ? '⏳ Esperando respuesta...' : '🔄 Revancha'}
+                {revanchaPropia ? '⏳ Esperando revancha...' : revanchaContrario ? '⚔️ ¡Acepta la revancha!' : '🔄 Revancha'}
               </button>
+            )}
+            {/* Cajita animada con jugadores que pidieron revancha */}
+            {jugadoresRevancha.length > 0 && (
+              <div className="bg-secondary-container/30 border border-secondary/30 rounded-xl p-3 animate-fade-in">
+                <p className="text-xs font-bold text-secondary mb-1">Quieren revancha:</p>
+                <div className="flex flex-wrap gap-2">
+                  {participantes.filter(p => jugadoresRevancha.includes(p.id)).map(p => (
+                    <span key={p.id} className="text-xs bg-secondary text-white px-2 py-0.5 rounded-full font-bold">
+                      {p.display_name}
+                    </span>
+                  ))}
+                </div>
+                {jugadoresRevancha.length < participantes.length && (
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Esperando a {participantes.filter(p => !jugadoresRevancha.includes(p.id)).map(p => p.display_name).join(', ')}...
+                  </p>
+                )}
+              </div>
             )}
             <button onClick={() => navigate('/salas')} className="w-full py-3 border border-outline-variant rounded-xl font-bold text-sm">
               Ir al inicio
@@ -315,7 +332,7 @@ export default function SalaSimulacro() {
           </div>
         </div>
 
-        {/* Chat desktop — fijo a la derecha */}
+        {/* Chat desktop */}
         <div className="hidden md:flex flex-col w-80 shrink-0">
           <div className="card flex flex-col h-[500px]">
             <div className="px-4 py-3 bg-primary text-white rounded-t-2xl flex items-center gap-2">
@@ -345,7 +362,7 @@ export default function SalaSimulacro() {
           </div>
         </div>
 
-        {/* Chat móvil — botón flotante + toast */}
+        {/* Chat móvil */}
         <div className="md:hidden">
           {toast && (
             <div className="fixed top-4 left-4 right-4 z-[300] bg-on-surface text-surface px-4 py-3 rounded-2xl shadow-xl animate-fade-in flex items-center gap-3">
@@ -382,9 +399,10 @@ export default function SalaSimulacro() {
               </div>
             </div>
           )}
+          {/* FIX 1: botón chat móvil oculto cuando chatAbierto */}
           <button
             onClick={() => { setChatAbierto(v => !v); setMensajesNoLeidos(0); }}
-            className="fixed bottom-20 right-4 z-50 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center"
+            className={`fixed bottom-20 right-4 z-50 w-12 h-12 bg-primary text-white rounded-full shadow-lg items-center justify-center ${chatAbierto ? 'hidden' : 'flex'}`}
           >
             <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>chat</span>
             {mensajesNoLeidos > 0 && (
@@ -399,15 +417,13 @@ export default function SalaSimulacro() {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Pantalla de juego (sin chat)
+  // Pantalla de juego
   // ──────────────────────────────────────────────────────────────
   const pregData = preguntas[pregActual]
   const pct = timer / (room?.timer_per_question || 90) * 100
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 pb-24">
-
-      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-primary bg-primary-fixed px-3 py-1 rounded-full">Sala {roomId}</span>
@@ -430,7 +446,6 @@ export default function SalaSimulacro() {
         </div>
       </div>
 
-      {/* Barra timer */}
       <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden mb-4">
         <div className={`h-full rounded-full transition-all duration-1000 ${timer <= 10 ? 'bg-error' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
       </div>
@@ -442,7 +457,6 @@ export default function SalaSimulacro() {
       {pregData ? (
         <>
           <h1 className="text-lg font-bold text-on-surface mb-4 leading-snug">{pregData.text}</h1>
-
           <div className="flex flex-col gap-3 mb-6">
             {pregData.options?.sort((a, b) => (a.letter || '').localeCompare(b.letter || '')).map(op => {
               const seleccionada = seleccion === op.id
@@ -461,8 +475,6 @@ export default function SalaSimulacro() {
               )
             })}
           </div>
-
-          {/* Botón Siguiente / Finalizar en lugar de avance automático */}
           {seleccion && (
             <button onClick={avanzarManual}
               className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-sm active:scale-95 transition-all mt-2">
@@ -478,7 +490,6 @@ export default function SalaSimulacro() {
     </div>
   )
 
-  // Función auxiliar para enviar mensaje (definida arriba)
   async function enviarMensaje() {
     if (!msgInput.trim()) return
     await supabase.from('room_messages').insert({
