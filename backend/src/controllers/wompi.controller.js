@@ -5,7 +5,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 export const webhookWompi = async (req, res) => {
   console.log('🔔 Webhook recibido:', JSON.stringify(req.body, null, 2))
   try {
-    const { event, data, sent_at, signature } = req.body
+    const { event, data, sent_at, signature, timestamp } = req.body  // ✅ se extrae timestamp
     console.log('📦 Evento:', event, '| Status:', data?.transaction?.status)
     console.log('🔑 Reference:', data?.transaction?.reference)
 
@@ -16,7 +16,8 @@ export const webhookWompi = async (req, res) => {
       const keys = p.split('.')
       return keys.reduce((obj, key) => obj?.[key], data)
     })
-    const cadena = [...valoresFirma, sent_at, process.env.WOMPI_EVENTS_SECRET].join('')
+    // ✅ se usa timestamp en lugar de sent_at
+    const cadena = [...valoresFirma, timestamp, process.env.WOMPI_EVENTS_SECRET].join('')
     const hash = crypto.createHash('sha256').update(cadena).digest('hex')
     if (hash !== signature?.checksum) return res.status(401).json({ error: 'Firma inválida' })
 
@@ -32,7 +33,6 @@ export const webhookWompi = async (req, res) => {
     const package_id = parseInt(partes[5])
     if (!user_id || !package_id) return res.sendStatus(200)
 
-    // Logs adicionales
     console.log('👤 user_id:', user_id)
     console.log('📦 package_id:', package_id)
 
