@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 
@@ -11,17 +11,26 @@ export default function SalaLobby() {
   const [room, setRoom] = useState(null)
   const [participants, setParticipants] = useState([])
   const [copiado, setCopiado] = useState(false)
+  const [countdown, setCountdown] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [msgInput, setMsgInput] = useState('')
+  const [chatAbierto, setChatAbierto] = useState(false)
+  const [yo, setYo] = useState(null)
+  const chatRef = useRef(null)
 
   useEffect(() => {
     cargarSala()
     cargarParticipantes()
+    cargarMensajes()
 
-    // Realtime — escuchar nuevos participantes y cambios de sala
-    const sub = supabase.channel(`room-${roomId}`)
+    const sub = supabase.channel(`room-lobby-${roomId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
         () => cargarParticipantes())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${roomId}` },
+        (payload) => setMessages(prev => [...prev, payload.new]))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
+          if (payload.new.status === 'starting') iniciarCountdown()
           if (payload.new.status === 'active') {
             navigate(`/sala/${roomId}/juego`, { state: { participantId, isHost, displayName } })
           }
@@ -31,6 +40,10 @@ export default function SalaLobby() {
     return () => supabase.removeChannel(sub)
   }, [roomId])
 
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+  }, [messages])
+
   async function cargarSala() {
     const { data } = await supabase.from('rooms').select('*, levels(name, evaluations(title))').eq('id', roomId).single()
     setRoom(data)
@@ -39,10 +52,50 @@ export default function SalaLobby() {
   async function cargarParticipantes() {
     const { data } = await supabase.from('room_participants').select('*').eq('room_id', roomId).order('joined_at')
     setParticipants(data || [])
+    const p = data?.find(p => p.id === participantId)
+    if (p) setYo(p)
+  }
+
+  async function cargarMensajes() {
+    const { data } = await supabase.from('room_messages').select('*').eq('room_id', roomId).order('created_at').limit(50)
+    setMessages(data || [])
+  }
+
+  async function toggleListo() {
+    const nuevoEstado = !yo?.is_ready
+    await supabase.from('room_participants').update({ is_ready: nuevoEstado }).eq('id', participantId)
+    setYo(prev => ({ ...prev, is_ready: nuevoEstado }))
+  }
+
+  async function echarParticipante(pid) {
+    await supabase.from('room_participants').delete().eq('id', pid)
   }
 
   async function iniciarCompetencia() {
-    await supabase.from('rooms').update({ status: 'active' }).eq('id', roomId)
+    await supabase.from('rooms').update({ status: 'starting' }).eq('id', roomId)
+    iniciarCountdown()
+  }
+
+  function iniciarCountdown() {
+    let c = 5
+    setCountdown(c)
+    const t = setInterval(() => {
+      c -= 1
+      setCountdown(c)
+      if (c <= 0) {
+        clearInterval(t)
+        supabase.from('rooms').update({ status: 'active' }).eq('id', roomId)
+      }
+    }, 1000)
+  }
+
+  async function enviarMensaje() {
+    if (!msgInput.trim()) return
+    await supabase.from('room_messages').insert({
+      room_id: roomId, participant_id: participantId,
+      display_name: displayName, message: msgInput.trim()
+    })
+    setMsgInput('')
   }
 
   async function salirDeSala() {
@@ -57,15 +110,34 @@ export default function SalaLobby() {
     setTimeout(() => setCopiado(false), 2000)
   }
 
+  const todosListos = participants.filter(p => !p.is_host).every(p => p.is_ready)
+  const noHost = participants.filter(p => !p.is_host)
+
+  // Countdown overlay
+  if (countdown !== null && countdown > 0) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-primary flex flex-col items-center justify-center text-white animate-fade-in">
+        <p className="text-xl font-bold mb-4 opacity-80">¡La sala está iniciando!</p>
+        <div className="text-[120px] font-extrabold font-headline animate-pulse leading-none">
+          {countdown}
+        </div>
+        <p className="mt-6 text-lg opacity-70">Prepárate...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-8 pb-24 max-w-2xl animate-fade-in">
 
+      {/* Header sala */}
       <div className="card p-6 mb-4">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-secondary bg-secondary-container px-3 py-1 rounded-full">Sala activa</span>
+          <span className="text-xs font-bold text-secondary bg-secondary-container px-3 py-1 rounded-full">
+            Lobby • {participants.length} conectado{participants.length !== 1 ? 's' : ''}
+          </span>
           <button onClick={copiarCodigo}
-            className="flex items-center gap-2 bg-on-surface text-surface px-4 py-2 rounded-full font-bold text-sm">
-            <span className="font-mono tracking-widest text-lg">{roomId}</span>
+            className="flex items-center gap-2 bg-on-surface text-surface px-3 py-2 rounded-full font-bold text-sm">
+            <span className="font-mono tracking-widest">{roomId}</span>
             <span className="material-symbols-outlined text-sm">{copiado ? 'check' : 'content_copy'}</span>
           </button>
         </div>
@@ -75,8 +147,9 @@ export default function SalaLobby() {
           {room?.levels?.evaluations?.title} — {room?.levels?.name}
         </p>
 
-        <div className="p-3 bg-primary-fixed/30 rounded-xl text-sm text-primary mb-4">
-          Comparte el código <strong>{roomId}</strong> para que otros se unan.
+        <div className="p-3 bg-primary-fixed/30 rounded-xl text-sm text-primary mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">share</span>
+          Comparte el código <strong>{roomId}</strong> con tus compañeros
         </div>
 
         {/* Participantes */}
@@ -84,41 +157,142 @@ export default function SalaLobby() {
           {participants.map(p => (
             <div key={p.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm">
-                  {p.display_name[0].toUpperCase()}
+                {/* Punto online */}
+                <div className="relative">
+                  <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm">
+                    {p.display_name[0].toUpperCase()}
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-secondary rounded-full border-2 border-white" />
                 </div>
-                <span className="font-semibold text-sm">{p.display_name}</span>
+                <div>
+                  <span className="font-semibold text-sm">{p.display_name}</span>
+                  {p.id === participantId && <span className="text-[10px] text-on-surface-variant ml-1">(tú)</span>}
+                </div>
               </div>
-              {p.is_host && <span className="text-[10px] font-bold text-primary bg-primary-fixed px-2 py-0.5 rounded-full">Anfitrión</span>}
+              <div className="flex items-center gap-2">
+                {p.is_host
+                  ? <span className="text-[10px] font-bold text-primary bg-primary-fixed px-2 py-0.5 rounded-full">Anfitrión</span>
+                  : p.is_ready
+                  ? <span className="text-[10px] font-bold text-secondary bg-secondary-container px-2 py-0.5 rounded-full flex items-center gap-1">✓ Listo</span>
+                  : <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">Esperando...</span>
+                }
+                {/* Echar participante (solo host, no a sí mismo) */}
+                {isHost && !p.is_host && (
+                  <button onClick={() => echarParticipante(p.id)}
+                    className="p-1 rounded-full hover:bg-error-container text-error transition-colors">
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Config */}
-      <div className="card p-4 mb-4 text-sm space-y-1">
-        <p className="font-bold mb-2">Configuración de la sala</p>
-        <p className="text-on-surface-variant">⏱ Tiempo por pregunta: <strong>{room?.timer_per_question}s</strong></p>
-        <p className="text-on-surface-variant">❓ Preguntas: <strong>{room?.max_questions}</strong></p>
-        <p className="text-on-surface-variant">👥 Participantes: <strong>{participants.length}</strong></p>
+      <div className="card p-4 mb-4 text-sm">
+        <p className="font-bold mb-2 flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm text-primary">settings</span>
+          Configuración
+        </p>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-surface-container-low rounded-xl p-2">
+            <p className="text-lg font-extrabold text-primary">{room?.max_questions}</p>
+            <p className="text-[10px] text-on-surface-variant">Preguntas</p>
+          </div>
+          <div className="bg-surface-container-low rounded-xl p-2">
+            <p className="text-lg font-extrabold text-tertiary">{room?.timer_per_question}s</p>
+            <p className="text-[10px] text-on-surface-variant">Por pregunta</p>
+          </div>
+          <div className="bg-surface-container-low rounded-xl p-2">
+            <p className="text-lg font-extrabold text-secondary">{participants.length}</p>
+            <p className="text-[10px] text-on-surface-variant">Jugadores</p>
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {isHost && (
-          <button onClick={iniciarCompetencia}
-            className="w-full py-3 bg-primary text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
-            🚀 Iniciar competencia
+      {/* Acciones */}
+      <div className="space-y-3 mb-4">
+        {isHost ? (
+          <>
+            {noHost.length > 0 && !todosListos && (
+              <div className="p-3 bg-surface-container-low rounded-xl text-xs text-on-surface-variant text-center">
+                Esperando que todos den listo ({noHost.filter(p => p.is_ready).length}/{noHost.length})
+              </div>
+            )}
+            <button onClick={iniciarCompetencia}
+              disabled={noHost.length > 0 && !todosListos}
+              className="w-full py-3 bg-primary text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
+              {noHost.length === 0 ? '🚀 Iniciar solo' : todosListos ? '🚀 ¡Todos listos! Iniciar' : 'Esperando participantes...'}
+            </button>
+          </>
+        ) : (
+          <button onClick={toggleListo}
+            className={`w-full py-3 rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2
+              ${yo?.is_ready ? 'bg-surface-container border-2 border-secondary text-secondary' : 'bg-secondary text-white'}`}>
+            {yo?.is_ready
+              ? <><span className="material-symbols-outlined text-sm">close</span>Cancelar listo</>
+              : <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>¡Estoy listo!</>
+            }
           </button>
         )}
+
         {!isHost && (
-          <div className="p-4 bg-surface-container-low rounded-xl text-center text-sm text-on-surface-variant">
-            Esperando que el anfitrión inicie la competencia...
-            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mt-2" />
+          <div className="p-3 bg-surface-container-low rounded-xl text-center text-xs text-on-surface-variant">
+            Esperando que el anfitrión inicie...
           </div>
         )}
+
         <button onClick={salirDeSala}
-          className="w-full py-3 bg-error text-white rounded-xl font-bold text-sm active:scale-95 transition-all">
+          className="w-full py-2.5 border border-error text-error rounded-xl font-bold text-sm active:scale-95 transition-all">
           Salir de la sala
+        </button>
+      </div>
+
+      {/* Chat flotante */}
+      <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2">
+        {chatAbierto && (
+          <div className="w-80 bg-white rounded-2xl shadow-2xl border border-outline-variant/20 overflow-hidden animate-fade-in">
+            <div className="px-4 py-3 bg-primary text-white flex items-center justify-between">
+              <span className="font-bold text-sm">Chat del lobby</span>
+              <button onClick={() => setChatAbierto(false)}>
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+            <div ref={chatRef} className="h-48 overflow-y-auto p-3 space-y-2 bg-slate-50">
+              {messages.length === 0 && (
+                <p className="text-xs text-center text-on-surface-variant mt-4">Di algo para romper el hielo 👋</p>
+              )}
+              {messages.map(m => (
+                <div key={m.id} className={`flex flex-col ${m.participant_id === participantId ? 'items-end' : 'items-start'}`}>
+                  <span className="text-[10px] text-on-surface-variant font-bold mb-0.5">{m.display_name}</span>
+                  <div className={`px-3 py-1.5 rounded-2xl text-sm max-w-[80%] ${m.participant_id === participantId ? 'bg-primary text-white' : 'bg-white border border-outline-variant/20'}`}>
+                    {m.message}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-2 border-t border-outline-variant/20 flex gap-2">
+              <input value={msgInput} onChange={e => setMsgInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && enviarMensaje()}
+                placeholder="Escribe..." maxLength={200}
+                className="flex-1 px-3 py-2 rounded-full bg-surface-container-low text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+              <button onClick={enviarMensaje}
+                className="p-2 bg-primary text-white rounded-full">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
+              </button>
+            </div>
+          </div>
+        )}
+        <button onClick={() => setChatAbierto(v => !v)}
+          className="w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center relative">
+          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>chat</span>
+          {messages.length > 0 && !chatAbierto && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-error rounded-full text-[10px] font-bold text-white flex items-center justify-center">
+              {messages.length > 9 ? '9+' : messages.length}
+            </span>
+          )}
         </button>
       </div>
     </div>

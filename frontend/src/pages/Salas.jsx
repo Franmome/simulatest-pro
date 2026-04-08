@@ -22,6 +22,7 @@ export default function Salas() {
   const [nombreParticipante, setNombreParticipante] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [preview, setPreview] = useState(null) // ✅ Estado para vista previa
 
   useEffect(() => { cargarNiveles() }, [])
 
@@ -74,14 +75,35 @@ export default function Salas() {
     }
   }
 
-  async function unirseASala() {
-    if (!codigo.trim() || !nombreParticipante.trim()) { setError('Completa todos los campos'); return }
+  // ✅ Nueva función para buscar sala sin unirse
+  async function buscarSala() {
+    if (!codigo.trim()) { setError('Ingresa el código'); return }
+    setLoading(true)
+    setError('')
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .select('*, levels(name, evaluations(title)), room_participants(count)')
+      .eq('code', codigo.trim().toUpperCase())
+      .single()
+    setLoading(false)
+    if (error || !room) { setError('Sala no encontrada'); return }
+    if (room.status !== 'lobby') { setError('La sala ya está en curso'); return }
+    setPreview(room)
+  }
+
+  // ✅ Modificamos unirseASala para que use el preview si existe (o haga la búsqueda)
+  async function unirseASala(roomData = null) {
+    if (!nombreParticipante.trim()) { setError('Ingresa tu nombre'); return }
     setLoading(true)
     setError('')
     try {
-      const { data: room, error: roomErr } = await supabase.from('rooms').select('*').eq('code', codigo.trim().toUpperCase()).single()
-      if (roomErr || !room) { setError('Sala no encontrada'); setLoading(false); return }
-      if (room.status !== 'lobby') { setError('La sala ya está en curso o finalizada'); setLoading(false); return }
+      let room = roomData
+      if (!room) {
+        const { data, error } = await supabase.from('rooms').select('*').eq('code', codigo.trim().toUpperCase()).single()
+        if (error || !data) throw new Error('Sala no encontrada')
+        room = data
+      }
+      if (room.status !== 'lobby') { setError('La sala ya está en curso o finalizada'); return }
       const { data: part, error: partErr } = await supabase.from('room_participants')
         .insert({ room_id: room.id, user_id: user.id, display_name: nombreParticipante.trim(), is_host: false })
         .select('id').single()
@@ -118,7 +140,7 @@ export default function Salas() {
           { key: 'crear',   icon: 'add_circle',    label: 'Crear sala'    },
           { key: 'unirse',  icon: 'login',         label: 'Unirse a sala' },
         ].map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setError('') }}
+          <button key={t.key} onClick={() => { setTab(t.key); setError(''); setPreview(null); setCodigo(''); setNombreParticipante('') }}
             className={`flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm transition-all border-2
               ${tab === t.key ? 'border-primary bg-primary text-white shadow-md' : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/50 bg-surface-container-lowest'}`}>
             <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>{t.icon}</span>
@@ -275,13 +297,33 @@ export default function Salas() {
             <p className="text-xs text-on-surface-variant text-center">El anfitrión te comparte el código de 6 caracteres</p>
           </div>
 
-          <button onClick={unirseASala} disabled={loading}
-            className="w-full py-3.5 bg-primary text-white rounded-2xl font-bold text-sm active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
-            {loading
-              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              : <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>login</span>Ingresar a sala</>
-            }
-          </button>
+          {/* ✅ Preview y botones condicionales */}
+          {!preview ? (
+            <button onClick={buscarSala} disabled={loading}
+              className="w-full py-3.5 bg-surface-container text-on-surface rounded-2xl font-bold text-sm active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-sm">search</span>Buscar sala
+            </button>
+          ) : (
+            <div className="card p-4 space-y-3 border-2 border-primary/20 bg-primary-fixed/10">
+              <p className="font-bold text-primary flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm">check_circle</span>Sala encontrada
+              </p>
+              <p className="text-sm font-semibold">{preview.levels?.evaluations?.title}</p>
+              <p className="text-sm text-on-surface-variant">
+                {preview.levels?.name} · {preview.timer_per_question}s por pregunta · {preview.max_questions} preguntas
+              </p>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => setPreview(null)} className="flex-1 py-2.5 border border-outline-variant rounded-xl font-bold text-sm">Volver</button>
+                <button onClick={() => unirseASala(preview)} disabled={loading}
+                  className="flex-1 py-2.5 bg-primary text-white rounded-xl font-bold text-sm active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                  {loading
+                    ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <>🚪 Ingresar</>
+                  }
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
