@@ -45,7 +45,7 @@ export default function Salas() {
       if (partErr) throw partErr
 
       navigate(`/sala/${room.id}/lobby`, { state: { participantId: part.id, isHost: true, displayName: form.display_name } })
-    } catch (err) {
+    } catch {
       setError('Error al crear la sala')
     } finally {
       setLoading(false)
@@ -71,7 +71,7 @@ export default function Salas() {
       if (partErr) throw partErr
 
       navigate(`/sala/${room.id}/lobby`, { state: { participantId: part.id, isHost: false, displayName: nombreParticipante } })
-    } catch (err) {
+    } catch {
       setError('Error al unirse a la sala')
     } finally {
       setLoading(false)
