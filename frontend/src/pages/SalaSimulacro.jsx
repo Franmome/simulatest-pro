@@ -22,8 +22,14 @@ export default function SalaSimulacro() {
   const [participantes, setParticipantes] = useState([])
   const [terminado, setTerminado] = useState(false)
   const [miScore, setMiScore] = useState({ correct: 0, wrong: 0 })
+  const [esperandoOtros, setEsperandoOtros] = useState(false)
 
-  // --- Estados de chat SOLO PARA RESULTADOS ---
+  // Estados para revancha
+  const [revanchaPropia, setRevanchaPropia] = useState(false)
+  const [revanchaContrario, setRevanchaContrario] = useState(false)
+  const [nombreContrario, setNombreContrario] = useState('')
+
+  // Estados de chat solo para resultados
   const [messages, setMessages] = useState([])
   const [msgInput, setMsgInput] = useState('')
   const [chatAbierto, setChatAbierto] = useState(false)
@@ -48,15 +54,22 @@ export default function SalaSimulacro() {
     const sub = supabase.channel(`sala-juego-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
-          if (payload.new.status === 'finished') mostrarResultados()
+          if (payload.new.status === 'finished') {
+            if (esperandoOtros) setEsperandoOtros(false)
+            mostrarResultados()
+          }
+          // Detectar revancha en resultados
+          if (terminado && payload.new.rematch_requested_by && payload.new.rematch_requested_by !== participantId) {
+            setRevanchaContrario(true)
+            if (revanchaPropia) crearSalaRevancha()
+          }
         })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
         () => cargarParticipantes())
-      // ❌ ELIMINADO el listener de room_messages durante la partida
       .subscribe()
 
     return () => { supabase.removeChannel(sub); clearInterval(intervalRef.current) }
-  }, [roomId])
+  }, [roomId, esperandoOtros, terminado, revanchaPropia])
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -98,7 +111,7 @@ export default function SalaSimulacro() {
       setTimer(timerRef.current)
       if (timerRef.current <= 0) {
         clearInterval(intervalRef.current)
-        if (!seleccion) registrarYAvanzar(null, false)
+        if (!seleccion) registrarRespuestaSinAvanzar(null, false)
       }
     }, 1000)
   }
@@ -113,10 +126,11 @@ export default function SalaSimulacro() {
     setSeleccion(op.id)
     const esCorrecta = op.is_correct
     clearInterval(intervalRef.current)
-    await registrarYAvanzar(op.id, esCorrecta)
+    await registrarRespuestaSinAvanzar(op.id, esCorrecta)
   }
 
-  async function registrarYAvanzar(optionId, esCorrecta) {
+  // Registra la respuesta pero NO avanza automáticamente
+  async function registrarRespuestaSinAvanzar(optionId, esCorrecta) {
     await supabase.from('room_answers').insert({
       room_id: roomId,
       participant_id: participantId,
@@ -133,46 +147,101 @@ export default function SalaSimulacro() {
     await supabase.from('room_participants').update({
       correct: newCorrect, wrong: newWrong, score: newCorrect
     }).eq('id', participantId)
+  }
 
-    setTimeout(() => {
-      const siguiente = pregActualRef.current + 1
-      pregActualRef.current = siguiente
+  // Avance manual (siguiente o finalizar)
+  async function avanzarManual() {
+    const siguiente = pregActualRef.current + 1
+    pregActualRef.current = siguiente
 
-      if (siguiente >= preguntas.length) {
-        mostrarResultados()
-        if (isHost) supabase.from('rooms').update({ status: 'finished' }).eq('id', roomId)
+    if (siguiente >= preguntas.length) {
+      // Terminó todas sus preguntas
+      if (isHost) {
+        // El host verifica si todos terminaron y finaliza la sala
+        const { data: allParticipants } = await supabase
+          .from('room_participants')
+          .select('correct, wrong')
+          .eq('room_id', roomId)
+        const todosTerminaron = allParticipants.every(p => (p.correct + p.wrong) === preguntas.length)
+        if (todosTerminaron) {
+          await supabase.from('rooms').update({ status: 'finished' }).eq('id', roomId)
+        } else {
+          // El host también espera a los demás
+          setEsperandoOtros(true)
+        }
       } else {
-        setPregActual(siguiente)
-        setSeleccion(null)
-        iniciarTimer(room?.timer_per_question || 90)
+        setEsperandoOtros(true)
       }
-    }, 800)
+    } else {
+      setPregActual(siguiente)
+      setSeleccion(null)
+      iniciarTimer(room?.timer_per_question || 90)
+    }
   }
 
-  async function enviarMensaje() {
-    if (!msgInput.trim()) return
-    await supabase.from('room_messages').insert({
-      room_id: roomId, participant_id: participantId,
-      display_name: displayName, message: msgInput.trim()
-    })
-    setMsgInput('')
-    // Al enviar, si el chat está abierto, reiniciar no leídos
-    if (!chatAbierto) setMensajesNoLeidos(0)
-  }
-
+  // Función para finalizar desde esperandoOtros (cuando llega status finished)
   function mostrarResultados() {
     clearInterval(intervalRef.current)
     setTerminado(true)
+    setEsperandoOtros(false)
     cargarParticipantes()
     cargarMensajes()
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Pantalla de resultados (con chat integrado)
+  // Pantalla de espera (cuando termina antes que otros)
+  // ──────────────────────────────────────────────────────────────
+  if (esperandoOtros) {
+    const otros = participantes.filter(p => p.id !== participantId)
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 gap-6">
+        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <h2 className="text-2xl font-extrabold text-center">¡Terminaste!</h2>
+        <p className="text-on-surface-variant text-center">Esperando a los demás jugadores...</p>
+        {otros.map(p => {
+          const respondidas = p.correct + p.wrong
+          const progreso = (respondidas / preguntas.length) * 100
+          return (
+            <div key={p.id} className="card p-4 w-full max-w-sm text-center">
+              <p className="font-bold">{p.display_name}</p>
+              <p className="text-sm text-on-surface-variant">{respondidas} de {preguntas.length} respondidas</p>
+              <div className="w-full h-2 bg-surface-container-high rounded-full mt-2">
+                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progreso}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Pantalla de resultados (con chat integrado y revancha)
   // ──────────────────────────────────────────────────────────────
   if (terminado) {
     const ordenados = [...participantes].sort((a, b) => b.score - a.score)
     const miPosicion = ordenados.findIndex(p => p.id === participantId) + 1
+    const contrincante = participantes.find(p => p.id !== participantId) // para revancha
+
+    async function pedirRevancha() {
+      setRevanchaPropia(true)
+      await supabase.from('rooms').update({ rematch_requested_by: participantId }).eq('id', roomId)
+      if (revanchaContrario) crearSalaRevancha()
+    }
+
+    async function crearSalaRevancha() {
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase()
+      const { data: newRoom } = await supabase.from('rooms')
+        .insert({
+          id: code, code, host_id: room.host_id, level_id: room.level_id,
+          timer_per_question: room.timer_per_question, max_questions: room.max_questions, status: 'lobby'
+        })
+        .select('id').single()
+      const { data: part } = await supabase.from('room_participants')
+        .insert({ room_id: newRoom.id, user_id: participantId, display_name: displayName, is_host: isHost })
+        .select('id').single()
+      navigate(`/sala/${newRoom.id}/lobby`, { state: { participantId: part.id, isHost, displayName } })
+    }
 
     return (
       <div className="p-4 md:p-8 pb-24 max-w-5xl animate-fade-in md:flex md:gap-6">
@@ -220,18 +289,33 @@ export default function SalaSimulacro() {
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={() => navigate('/salas')} className="flex-1 py-3 border border-outline-variant rounded-xl font-bold text-sm">Ir al inicio</button>
+          {/* Botones: Revancha e Ir al inicio */}
+          <div className="flex flex-col gap-3">
+            {contrincante && (
+              <button
+                onClick={pedirRevancha}
+                className={`w-full py-3 rounded-xl font-bold text-sm transition-all
+                  ${revanchaContrario ? 'animate-bounce bg-secondary text-white' : 'bg-primary text-white'}`}
+              >
+                {revanchaContrario
+                  ? `⚔️ ¡${contrincante.display_name} quiere revancha! ¡Acepta!`
+                  : revanchaPropia ? '⏳ Esperando respuesta...' : '🔄 Revancha'}
+              </button>
+            )}
+            <button onClick={() => navigate('/salas')} className="w-full py-3 border border-outline-variant rounded-xl font-bold text-sm">
+              Ir al inicio
+            </button>
             {isHost && (
-              <button onClick={async () => { await supabase.from('rooms').delete().eq('id', roomId); navigate('/salas') }}
-                className="flex-1 py-3 bg-error text-white rounded-xl font-bold text-sm">
+              <button
+                onClick={async () => { await supabase.from('rooms').delete().eq('id', roomId); navigate('/salas') }}
+                className="w-full py-3 bg-error text-white rounded-xl font-bold text-sm">
                 Cerrar sala
               </button>
             )}
           </div>
         </div>
 
-        {/* Chat desktop — fijo a la derecha (solo visible en md+) */}
+        {/* Chat desktop — fijo a la derecha */}
         <div className="hidden md:flex flex-col w-80 shrink-0">
           <div className="card flex flex-col h-[500px]">
             <div className="px-4 py-3 bg-primary text-white rounded-t-2xl flex items-center gap-2">
@@ -261,7 +345,7 @@ export default function SalaSimulacro() {
           </div>
         </div>
 
-        {/* Chat móvil — botón flotante + toast + ventana modal */}
+        {/* Chat móvil — botón flotante + toast */}
         <div className="md:hidden">
           {toast && (
             <div className="fixed top-4 left-4 right-4 z-[300] bg-on-surface text-surface px-4 py-3 rounded-2xl shadow-xl animate-fade-in flex items-center gap-3">
@@ -378,10 +462,12 @@ export default function SalaSimulacro() {
             })}
           </div>
 
+          {/* Botón Siguiente / Finalizar en lugar de avance automático */}
           {seleccion && (
-            <p className="text-center text-sm text-on-surface-variant animate-pulse">
-              ✓ Respondida · Avanzando...
-            </p>
+            <button onClick={avanzarManual}
+              className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-sm active:scale-95 transition-all mt-2">
+              {pregActual === preguntas.length - 1 ? '🏁 Finalizar prueba' : 'Siguiente →'}
+            </button>
           )}
         </>
       ) : (
@@ -389,8 +475,17 @@ export default function SalaSimulacro() {
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       )}
-
-      {/* ❌ No hay ningún chat durante la partida */}
     </div>
   )
+
+  // Función auxiliar para enviar mensaje (definida arriba)
+  async function enviarMensaje() {
+    if (!msgInput.trim()) return
+    await supabase.from('room_messages').insert({
+      room_id: roomId, participant_id: participantId,
+      display_name: displayName, message: msgInput.trim()
+    })
+    setMsgInput('')
+    if (!chatAbierto) setMensajesNoLeidos(0)
+  }
 }
