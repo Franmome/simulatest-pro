@@ -1,5 +1,6 @@
 import crypto from 'crypto'
-import { supabase } from '../config/supabase.js'
+import { createClient } from '@supabase/supabase-js'
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
 export const getPaquetes = async (_req, res) => {
   const { data, error } = await supabase
