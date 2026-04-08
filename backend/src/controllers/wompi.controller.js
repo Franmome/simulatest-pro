@@ -17,8 +17,11 @@ export const webhookWompi = async (req, res) => {
     const tx = data?.transaction
     if (tx?.status !== 'APPROVED') return res.sendStatus(200)
 
-    // 3. Leer metadata
-    const { user_id, package_id } = tx.metadata || {}
+    // 3. Leer referencia (formato: userId-packageId-timestamp)
+    const reference = tx.reference || ''
+    const partes = reference.split('-')
+    const user_id = partes[0]
+    const package_id = parseInt(partes[1])
     if (!user_id || !package_id) return res.sendStatus(200)
 
     // 4. Obtener paquete
