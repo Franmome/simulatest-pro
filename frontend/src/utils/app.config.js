@@ -4,7 +4,7 @@
 //  solo la línea APP_NAME y listo.
 // ============================================================
 
-export const APP_NAME    = "SimulaTest Pro"   // ← CAMBIA AQUÍ
+export const APP_NAME    = "Praxia"   // ← CAMBIA AQUÍ
 export const APP_TAGLINE = "Tu mentor digital para el éxito"
 export const APP_ICON    = "school"
 export const APP_YEAR    = new Date().getFullYear()

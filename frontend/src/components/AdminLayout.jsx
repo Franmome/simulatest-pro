@@ -1,6 +1,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useState, useEffect } from 'react'
+import APP from '../utils/app.config'
 const navItems = [
   { to: '/admin',              icon: 'dashboard',      label: 'Dashboard'        },
   { to: '/admin/evaluaciones', icon: 'inventory_2',    label: 'Evaluaciones'     },
@@ -28,7 +29,9 @@ export default function AdminLayout() {
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>school</span>
         </div>
         <div>
-          <h2 className="text-base font-extrabold text-primary font-headline leading-none">Academia Pro</h2>
+          
+
+<h2 className="text-base font-extrabold text-primary font-headline leading-none">{APP.name}</h2>
           <p className="text-[11px] text-on-surface-variant mt-0.5">Consola Admin</p>
         </div>
       </div>
