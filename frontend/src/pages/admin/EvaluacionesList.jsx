@@ -98,51 +98,7 @@ export default function EvaluacionesList() {
     <div className="min-h-screen bg-background">
 
       {/* ── TopBar ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-8 h-16
-                         bg-surface-container-lowest/80 backdrop-blur-xl
-                         border-b border-outline-variant/20 shadow-sm">
-        <div className="flex items-center flex-1 max-w-xl gap-3">
-          <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2
-                             text-on-surface-variant text-lg">search</span>
-            <input
-              className="w-full pl-10 pr-4 py-2 bg-surface-container border-none rounded-full
-                         text-sm outline-none focus:ring-2 focus:ring-primary/20
-                         placeholder:text-on-surface-variant"
-              placeholder="Buscar evaluación..."
-              value={busqueda}
-              onChange={e => { setBusqueda(e.target.value); setPagina(1) }}
-            />
-          </div>
-          {/* Filtros rápidos */}
-          <div className="flex gap-1">
-            {[
-              { key: 'todos',      label: 'Todas'     },
-              { key: 'activas',    label: 'Activas'   },
-              { key: 'borradores', label: 'Borradores'},
-            ].map(f => (
-              <button
-                key={f.key}
-                onClick={() => { setFiltroEstado(f.key); setPagina(1) }}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all
-                  ${filtroEstado === f.key
-                    ? 'bg-primary text-on-primary'
-                    : 'text-on-surface-variant hover:bg-surface-container'}`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button
-          onClick={() => navigate('/admin/evaluaciones/nueva')}
-          className="flex items-center gap-2 bg-primary text-on-primary px-5 py-2 rounded-full
-                     font-bold text-sm shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all ml-4"
-        >
-          <span className="material-symbols-outlined text-sm">add</span>
-          Nueva Evaluación
-        </button>
-      </header>
+      
 
       <div className="p-8 max-w-7xl mx-auto space-y-8">
 
