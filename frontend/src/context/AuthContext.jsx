@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
       .from('users')
       .select('role')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     if (error) return 'estudiante'
     return data?.role ?? 'estudiante'
   }
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }) => {
 
   // ─── SESIÓN PERSISTENTE ───────────────────────────────────
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 3000)
+    const timeout = setTimeout(() => setLoading(false), 8000)
 
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {

@@ -8,6 +8,8 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      storageKey: 'praxia-auth',
+      storage: window.localStorage,
     }
   }
 )

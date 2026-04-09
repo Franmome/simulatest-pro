@@ -53,7 +53,7 @@ export default function Dashboard() {
   }
 
   async function cargarPerfil() {
-    const { data } = await supabase.from('users').select('role, level').eq('id', user.id).single()
+    const { data } = await supabase.from('users').select('role, level').eq('id', user.id).maybeSingle()
     if (data) setPerfil(data)
   }
 

@@ -55,7 +55,7 @@ export default function SalaLobby() {
   }, [messages])
 
   async function cargarSala() {
-    const { data } = await supabase.from('rooms').select('*, levels(name, evaluations(title))').eq('id', roomId).single()
+    const { data } = await supabase.from('rooms').select('*, levels(name, evaluations(title))').eq('id', roomId).maybeSingle()
     setRoom(data)
   }
 

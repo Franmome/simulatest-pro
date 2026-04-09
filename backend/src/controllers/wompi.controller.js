@@ -41,7 +41,7 @@ export const webhookWompi = async (req, res) => {
       .from('packages')
       .select('duration_days')
       .eq('id', package_id)
-      .single()
+      .maybeSingle()
 
     // 5. Crear purchase
     const end_date = new Date()

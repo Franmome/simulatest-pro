@@ -74,7 +74,7 @@ export default function DetallePrueba() {
     setError(null)
     try {
       const { data: evalData, error: evalErr } = await supabase
-        .from('evaluations').select('*, categories(id, name)').eq('id', id).single()
+        .from('evaluations').select('*, categories(id, name)').eq('id', id).maybeSingle()
       if (evalErr) throw evalErr
       const { data: levels, error: levErr } = await supabase
         .from('levels').select('id, name, description, time_limit, passing_score, sort_order')

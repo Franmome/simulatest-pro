@@ -193,7 +193,7 @@ export default function Simulacro() {
     setError(null)
     try {
       const { data: lvData, error: lvErr } = await supabase
-        .from('levels').select('*, evaluations(id, title, categories(name))').eq('id', id).single()
+        .from('levels').select('*, evaluations(id, title, categories(name))').eq('id', id).maybeSingle()
       if (lvErr) throw lvErr
 
       const { data: qData, error: qErr } = await supabase
@@ -209,7 +209,7 @@ export default function Simulacro() {
 
       const { data: attempt, error: attErr } = await supabase
         .from('attempts').insert({ user_id: user.id, level_id: id, start_time: new Date().toISOString(), status: 'in_progress' })
-        .select('id').single()
+        .select('id').maybeSingle()
       if (attErr) throw attErr
 
       const tiempoTotal = (lvData.time_limit ?? 60) * 60

@@ -11,7 +11,7 @@ export const getPaquetes = async (_req, res) => {
 
 export const getPaquete = async (req, res) => {
   const { data, error } = await supabase
-    .from('packages').select('*').eq('id', req.params.id).single()
+    .from('packages').select('*').eq('id', req.params.id).maybeSingle()
   if (error) return res.status(404).json({ error: 'No encontrado' })
   return res.json({ paquete: data })
 }
@@ -21,7 +21,7 @@ export const comprarPaquete = async (req, res) => {
   const user_id = req.user.id
 
   const { data: pkg } = await supabase
-    .from('packages').select('*').eq('id', package_id).single()
+    .from('packages').select('*').eq('id', package_id).maybeSingle()
   if (!pkg) return res.status(404).json({ error: 'Paquete no encontrado' })
 
   // Generar firma de integridad para Wompi

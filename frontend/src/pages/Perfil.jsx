@@ -44,7 +44,7 @@ export default function Perfil() {
         .from('users')
         .select('*')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
       setPerfil(perfilData)
 
       // 2. Plan activo desde tabla purchases
@@ -55,7 +55,7 @@ export default function Perfil() {
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
       setPlan(compra)
 
       // 3. Todos los intentos del usuario para calcular estadísticas

@@ -38,6 +38,17 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: err.message || 'Error interno del servidor' })
 })
 
+// ─── Mantener servidor despierto (Railway) ────────────────
+const SELF_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/health`
+  : null
+
+if (SELF_URL) {
+  setInterval(async () => {
+    try { await fetch(SELF_URL) } catch (_) {}
+  }, 10 * 60 * 1000) // cada 10 minutos
+}
+
 app.listen(PORT, () => {
   console.log(`\n🚀 SimulaTest Pro API corriendo en http://localhost:${PORT}\n`)
 })

@@ -219,7 +219,7 @@ export default function ResultadoFinal() {
         .from('attempts')
         .select('start_time, end_time, score')
         .eq('id', state.attemptId)
-        .single()
+        .maybeSingle()
 
       setAttemptData(attempt)
 

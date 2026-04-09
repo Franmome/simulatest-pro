@@ -144,7 +144,7 @@ export default function AdminTesoreria() {
       .from('users')
       .select('id')
       .eq('email', formAcceso.email)
-      .single()
+      .maybeSingle()
 
     if (userError || !usuario) {
       setMsgAcceso('Usuario no encontrado.')

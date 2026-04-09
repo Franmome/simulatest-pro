@@ -594,7 +594,7 @@ export default function Configuracion() {
       .from('users')
       .select('*')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
     setPerfil(data)
   }
 

@@ -90,7 +90,7 @@ export default function SalaSimulacro() {
   }, [messages])
 
   async function iniciar() {
-    const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).single()
+    const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).maybeSingle()
     if (!roomData) return
     setRoom(roomData)
     roomRef.current = roomData
@@ -220,12 +220,12 @@ export default function SalaSimulacro() {
         timer_per_question: roomRef.current.timer_per_question,
         max_questions: roomRef.current.max_questions,
         status: 'lobby'
-      }).select('id').single()
+      }).select('id').maybeSingle()
 
       const { data: part } = await supabase.from('room_participants').insert({
         room_id: newRoom.id, user_id: participantId,
         display_name: displayName, is_host: true
-      }).select('id').single()
+      }).select('id').maybeSingle()
 
       await supabase.from('rooms').update({ rematch_room_id: newRoom.id }).eq('id', roomId)
       navigate(`/sala/${newRoom.id}/lobby`, { state: { participantId: part.id, isHost: true, displayName } })

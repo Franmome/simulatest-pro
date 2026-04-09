@@ -71,7 +71,7 @@ export default function Suscripciones() {
           .from('purchases').select('package_id, end_date, status')
           .eq('user_id', user.id).eq('status', 'active')
           .gte('end_date', new Date().toISOString())
-          .order('end_date', { ascending: false }).limit(1).single()
+          .order('end_date', { ascending: false }).limit(1).maybeSingle()
         if (purchase) setPlanActivo(purchase.package_id)
       }
 
@@ -106,7 +106,7 @@ export default function Suscripciones() {
       .from('evaluations')
       .select('id')
       .eq('category_id', pkg.id)
-      .single()
+      .maybeSingle()
     if (eval_) {
       await cargarProfesiones(eval_.id)
     } else {

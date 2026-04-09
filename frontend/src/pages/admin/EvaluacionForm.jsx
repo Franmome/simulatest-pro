@@ -305,7 +305,7 @@ export default function EvaluacionForm() {
       .from('evaluations')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
     if (ev) setForm({ title: ev.title, description: ev.description || '', category_id: ev.category_id || '', is_active: ev.is_active })
 
     const { data: lvs } = await supabase

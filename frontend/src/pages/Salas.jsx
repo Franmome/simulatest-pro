@@ -61,11 +61,11 @@ export default function Salas() {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase()
       const { data: room, error: roomErr } = await supabase.from('rooms')
         .insert({ id: code, code, host_id: user.id, level_id: parseInt(form.level_id), timer_per_question: form.timer, max_questions: cantidadFinal, status: 'lobby' })
-        .select('id').single()
+        .select('id').maybeSingle()
       if (roomErr) throw roomErr
       const { data: part, error: partErr } = await supabase.from('room_participants')
         .insert({ room_id: room.id, user_id: user.id, display_name: form.display_name.trim(), is_host: true })
-        .select('id').single()
+        .select('id').maybeSingle()
       if (partErr) throw partErr
       navigate(`/sala/${room.id}/lobby`, { state: { participantId: part.id, isHost: true, displayName: form.display_name } })
     } catch {
@@ -84,7 +84,7 @@ export default function Salas() {
       .from('rooms')
       .select('*, levels(name, evaluations(title)), room_participants(count)')
       .eq('code', codigo.trim().toUpperCase())
-      .single()
+      .maybeSingle()
     setLoading(false)
     if (error || !room) { setError('Sala no encontrada'); return }
     if (room.status !== 'lobby') { setError('La sala ya está en curso'); return }
@@ -99,14 +99,14 @@ export default function Salas() {
     try {
       let room = roomData
       if (!room) {
-        const { data, error } = await supabase.from('rooms').select('*').eq('code', codigo.trim().toUpperCase()).single()
+        const { data, error } = await supabase.from('rooms').select('*').eq('code', codigo.trim().toUpperCase()).maybeSingle()
         if (error || !data) throw new Error('Sala no encontrada')
         room = data
       }
       if (room.status !== 'lobby') { setError('La sala ya está en curso o finalizada'); return }
       const { data: part, error: partErr } = await supabase.from('room_participants')
         .insert({ room_id: room.id, user_id: user.id, display_name: nombreParticipante.trim(), is_host: false })
-        .select('id').single()
+        .select('id').maybeSingle()
       if (partErr) throw partErr
       navigate(`/sala/${room.id}/lobby`, { state: { participantId: part.id, isHost: false, displayName: nombreParticipante } })
     } catch {
