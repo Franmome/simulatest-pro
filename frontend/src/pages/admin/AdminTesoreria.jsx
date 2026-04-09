@@ -196,45 +196,7 @@ export default function AdminTesoreria() {
     <div className="min-h-screen bg-background">
 
       {/* ── TopBar con avatar dinámico ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-8 h-16
-                         bg-surface-container-lowest/80 backdrop-blur-xl
-                         border-b border-outline-variant/20 shadow-sm">
-        <div className="flex items-center gap-8">
-          <h1 className="font-headline text-xl font-extrabold tracking-tight text-primary">
-            Tesorería y Cupones
-          </h1>
-          <div className="hidden md:flex relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined
-                             text-on-surface-variant text-lg">search</span>
-            <input
-              className="bg-surface-container border-none rounded-full pl-10 pr-4 py-1.5
-                         text-sm w-80 outline-none focus:ring-2 focus:ring-primary/20
-                         placeholder:text-on-surface-variant"
-              placeholder="Buscar transacción o cupón..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <button className="p-2 rounded-full hover:bg-surface-container transition-colors">
-              <span className="material-symbols-outlined text-on-surface-variant">notifications</span>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full" />
-            </button>
-          </div>
-          <div className="h-8 w-px bg-outline-variant/40 mx-1" />
-          {/* ✅ Avatar dinámico con imagen o iniciales */}
-          {user?.user_metadata?.avatar_url
-            ? <img src={user.user_metadata.avatar_url} className="w-9 h-9 rounded-full object-cover" />
-            : <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center
-                              text-on-primary font-bold text-xs">
-                {user?.user_metadata?.full_name?.[0] || 'A'}
-              </div>
-          }
-        </div>
-      </header>
-
+     
       <div className="p-8 space-y-8">
 
         {/* ── Stats Hero (sin cambios en la vista) ── */}

@@ -394,43 +394,7 @@ export default function AdminEditor() {
     <div className="min-h-screen bg-background">
 
       {/* TopBar */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-8 h-16
-                         bg-surface-container-lowest/80 backdrop-blur-xl
-                         border-b border-outline-variant/20 shadow-sm">
-        <div className="flex items-center gap-4">
-          <h1 className="font-headline text-xl font-extrabold tracking-tight text-primary">
-            Editor de Contenido
-          </h1>
-          {camposModificados && (
-            <span className="flex items-center gap-1.5 text-xs font-bold text-tertiary bg-tertiary-fixed px-3 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-pulse" />
-              Cambios sin publicar
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={guardarBorrador}
-            disabled={guardando || !camposModificados}
-            className="px-5 py-2 rounded-full text-sm font-bold border border-outline-variant
-                       hover:bg-surface-container transition-colors disabled:opacity-40"
-          >
-            {guardando ? 'Guardando...' : 'Guardar borrador'}
-          </button>
-          <button
-            onClick={publicar}
-            disabled={publicando}
-            className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-bold
-                       bg-primary text-on-primary shadow-lg hover:-translate-y-0.5
-                       active:scale-95 transition-all disabled:opacity-60"
-          >
-            {publicando
-              ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
-              : <><span className="material-symbols-outlined text-sm">rocket_launch</span>Publicar en vivo</>
-            }
-          </button>
-        </div>
-      </header>
+      
 
       <div className="p-8 max-w-7xl mx-auto grid grid-cols-12 gap-8">
 

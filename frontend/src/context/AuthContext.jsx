@@ -103,11 +103,15 @@ export const AuthProvider = ({ children }) => {
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (event === 'TOKEN_REFRESHED') {
+  return
+}
         if (!mounted) return
         if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setLoading(false)
-          return
+        setUser(null)
+        setLoading(false)
+        window.location.href = '/login'
+        return
         }
         if (event === 'INITIAL_SESSION') return
         if (session?.user) {

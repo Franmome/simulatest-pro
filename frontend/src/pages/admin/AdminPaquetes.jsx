@@ -138,32 +138,7 @@ export default function AdminPaquetes() {
     <div className="min-h-screen bg-background">
 
       {/* ── TopBar ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-8 h-16
-                         bg-surface-container-lowest/80 backdrop-blur-xl
-                         border-b border-outline-variant/20 shadow-sm">
-        <div className="flex items-center flex-1 max-w-xl">
-          <div className="relative w-full">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2
-                             text-on-surface-variant text-lg">search</span>
-            <input
-              className="w-full pl-10 pr-4 py-2 bg-surface-container border-none rounded-full
-                         text-sm outline-none focus:ring-2 focus:ring-primary/20
-                         placeholder:text-on-surface-variant"
-              placeholder="Buscar paquetes o exámenes..."
-              value={busqueda}
-              onChange={e => { setBusqueda(e.target.value); setPagina(1) }}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="p-2 rounded-full hover:bg-surface-container transition-colors">
-            <span className="material-symbols-outlined text-on-surface-variant">notifications</span>
-          </button>
-          <div className="h-8 w-px bg-outline-variant/40 mx-1" />
-          <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center
-                          text-on-primary font-bold text-xs">A</div>
-        </div>
-      </header>
+      
 
       {/* ── Canvas ── */}
       <div className="p-8 max-w-7xl mx-auto">
