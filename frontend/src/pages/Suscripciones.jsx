@@ -42,6 +42,12 @@ export default function Suscripciones() {
   const [planActivo,  setPlanActivo]  = useState(null)
   const [procesando,  setProcesando]  = useState(null)
 
+  // Nuevos estados para el modal de profesión
+  const [profesionesDisponibles, setProfesionesDisponibles] = useState([])
+  const [paqueteSeleccionado, setPaqueteSeleccionado] = useState(null)
+  const [profesionSeleccionada, setProfesionSeleccionada] = useState(null)
+  const [mostrarModal, setMostrarModal] = useState(false)
+
   useEffect(() => { cargarDatos() }, [])
 
   async function cargarDatos() {
@@ -78,31 +84,64 @@ export default function Suscripciones() {
     }
   }
 
+  // Cargar profesiones asociadas a una evaluación (vinculada al paquete)
+  async function cargarProfesiones(evaluationId) {
+    const { data } = await supabase
+      .from('professions')
+      .select('*')
+      .eq('evaluation_id', evaluationId)
+      .eq('is_active', true)
+      .order('price')
+    setProfesionesDisponibles(data || [])
+  }
+
+  // Al hacer clic en un paquete, se abre el modal para elegir profesión
   async function seleccionarPlan(pkg) {
     if (!user) { navigate('/login'); return }
     if (planActivo === pkg.id) return
-    setProcesando(pkg.id)
+    setPaqueteSeleccionado(pkg)
+    setProfesionSeleccionada(null)
+    // Buscar la evaluación que esté vinculada a este paquete (por category_id)
+    const { data: eval_ } = await supabase
+      .from('evaluations')
+      .select('id')
+      .eq('category_id', pkg.id)
+      .single()
+    if (eval_) {
+      await cargarProfesiones(eval_.id)
+    } else {
+      setProfesionesDisponibles([])
+    }
+    setMostrarModal(true)
+  }
+
+  // Iniciar pago con la profesión seleccionada (o sin ella)
+  async function iniciarPago() {
+    if (!paqueteSeleccionado) return
+    setProcesando(paqueteSeleccionado.id)
+    setMostrarModal(false)
     try {
-      // 1. Pedir firma al backend
       const token = (await supabase.auth.getSession()).data.session?.access_token
+      const body = {
+        package_id: paqueteSeleccionado.id,
+        profession_id: profesionSeleccionada?.id || null,
+        precio_override: profesionSeleccionada ? profesionSeleccionada.price : null
+      }
       const res = await fetch(`${API}/api/paquetes/comprar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ package_id: pkg.id })
+        body: JSON.stringify(body)
       })
       const datos = await res.json()
       if (!res.ok) throw new Error(datos.error)
 
-      // 2. Abrir widget de Wompi
       const checkout = new window.WidgetCheckout({
         currency:        'COP',
         amountInCents:   datos.amount_in_cents,
         reference:       datos.reference,
         publicKey:       datos.public_key,
         signature:       { integrity: datos.signature },
-        customerData: {
-          email: user.email,
-        },
+        customerData: { email: user.email },
         redirectUrl:     datos.redirect_url,
       })
       checkout.open(result => {
@@ -273,6 +312,55 @@ export default function Suscripciones() {
         <p className="text-on-surface-variant italic text-sm max-w-md mx-auto">{hero.testimonio}</p>
         <p className="text-[11px] font-bold text-primary mt-2 uppercase">{hero.testimonio_autor}</p>
       </div>
+
+      {/* Modal de selección de profesión */}
+      {mostrarModal && paqueteSeleccionado && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end md:items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-headline font-bold text-lg">{paqueteSeleccionado.name}</h3>
+              <button onClick={() => setMostrarModal(false)}
+                className="p-2 rounded-full hover:bg-surface-container">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {profesionesDisponibles.length > 0 ? (
+              <>
+                <p className="text-sm text-on-surface-variant">Selecciona tu perfil profesional:</p>
+                <div className="space-y-2">
+                  {profesionesDisponibles.map(prof => (
+                    <button key={prof.id} type="button"
+                      onClick={() => setProfesionSeleccionada(prof)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all
+                        ${profesionSeleccionada?.id === prof.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-outline-variant hover:border-primary/40'}`}>
+                      <span className="font-semibold text-sm">{prof.name}</span>
+                      <span className="font-bold text-primary">
+                        ${prof.price.toLocaleString('es-CO')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-on-surface-variant">
+                Precio: <span className="font-bold text-primary">
+                  ${paqueteSeleccionado.price.toLocaleString('es-CO')}
+                </span>
+              </p>
+            )}
+
+            <button onClick={iniciarPago}
+              disabled={profesionesDisponibles.length > 0 && !profesionSeleccionada}
+              className="w-full py-4 bg-primary text-on-primary rounded-2xl font-bold text-sm
+                         disabled:opacity-40 hover:bg-primary/90 transition-all">
+              Continuar al pago
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

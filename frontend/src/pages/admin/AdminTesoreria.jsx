@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../utils/supabase'
+import { useAuth } from '../../context/AuthContext'  // ✅ importado
 
 // ── Estados de transacción ─────────────────────────────────────────────────
 const ESTADO_CONFIG = {
@@ -9,6 +10,7 @@ const ESTADO_CONFIG = {
 }
 
 export default function AdminTesoreria() {
+  const { user } = useAuth()  // ✅ para avatar y nombre
   const [stats,        setStats]        = useState({ ingresos: 0, cupones: 0, accesos: 0, cargando: true })
   const [transacciones, setTransacciones] = useState([])
   const [cupones,      setCupones]      = useState([])
@@ -19,29 +21,43 @@ export default function AdminTesoreria() {
   const [guardando,  setGuardando]  = useState(false)
   const [msgCupon,   setMsgCupon]   = useState('')
 
-  // Acceso manual
-  const [formAcceso, setFormAcceso] = useState({ email: '', vigencia: 'ilimitado' })
+  // Acceso manual - ✅ agregado package_id y paquetes
+  const [formAcceso, setFormAcceso] = useState({ email: '', vigencia: 'ilimitado', package_id: '' })
   const [otorgando,  setOtorgando]  = useState(false)
   const [msgAcceso,  setMsgAcceso]  = useState('')
+  const [paquetes,   setPaquetes]   = useState([])  // ✅ lista de paquetes
 
   useEffect(() => {
     cargarStats()
     cargarTransacciones()
     cargarCupones()
+    cargarPaquetes()  // ✅ cargar paquetes
   }, [])
 
-  // ── Stats principales ───────────────────────────────────────────────────
+  // ── Cargar paquetes activos (excluyendo cupones) ──
+  async function cargarPaquetes() {
+    const { data } = await supabase
+      .from('packages')
+      .select('id, name')
+      .eq('is_active', true)
+      .neq('type', 'coupon')
+    setPaquetes(data || [])
+  }
+
+  // ── Stats principales (excluyendo manuales de ingresos) ──
   async function cargarStats() {
     const mesInicio = new Date()
     mesInicio.setDate(1)
     mesInicio.setHours(0, 0, 0, 0)
 
+    // ✅ Solo pagos reales (con wompi_transaction_id not null y status active)
     const [{ data: comprasMes }, { count: totalCupones }, { count: accesosManuales }] =
       await Promise.all([
         supabase.from('purchases')
           .select('packages(price)')
           .gte('created_at', mesInicio.toISOString())
-          .eq('status', 'active'),
+          .eq('status', 'active')
+          .not('wompi_transaction_id', 'is', null),  // ✅ excluye manuales
         supabase.from('purchases')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'active'),
@@ -60,19 +76,17 @@ export default function AdminTesoreria() {
     })
   }
 
-  // ── Transacciones recientes ─────────────────────────────────────────────
+  // ── Transacciones recientes (desde tabla transactions) ──
   async function cargarTransacciones() {
     const { data } = await supabase
-      .from('purchases')
-      .select('id, created_at, status, users(full_name), packages(name, price)')
+      .from('transactions')
+      .select('id, created_at, status, amount, package_id, user_id, packages(name)')
       .order('created_at', { ascending: false })
-      .limit(5)
-
+      .limit(10)  // ✅ ahora 10 registros
     setTransacciones(data || [])
   }
 
-  // ── Cupones activos (tabla packages con type = 'coupon' si aplica) ──────
-  // Nota: si no tienes tabla de cupones aún, esto queda preparado
+  // ── Cupones activos (tabla packages con type = 'coupon') ──
   async function cargarCupones() {
     const { data } = await supabase
       .from('packages')
@@ -83,7 +97,7 @@ export default function AdminTesoreria() {
     setCupones(data || [])
   }
 
-  // ── Crear cupón ─────────────────────────────────────────────────────────
+  // ── Crear cupón (sin cambios) ──
   async function crearCupon(e) {
     e.preventDefault()
     if (!formCupon.codigo || !formCupon.valor) return
@@ -111,28 +125,28 @@ export default function AdminTesoreria() {
     }
   }
 
-  // ── Eliminar cupón ──────────────────────────────────────────────────────
+  // ── Eliminar cupón ──
   async function eliminarCupon(id) {
     if (!confirm('¿Eliminar este cupón?')) return
     await supabase.from('packages').update({ is_active: false }).eq('id', id)
     cargarCupones()
   }
 
-  // ── Otorgar acceso manual ───────────────────────────────────────────────
+  // ── Otorgar acceso manual (con package_id opcional) ──
   async function otorgarAcceso(e) {
     e.preventDefault()
     if (!formAcceso.email) return
     setOtorgando(true)
     setMsgAcceso('')
 
-    // Buscar usuario por email en auth
-    const { data: usuario } = await supabase
+    // Buscar usuario por email en tabla users (suponiendo que el email está en users)
+    const { data: usuario, error: userError } = await supabase
       .from('users')
       .select('id')
-      .eq('id', (await supabase.auth.admin?.getUserByEmail?.(formAcceso.email))?.data?.user?.id)
+      .eq('email', formAcceso.email)
       .single()
 
-    if (!usuario) {
+    if (userError || !usuario) {
       setMsgAcceso('Usuario no encontrado.')
       setOtorgando(false)
       return
@@ -143,12 +157,14 @@ export default function AdminTesoreria() {
     const inicio = new Date()
     const fin    = new Date(inicio.getTime() + dias * 86400000)
 
+    // ✅ insert con package_id (puede ser null)
     const { error } = await supabase.from('purchases').insert({
       user_id:    usuario.id,
-      package_id: null,
+      package_id: formAcceso.package_id ? parseInt(formAcceso.package_id) : null,
       start_date: inicio.toISOString(),
       end_date:   fin.toISOString(),
       status:     'manual',
+      amount:     0,   // acceso manual = $0
     })
 
     setOtorgando(false)
@@ -156,12 +172,12 @@ export default function AdminTesoreria() {
       setMsgAcceso('Error al otorgar acceso.')
     } else {
       setMsgAcceso('Acceso Premium otorgado correctamente.')
-      setFormAcceso({ email: '', vigencia: 'ilimitado' })
+      setFormAcceso({ email: '', vigencia: 'ilimitado', package_id: '' })
       cargarStats()
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
+  // ── Helpers ──
   function tiempoRelativo(fecha) {
     const diff = Math.floor((Date.now() - new Date(fecha)) / 1000)
     if (diff < 3600)  return `Hoy, ${new Date(fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`
@@ -172,14 +188,14 @@ export default function AdminTesoreria() {
   const transaccionesFiltradas = busqueda.trim()
     ? transacciones.filter(t =>
         t.packages?.name?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        t.users?.full_name?.toLowerCase().includes(busqueda.toLowerCase()))
+        t.user_id?.toLowerCase().includes(busqueda.toLowerCase()))
     : transacciones
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render ──
   return (
     <div className="min-h-screen bg-background">
 
-      {/* ── TopBar ── */}
+      {/* ── TopBar con avatar dinámico ── */}
       <header className="sticky top-0 z-50 flex justify-between items-center px-8 h-16
                          bg-surface-container-lowest/80 backdrop-blur-xl
                          border-b border-outline-variant/20 shadow-sm">
@@ -208,17 +224,22 @@ export default function AdminTesoreria() {
             </button>
           </div>
           <div className="h-8 w-px bg-outline-variant/40 mx-1" />
-          <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center
-                          text-on-primary font-bold text-xs">A</div>
+          {/* ✅ Avatar dinámico con imagen o iniciales */}
+          {user?.user_metadata?.avatar_url
+            ? <img src={user.user_metadata.avatar_url} className="w-9 h-9 rounded-full object-cover" />
+            : <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center
+                              text-on-primary font-bold text-xs">
+                {user?.user_metadata?.full_name?.[0] || 'A'}
+              </div>
+          }
         </div>
       </header>
 
       <div className="p-8 space-y-8">
 
-        {/* ── Stats Hero ── */}
+        {/* ── Stats Hero (sin cambios en la vista) ── */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
-          {/* Ingresos mes */}
           <div className="col-span-1 md:col-span-2 p-8 rounded-3xl bg-primary text-on-primary
                           flex flex-col justify-between relative overflow-hidden">
             <div className="relative z-10">
@@ -239,7 +260,6 @@ export default function AdminTesoreria() {
             </div>
           </div>
 
-          {/* Cupones canjeados */}
           <div className="bg-surface-container-lowest p-6 rounded-3xl shadow-sm
                           border border-outline-variant/10 flex flex-col justify-between">
             <div className="flex justify-between items-start">
@@ -256,7 +276,6 @@ export default function AdminTesoreria() {
             </div>
           </div>
 
-          {/* Accesos manuales */}
           <div className="bg-surface-container-lowest p-6 rounded-3xl shadow-sm
                           border border-outline-variant/10 flex flex-col justify-between">
             <div className="flex justify-between items-start">
@@ -433,7 +452,7 @@ export default function AdminTesoreria() {
           {/* ── Sidebar derecho ── */}
           <aside className="space-y-8">
 
-            {/* Acceso manual */}
+            {/* Acceso manual (con selector de paquete) */}
             <section className="bg-surface-container-low p-8 rounded-[2rem]
                                 border border-outline-variant/10">
               <div className="mb-6">
@@ -472,6 +491,20 @@ export default function AdminTesoreria() {
                     <option value="365">1 año</option>
                   </select>
                 </div>
+                {/* ✅ Selector de paquete */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase px-1">
+                    Paquete
+                  </label>
+                  <select
+                    className="w-full bg-surface-container-lowest border-none rounded-2xl
+                               py-3 px-4 outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                    value={formAcceso.package_id}
+                    onChange={e => setFormAcceso(f => ({ ...f, package_id: e.target.value }))}>
+                    <option value="">Sin paquete específico</option>
+                    {paquetes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
                 {msgAcceso && (
                   <p className={`text-xs font-bold px-1
                     ${msgAcceso.includes('Error') || msgAcceso.includes('no encontrado')
@@ -491,7 +524,7 @@ export default function AdminTesoreria() {
               </form>
             </section>
 
-            {/* Transacciones recientes */}
+            {/* Transacciones recientes (desde tabla transactions) */}
             <section className="bg-surface-container-lowest p-8 rounded-[2rem]
                                 border border-outline-variant/10 shadow-sm">
               <div className="flex items-center justify-between mb-6">
@@ -507,8 +540,8 @@ export default function AdminTesoreria() {
                   </p>
                 ) : (
                   transaccionesFiltradas.map((t, i) => {
-                    const estado = t.status === 'active' ? 'completed'
-                                 : t.status === 'manual' ? 'pending'
+                    const estado = t.status === 'approved' ? 'completed'
+                                 : t.status === 'pending' ? 'pending'
                                  : 'failed'
                     const cfg = ESTADO_CONFIG[estado]
                     return (
@@ -518,8 +551,9 @@ export default function AdminTesoreria() {
                           <span className="material-symbols-outlined text-xl">{cfg.icon}</span>
                         </div>
                         <div className="flex-1 min-w-0">
+                          {/* ✅ nombre del paquete desde la relación */}
                           <div className="text-sm font-bold truncate">
-                            {t.packages?.name || 'Acceso manual'}
+                            {t.packages?.name || 'Pago Wompi'}
                           </div>
                           <div className="text-xs text-on-surface-variant">
                             {tiempoRelativo(t.created_at)}
@@ -527,7 +561,7 @@ export default function AdminTesoreria() {
                         </div>
                         <div className="text-right shrink-0">
                           <div className="text-sm font-bold">
-                            ${t.packages?.price?.toLocaleString('es-CO') || '0'}
+                            ${t.amount?.toLocaleString('es-CO') || '0'}
                           </div>
                           <div className={`text-[10px] font-extrabold uppercase ${cfg.labelColor}`}>
                             {cfg.label}
@@ -549,7 +583,7 @@ export default function AdminTesoreria() {
         </div>
       </div>
 
-      {/* ── FAB ── */}
+      {/* FAB */}
       <button className="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full
                          flex items-center justify-center shadow-2xl shadow-primary/25
                          active:scale-95 hover:scale-110 transition-all z-50">

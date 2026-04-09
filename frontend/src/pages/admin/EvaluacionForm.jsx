@@ -267,7 +267,7 @@ export default function EvaluacionForm() {
   const [guardando,   setGuardando]   = useState(false)
   const [error,       setError]       = useState(null)
   const [exito,       setExito]       = useState(false)
-  const [tab,         setTab]         = useState('general') // general | niveles | preguntas
+  const [tab,         setTab]         = useState('general') // general | niveles | preguntas | importar | profesiones
 
   // ── Niveles ──
   const [niveles, setNiveles] = useState([{
@@ -283,9 +283,16 @@ export default function EvaluacionForm() {
   const [importando, setImportando] = useState(false)
   const [importError, setImportError] = useState(null)
 
+  // ── Profesiones ──
+  const [profesiones, setProfesiones] = useState([])
+  const [loadingProfs, setLoadingProfs] = useState(false)
+
   useEffect(() => {
     cargarCategorias()
-    if (isEdit) cargarEvaluacion()
+    if (isEdit) {
+      cargarEvaluacion()
+      cargarProfesiones()
+    }
   }, [id])
 
   async function cargarCategorias() {
@@ -332,6 +339,37 @@ export default function EvaluacionForm() {
       }))
       setPreguntas(pregsPorNivel)
     }
+  }
+
+  // ─── Profesiones ──────────────────────────────────────────────────────────
+  async function cargarProfesiones() {
+    if (!id) return
+    const { data } = await supabase
+      .from('professions')
+      .select('*')
+      .eq('evaluation_id', id)
+      .order('created_at')
+    setProfesiones(data || [])
+  }
+
+  async function agregarProfesion() {
+    if (!id) return
+    const { data } = await supabase
+      .from('professions')
+      .insert({ evaluation_id: parseInt(id), name: 'Nueva profesión', price: 0, is_active: true })
+      .select().single()
+    if (data) setProfesiones(prev => [...prev, data])
+  }
+
+  async function actualizarProfesion(profId, campo, valor) {
+    setProfesiones(prev => prev.map(p => p.id === profId ? { ...p, [campo]: valor } : p))
+    await supabase.from('professions').update({ [campo]: valor }).eq('id', profId)
+  }
+
+  async function eliminarProfesion(profId) {
+    if (!confirm('¿Eliminar esta profesión?')) return
+    await supabase.from('professions').delete().eq('id', profId)
+    setProfesiones(prev => prev.filter(p => p.id !== profId))
   }
 
   // ─── Gestión de niveles ───────────────────────────────────────────────────
@@ -556,6 +594,9 @@ export default function EvaluacionForm() {
         }
       }
 
+      // 5. Guardar profesiones (si estamos editando, se guardan por separado, pero el insert/update ya se hizo en tiempo real)
+      // Las profesiones ya se crean/actualizan/eliminan en tiempo real, no es necesario guardarlas aquí.
+
       setExito(true)
       setTimeout(() => navigate('/admin/evaluaciones'), 1200)
     } catch (err) {
@@ -639,6 +680,7 @@ export default function EvaluacionForm() {
                 { key: 'niveles',   icon: 'layers',    label: 'Niveles'   },
                 { key: 'preguntas', icon: 'quiz',      label: 'Preguntas' },
                 { key: 'importar',  icon: 'upload_file', label: 'Importar CSV' },
+                { key: 'profesiones', icon: 'people', label: 'Profesiones' }, // ✅ nuevo
               ].map(t => (
                 <button
                   key={t.key}
@@ -910,6 +952,90 @@ export default function EvaluacionForm() {
                   <span className="material-symbols-outlined text-lg">download</span>
                   Descargar plantilla CSV de ejemplo
                 </button>
+              </Card>
+            )}
+
+            {/* ═══ TAB PROFESIONES ═══ */}
+            {tab === 'profesiones' && (
+              <Card className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg font-headline">Profesiones y Precios</h3>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      {!id ? 'Primero publica la evaluación para agregar profesiones.' : 'Define las profesiones disponibles y su precio.'}
+                    </p>
+                  </div>
+                  {id && (
+                    <button type="button" onClick={agregarProfesion}
+                      className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold">
+                      <span className="material-symbols-outlined text-sm">add</span>
+                      Agregar profesión
+                    </button>
+                  )}
+                </div>
+
+                {!id && (
+                  <div className="p-8 text-center text-on-surface-variant bg-surface-container rounded-xl">
+                    <span className="material-symbols-outlined text-3xl opacity-40 mb-2 block">lock</span>
+                    <p className="text-sm font-semibold">Publica la evaluación primero</p>
+                  </div>
+                )}
+
+                {id && profesiones.length === 0 && (
+                  <div className="p-8 text-center text-on-surface-variant bg-surface-container rounded-xl">
+                    <span className="material-symbols-outlined text-3xl opacity-40 mb-2 block">people</span>
+                    <p className="text-sm font-semibold">Sin profesiones creadas</p>
+                  </div>
+                )}
+
+                {id && profesiones.map(prof => (
+                  <div key={prof.id} className="bg-surface-container rounded-xl p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Nombre</label>
+                        <input
+                          type="text"
+                          value={prof.name}
+                          onChange={e => actualizarProfesion(prof.id, 'name', e.target.value)}
+                          className={INPUT_CLS}
+                          placeholder="ej: Profesional Universitario"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Precio (COP)</label>
+                        <input
+                          type="number"
+                          value={prof.price}
+                          onChange={e => actualizarProfesion(prof.id, 'price', parseInt(e.target.value))}
+                          className={INPUT_CLS}
+                          placeholder="25000"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <button
+                          type="button"
+                          onClick={() => actualizarProfesion(prof.id, 'is_active', !prof.is_active)}
+                          className={`w-10 h-5 rounded-full relative transition-all ${prof.is_active ? 'bg-secondary' : 'bg-outline-variant'}`}
+                        >
+                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${prof.is_active ? 'right-0.5' : 'left-0.5'}`} />
+                        </button>
+                        <span className="text-xs font-semibold text-on-surface-variant">
+                          {prof.is_active ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => eliminarProfesion(prof.id)}
+                        className="flex items-center gap-1 text-xs font-bold text-error hover:bg-error-container/30 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </Card>
             )}
           </div>
