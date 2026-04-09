@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-
+import { useState, useEffect } from 'react'
 const navItems = [
   { to: '/admin',              icon: 'dashboard',      label: 'Dashboard'        },
   { to: '/admin/evaluaciones', icon: 'inventory_2',    label: 'Evaluaciones'     },
@@ -16,7 +15,9 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
+ useEffect(() => {
+  setSidebarOpen(false)
+}, [location.pathname])
   const handleLogout = async () => { await logout(); navigate('/login') }
   const isActive = (path) => path === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(path)
 
