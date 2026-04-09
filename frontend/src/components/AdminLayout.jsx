@@ -82,12 +82,27 @@ export default function AdminLayout() {
       {/* Main */}
       <main className="flex-1 min-h-screen bg-background md:ml-64 overflow-x-hidden">
         {/* Header móvil admin */}
-        <div className="md:hidden flex items-center gap-3 px-4 h-14 border-b border-outline-variant/20 bg-surface-container-lowest sticky top-0 z-40">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-container">
-            <span className="material-symbols-outlined">menu</span>
-          </button>
-          <span className="font-bold text-primary">Consola Admin</span>
+        <div className="md:hidden flex items-center justify-between gap-3 px-4 h-14 border-b border-outline-variant/20 bg-surface-container-lowest sticky top-0 z-40">
+  <div className="flex items-center gap-3">
+    <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-container">
+      <span className="material-symbols-outlined">menu</span>
+    </button>
+    <span className="font-bold text-primary">Consola Admin</span>
+  </div>
+  <div className="flex items-center gap-2">
+    <button onClick={() => navigate('/dashboard')}
+      className="text-xs font-bold text-on-surface-variant flex items-center gap-1 px-3 py-1.5 rounded-full hover:bg-surface-container">
+      <span className="material-symbols-outlined text-sm">arrow_back</span>
+      Panel
+    </button>
+    {user?.user_metadata?.avatar_url
+      ? <img src={user.user_metadata.avatar_url} className="w-8 h-8 rounded-full object-cover" />
+      : <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-xs">
+          {user?.user_metadata?.full_name?.[0] || 'A'}
         </div>
+    }
+  </div>
+</div>
         <Outlet />
       </main>
     </div>
