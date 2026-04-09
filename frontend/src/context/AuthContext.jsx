@@ -5,11 +5,11 @@ const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
-const [loading, setLoading] = useState(() => {
-  // Si hay sesión guardada en localStorage, empezamos cargando
-  const stored = localStorage.getItem('praxia-auth')
-  return stored ? true : false
-})
+  const [loading, setLoading] = useState(() => {
+    // Si hay sesión guardada en localStorage, empezamos cargando
+    const stored = localStorage.getItem('praxia-auth')
+    return stored ? true : false
+  })
   
   const [inactivo, setInactivo] = useState(false)
   const timerInactividad = useRef(null)
@@ -89,36 +89,44 @@ const [loading, setLoading] = useState(() => {
     }
   }, [user, resetTimer])
 
-  // ─── SESIÓN PERSISTENTE (nueva versión sin timeout ni catch) ──
+  // ─── SESIÓN PERSISTENTE ──────────────────────────────────
   useEffect(() => {
-  let mounted = true
-  const timeout = setTimeout(() => {
-    if (mounted) setLoading(false)
-  }, 5000)
+    let mounted = true
+    const timeout = setTimeout(() => {
+      if (mounted) setLoading(false)
+    }, 5000)
 
-  supabase.auth.getSession().then(async ({ data: { session } }) => {
-    if (!mounted) return
-    clearTimeout(timeout)
-    if (session?.user) {
-      const role = await fetchUserRole(session.user.id)
-      setUser({ ...session.user, role })
-    }
-    setLoading(false)
-  })
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return
+      clearTimeout(timeout)
+      if (session?.user) {
+        const role = await fetchUserRole(session.user.id)
+        setUser({ ...session.user, role })
+      }
+      setLoading(false)
+    })
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'TOKEN_REFRESHED') {
-  return
-}
+        if (event === 'TOKEN_REFRESHED') return
         if (!mounted) return
         if (event === 'SIGNED_OUT') {
-        setUser(null)
-        setLoading(false)
-        window.location.href = '/login'
-        return
+          setUser(null)
+          setLoading(false)
+          window.location.href = '/login'
+          return
         }
-        if (event === 'INITIAL_SESSION') return
+        // ✅ Manejar INITIAL_SESSION para restaurar sesión al recargar
+        if (event === 'INITIAL_SESSION') {
+          if (session?.user) {
+            const role = await fetchUserRole(session.user.id)
+            setUser({ ...session.user, role })
+          } else {
+            setUser(null)
+          }
+          setLoading(false)
+          return
+        }
         if (session?.user) {
           const role = await fetchUserRole(session.user.id)
           setUser({ ...session.user, role })

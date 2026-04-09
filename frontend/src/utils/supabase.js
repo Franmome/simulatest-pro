@@ -8,7 +8,7 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storageKey: 'praxia-auth',
+      storageKey: 'praxia-auth', // ← clave única para tu app
       storage: window.localStorage,
     }
   }

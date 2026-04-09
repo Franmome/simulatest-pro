@@ -66,6 +66,13 @@ export default function Catalogo() {
   async function cargarDatos() {
     setLoading(true)
     setError(null)
+
+    // Timeout de rescate: si en 10s no carga, muestra error
+    const rescate = setTimeout(() => {
+      setLoading(false)
+      setError('La carga tardó demasiado. Verifica tu conexión.')
+    }, 10000)
+
     try {
       const [{ data: cats, error: errCats }, { data: evals, error: errEvals }] =
         await Promise.all([
@@ -84,21 +91,25 @@ export default function Catalogo() {
       if (errCats) throw errCats
       if (errEvals) throw errEvals
 
-      // Contar preguntas reales por evaluación
-      const conPreguntas = await Promise.all(
-        (evals || []).map(async (ev) => {
-          const levelIds = ev.levels?.map(l => l.id) || []
-          let totalPregs = 0
-          if (levelIds.length) {
-            const { count } = await supabase
-              .from('questions')
-              .select('*', { count: 'exact', head: true })
-              .in('level_id', levelIds)
-            totalPregs = count || 0
-          }
-          return { ...ev, totalPreguntas: totalPregs }
+      // ✅ Una sola query para contar todas las preguntas de todos los niveles
+      const todosLevelIds = (evals || []).flatMap(ev => ev.levels?.map(l => l.id) || [])
+      let pregsPorLevel = {}
+
+      if (todosLevelIds.length) {
+        const { data: qCounts } = await supabase
+          .from('questions')
+          .select('level_id')
+          .in('level_id', todosLevelIds)
+
+        ;(qCounts || []).forEach(q => {
+          pregsPorLevel[q.level_id] = (pregsPorLevel[q.level_id] || 0) + 1
         })
-      )
+      }
+
+      const conPreguntas = (evals || []).map(ev => {
+        const total = ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0
+        return { ...ev, totalPreguntas: total }
+      })
 
       setCategorias(cats || [])
       setEvaluaciones(conPreguntas)
@@ -106,6 +117,7 @@ export default function Catalogo() {
       console.error('Error cargando catálogo:', err)
       setError('No se pudo cargar el catálogo. Intenta de nuevo.')
     } finally {
+      clearTimeout(rescate)
       setLoading(false)
     }
   }
