@@ -49,7 +49,13 @@ export default function Suscripciones() {
   const [mostrarModal, setMostrarModal] = useState(false)
 
   useEffect(() => { cargarDatos() }, [])
-
+  useEffect(() => {
+  const script = document.createElement('script')
+  script.src = 'https://checkout.wompi.co/widget.js'
+  script.async = true
+  document.body.appendChild(script)
+  return () => document.body.removeChild(script)
+}, [])
   async function cargarDatos() {
     setLoading(true); setError(null)
     try {
