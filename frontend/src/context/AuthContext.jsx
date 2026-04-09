@@ -84,35 +84,28 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, resetTimer])
 
-  // ─── SESIÓN PERSISTENTE ───────────────────────────────────
+  // ─── SESIÓN PERSISTENTE (nueva versión sin timeout ni catch) ──
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 8000)
+    let mounted = true
 
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        clearTimeout(timeout)
-        if (session?.user) {
-          const role = await fetchUserRole(session.user.id)
-          setUser({ ...session.user, role })
-        } else {
-          setUser(null)
-        }
-        setLoading(false)
-      })
-      .catch(() => {
-        clearTimeout(timeout)
-        setUser(null)
-        setLoading(false)
-      })
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return
+      if (session?.user) {
+        const role = await fetchUserRole(session.user.id)
+        setUser({ ...session.user, role })
+      }
+      setLoading(false)
+    })
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'INITIAL_SESSION') return
+        if (!mounted) return
         if (event === 'SIGNED_OUT') {
           setUser(null)
           setLoading(false)
           return
         }
+        if (event === 'INITIAL_SESSION') return
         if (session?.user) {
           const role = await fetchUserRole(session.user.id)
           setUser({ ...session.user, role })
@@ -124,7 +117,7 @@ export const AuthProvider = ({ children }) => {
     )
 
     return () => {
-      clearTimeout(timeout)
+      mounted = false
       listener?.subscription.unsubscribe()
     }
   }, [])

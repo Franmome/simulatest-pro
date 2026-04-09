@@ -71,6 +71,12 @@ export const webhookWompi = async (req, res) => {
     return res.sendStatus(200)
   } catch (err) {
     console.error('Webhook error:', err)
+    await supabase.from('system_errors').insert({
+      severity: 'critical',
+      error_code: 'WEBHOOK_ERROR',
+      description: err.message || 'Error en webhook Wompi',
+      status: 'pending'
+    })
     return res.sendStatus(500)
   }
 }

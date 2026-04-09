@@ -62,7 +62,7 @@ export default function AdminLayout() {
     <div className="flex min-h-screen bg-background text-on-surface font-body">
 
       {/* Sidebar desktop */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col p-4 z-40 border-r border-outline-variant/20 bg-surface-container-lowest">
+      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col p-4 z-40 border-r border-outline-variant/20 bg-surface-container-lowest shadow-sm">
         <SidebarContent />
       </aside>
 
@@ -77,7 +77,7 @@ export default function AdminLayout() {
       )}
 
       {/* Main */}
-      <main className="md:ml-64 flex-1 min-h-screen bg-background">
+      <main className="flex-1 min-h-screen bg-background md:ml-64 overflow-x-hidden">
         {/* Header móvil admin */}
         <div className="md:hidden flex items-center gap-3 px-4 h-14 border-b border-outline-variant/20 bg-surface-container-lowest sticky top-0 z-40">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-container">
