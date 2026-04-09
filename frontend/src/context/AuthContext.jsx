@@ -86,16 +86,20 @@ export const AuthProvider = ({ children }) => {
 
   // ─── SESIÓN PERSISTENTE (nueva versión sin timeout ni catch) ──
   useEffect(() => {
-    let mounted = true
+  let mounted = true
+  const timeout = setTimeout(() => {
+    if (mounted) setLoading(false)
+  }, 5000)
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return
-      if (session?.user) {
-        const role = await fetchUserRole(session.user.id)
-        setUser({ ...session.user, role })
-      }
-      setLoading(false)
-    })
+  supabase.auth.getSession().then(async ({ data: { session } }) => {
+    if (!mounted) return
+    clearTimeout(timeout)
+    if (session?.user) {
+      const role = await fetchUserRole(session.user.id)
+      setUser({ ...session.user, role })
+    }
+    setLoading(false)
+  })
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
