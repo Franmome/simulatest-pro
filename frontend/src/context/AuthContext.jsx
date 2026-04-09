@@ -4,8 +4,13 @@ import { supabase } from '../utils/supabase'
 const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]       = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(null)
+const [loading, setLoading] = useState(() => {
+  // Si hay sesión guardada en localStorage, empezamos cargando
+  const stored = localStorage.getItem('praxia-auth')
+  return stored ? true : false
+})
+  
   const [inactivo, setInactivo] = useState(false)
   const timerInactividad = useRef(null)
   const LIMITE = 15 * 60 * 1000 // 15 minutos
