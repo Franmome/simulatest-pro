@@ -1,7 +1,7 @@
 // src/hooks/useFetch.js
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const TIMEOUT_MS  = 12000  // 12s antes de mostrar error
+const TIMEOUT_MS  = 20000  // ✅ aumentado de 12s a 20s
 const MAX_RETRIES = 3      // reintentos automáticos en error de red
 const RETRY_DELAY = 2000   // ms entre reintentos
 
@@ -66,6 +66,7 @@ export function useFetch(fetchFn, deps = []) {
 
   useEffect(() => {
     cancelledRef.current = false
+    retryCount.current = 0  // ✅ reiniciar contador al montar/remontar
     run()
     return () => {
       cancelledRef.current = true
