@@ -1,80 +1,64 @@
 // src/hooks/useFetch.js
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const TIMEOUT_MS  = 20000  // ✅ aumentado de 12s a 20s
-const MAX_RETRIES = 3      // reintentos automáticos en error de red
-const RETRY_DELAY = 2000   // ms entre reintentos
-
 export function useFetch(fetchFn, deps = []) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
 
-  const cancelledRef = useRef(false)
-  const timeoutRef   = useRef(null)
-  const retryCount   = useRef(0)
+  const runIdRef   = useRef(0)   // ID único por ejecución
+  const mountedRef = useRef(true)
 
-  const run = useCallback(async (isManualRetry = false) => {
-    cancelledRef.current = true
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    await new Promise(r => setTimeout(r, 50))
+  const run = useCallback(async () => {
+    if (!mountedRef.current) return
 
-    cancelledRef.current = false
-    if (isManualRetry) retryCount.current = 0
+    // Incrementar ID — invalida cualquier ejecución anterior
+    const currentId = ++runIdRef.current
 
     setLoading(true)
     setError(null)
 
-    timeoutRef.current = setTimeout(() => {
-      if (cancelledRef.current) return
-      cancelledRef.current = true
-      setLoading(false)
-      setError('La carga tardó demasiado. Verifica tu conexión.')
-    }, TIMEOUT_MS)
-
     try {
       const result = await fetchFn()
-      if (cancelledRef.current) return
-      clearTimeout(timeoutRef.current)
+
+      // Solo actualizar si esta ejecución sigue siendo la más reciente
+      if (currentId !== runIdRef.current) return
+      if (!mountedRef.current) return
+
       setData(result)
       setError(null)
-      retryCount.current = 0
     } catch (err) {
-      clearTimeout(timeoutRef.current)
-      if (cancelledRef.current) return
-
-      const msg = err?.message || ''
-      const esRedError = msg.includes('Failed to fetch')
-        || msg.includes('NetworkError')
-        || msg.includes('network')
-        || !navigator.onLine
-
-      if (esRedError && retryCount.current < MAX_RETRIES) {
-        retryCount.current += 1
-        setTimeout(() => {
-          if (!cancelledRef.current) run()
-        }, RETRY_DELAY * retryCount.current)
-        return
-      }
-
+      if (currentId !== runIdRef.current) return
+      if (!mountedRef.current) return
       setError(err.message || 'Error al cargar los datos.')
     } finally {
-      if (!cancelledRef.current) setLoading(false)
+      if (currentId === runIdRef.current && mountedRef.current) {
+        setLoading(false)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 
   useEffect(() => {
-    cancelledRef.current = false
-    retryCount.current = 0  // ✅ reiniciar contador al montar/remontar
+    mountedRef.current = true
     run()
     return () => {
-      cancelledRef.current = true
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      mountedRef.current = false
     }
   }, [run])
 
-  const retry = useCallback(() => run(true), [run])
+  // Recargar al volver a la pestaña
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible' && mountedRef.current) {
+        run()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [run])
+
+  const retry = useCallback(() => run(), [run])
 
   return { data, loading, error, retry }
 }
