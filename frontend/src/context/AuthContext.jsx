@@ -1,38 +1,52 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../utils/supabase'
 
 const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
-  const [user,    setUser]    = useState(null)
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // 🔥 cache de roles para evitar llamadas repetidas
+  const roleCache = useRef({})
+
   const fetchUserRole = async (userId) => {
+    if (roleCache.current[userId]) {
+      return roleCache.current[userId]
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('role')
       .eq('id', userId)
       .single()
-    if (error) return 'estudiante'
-    return data?.role ?? 'estudiante'
+
+    const role = error ? 'estudiante' : data?.role ?? 'estudiante'
+    roleCache.current[userId] = role
+
+    return role
   }
 
   const login = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+
     if (data.user) {
       const role = await fetchUserRole(data.user.id)
       const fullUser = { ...data.user, role }
       setUser(fullUser)
       return fullUser
     }
+
     return data
   }
 
   const loginWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `https://simulatest-pro-production.up.railway.app/dashboard` }
+      options: {
+        redirectTo: `https://simulatest-pro-production.up.railway.app/dashboard`
+      }
     })
     if (error) throw error
   }
@@ -53,40 +67,13 @@ export const AuthProvider = ({ children }) => {
     await supabase.auth.signOut()
   }, [])
 
+  // 🔥 MANEJO LIMPIO DE SESIÓN (SIN getSession)
   useEffect(() => {
-    // Timeout de seguridad: si getSession tarda más de 5s, no bloquear la app
-    const timeout = setTimeout(() => setLoading(false), 5000)
-
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        clearTimeout(timeout)
-        if (session?.user) {
-          const role = await fetchUserRole(session.user.id)
-          setUser({ ...session.user, role })
-        } else {
-          setUser(null)
-        }
-        setLoading(false)
-      })
-      .catch(() => {
-        clearTimeout(timeout)
-        setUser(null)
-        setLoading(false)
-      })
+    let isMounted = true
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // ✅ INITIAL_SESSION restaura la sesión al recargar — NO ignorar
-        if (event === 'INITIAL_SESSION') {
-          if (session?.user) {
-            const role = await fetchUserRole(session.user.id)
-            setUser({ ...session.user, role })
-          } else {
-            setUser(null)
-          }
-          setLoading(false)
-          return
-        }
+        if (!isMounted) return
 
         if (event === 'SIGNED_OUT') {
           setUser(null)
@@ -96,16 +83,19 @@ export const AuthProvider = ({ children }) => {
 
         if (session?.user) {
           const role = await fetchUserRole(session.user.id)
+          if (!isMounted) return
+
           setUser({ ...session.user, role })
         } else {
           setUser(null)
         }
+
         setLoading(false)
       }
     )
 
     return () => {
-      clearTimeout(timeout)
+      isMounted = false
       listener?.subscription.unsubscribe()
     }
   }, [])
