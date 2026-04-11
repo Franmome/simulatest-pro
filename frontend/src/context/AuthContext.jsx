@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (!data) {
-        const payload = {
+        const { error: insertError } = await supabase.from('users').insert({
           id: authUser.id,
           full_name:
             authUser.user_metadata?.full_name ||
@@ -32,16 +32,12 @@ export const AuthProvider = ({ children }) => {
             authUser.email ||
             '',
           role: 'estudiante',
-        }
-
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert(payload)
+        })
 
         if (insertError) {
-          console.warn('[Auth] No se pudo crear usuario en tabla users:', insertError.message)
+          console.warn('[Auth] No se pudo crear usuario:', insertError.message)
         } else {
-          console.log('[Auth] Usuario creado en tabla users')
+          console.log('[Auth] Usuario creado en users')
         }
       }
     } catch (err) {
@@ -74,15 +70,21 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const buildFullUser = async (authUser) => {
-    if (!authUser) return null
+  const syncUserRoleInBackground = async (authUser, isMountedRef) => {
+    if (!authUser?.id) return
 
-    await ensureUserExists(authUser)
-    const role = await fetchUserRole(authUser.id)
+    try {
+      await ensureUserExists(authUser)
+      const role = await fetchUserRole(authUser.id)
 
-    return {
-      ...authUser,
-      role,
+      if (!isMountedRef.current) return
+
+      setUser((prev) => {
+        if (!prev || prev.id !== authUser.id) return prev
+        return { ...prev, role }
+      })
+    } catch (err) {
+      console.warn('[Auth] syncUserRoleInBackground error:', err?.message || err)
     }
   }
 
@@ -91,9 +93,13 @@ export const AuthProvider = ({ children }) => {
     if (error) throw error
 
     if (data?.user) {
-      const fullUser = await buildFullUser(data.user)
-      setUser(fullUser)
-      return fullUser
+      const baseUser = { ...data.user, role: 'estudiante' }
+      setUser(baseUser)
+
+      const isMountedRef = { current: true }
+      syncUserRoleInBackground(data.user, isMountedRef)
+
+      return baseUser
     }
 
     return data
@@ -101,12 +107,10 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGoogle = async () => {
     const redirectTo = `${window.location.origin}/dashboard`
-
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo }
+      options: { redirectTo },
     })
-
     if (error) throw error
   }
 
@@ -122,15 +126,13 @@ export const AuthProvider = ({ children }) => {
     if (error) throw error
     if (!data.user) throw new Error('El correo ya está registrado.')
 
-    if (data.user) {
-      await ensureUserExists({
-        ...data.user,
-        user_metadata: {
-          ...data.user.user_metadata,
-          full_name: fullName,
-        },
-      })
-    }
+    await ensureUserExists({
+      ...data.user,
+      user_metadata: {
+        ...data.user.user_metadata,
+        full_name: fullName,
+      },
+    })
 
     return data
   }
@@ -146,86 +148,77 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   useEffect(() => {
-    let isMounted = true
+    const isMountedRef = { current: true }
 
     console.log('[Auth] iniciando AuthContext')
 
     const safetyTimeout = setTimeout(() => {
-      if (isMounted) {
+      if (isMountedRef.current) {
         console.warn('[Auth] safety timeout — forzando loading false')
         setLoading(false)
       }
     }, 4000)
 
+    const applySessionUser = (sessionUser) => {
+      if (!sessionUser) {
+        setUser(null)
+        return
+      }
+
+      // Setear usuario base inmediatamente para no perder auth en refresh
+      setUser((prev) => ({
+        ...sessionUser,
+        role: prev?.id === sessionUser.id && prev?.role ? prev.role : 'estudiante',
+      }))
+
+      // Sincronizar role y fila users en segundo plano
+      syncUserRoleInBackground(sessionUser, isMountedRef)
+    }
+
     const bootstrapSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession()
-
         if (error) throw error
 
         const session = data?.session ?? null
         console.log('[Auth] getSession:', session?.user?.email ?? 'sin sesión')
 
-        if (!isMounted) return
+        if (!isMountedRef.current) return
 
-        if (session?.user) {
-          const fullUser = await buildFullUser(session.user)
-          if (!isMounted) return
-          setUser(fullUser)
-        } else {
-          setUser(null)
-        }
+        applySessionUser(session?.user ?? null)
       } catch (err) {
         console.error('[Auth] getSession error:', err)
-        if (isMounted) {
-          setUser(null)
-        }
+        if (isMountedRef.current) setUser(null)
       } finally {
         clearTimeout(safetyTimeout)
-        if (isMounted) {
-          setLoading(false)
-        }
+        if (isMountedRef.current) setLoading(false)
       }
     }
 
     bootstrapSession()
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[Auth] evento:', event, '| user:', session?.user?.email ?? 'null')
 
-      if (!isMounted) return
+      if (!isMountedRef.current) return
 
-      if (event === 'TOKEN_REFRESHED') {
-        console.log('[Auth] TOKEN_REFRESHED — token renovado ok')
+      if (event === 'SIGNED_OUT') {
+        roleCache.current = {}
+        setUser(null)
+        setLoading(false)
         return
       }
 
-      try {
-        if (event === 'SIGNED_OUT') {
-          console.log('[Auth] SIGNED_OUT — limpiando usuario')
-          roleCache.current = {}
-          setUser(null)
-          return
-        }
-
-        if (session?.user) {
-          const fullUser = await buildFullUser(session.user)
-          if (!isMounted) return
-          setUser(fullUser)
-        } else {
-          setUser(null)
-        }
-      } catch (err) {
-        console.error('[Auth] onAuthStateChange error:', err)
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
+      if (event === 'TOKEN_REFRESHED') {
+        return
       }
+
+      applySessionUser(session?.user ?? null)
+      setLoading(false)
     })
 
     return () => {
-      isMounted = false
+      isMountedRef.current = false
       clearTimeout(safetyTimeout)
       listener?.subscription?.unsubscribe()
     }

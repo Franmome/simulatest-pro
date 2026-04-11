@@ -4,7 +4,12 @@ import { useAuth } from '../context/AuthContext'
 export default function PrivateRoute({ children, requireAdmin = false }) {
   const { user, loading } = useAuth()
 
-  // Mientras carga la sesión — spinner
+  console.log('[PrivateRoute]', {
+    loading,
+    user: user?.email || null,
+    role: user?.role || null
+  })
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -13,13 +18,13 @@ export default function PrivateRoute({ children, requireAdmin = false }) {
     )
   }
 
-  // Sin usuario — va al login
   if (!user) {
+    console.warn('[PrivateRoute] redirigiendo a /login porque no hay user')
     return <Navigate to="/login" replace />
   }
 
-  // Si requiere admin y no es admin — va al dashboard
   if (requireAdmin && user.role !== 'admin') {
+    console.warn('[PrivateRoute] redirigiendo a /dashboard porque no es admin')
     return <Navigate to="/dashboard" replace />
   }
 
