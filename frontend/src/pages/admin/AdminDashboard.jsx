@@ -1,429 +1,476 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../utils/supabase'
-import { useAuth } from '../../context/AuthContext'
 
-// ── Componente tarjeta de métrica ──────────────────────────────────────────
-function StatCard({ icon, iconBg, iconColor, badge, badgeColor, label, value, dark }) {
+function formatCompact(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return `${n || 0}`
+}
+
+function tiempoRelativo(fecha) {
+  if (!fecha) return '—'
+  const diff = Math.floor((Date.now() - new Date(fecha)) / 1000)
+  if (diff < 60) return 'hace un momento'
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`
+  return `hace ${Math.floor(diff / 86400)} días`
+}
+
+function DashboardCard({ title, value, subtitle, icon, tone = 'primary' }) {
+  const tones = {
+    primary: 'bg-primary-fixed text-primary',
+    secondary: 'bg-secondary-container/40 text-secondary',
+    tertiary: 'bg-tertiary-fixed text-tertiary',
+    blue: 'bg-blue-100 text-blue-700',
+    orange: 'bg-orange-100 text-orange-700',
+    green: 'bg-green-100 text-green-700',
+  }
+
   return (
-    <div className={`p-6 rounded-xl shadow-sm border border-outline-variant/15 flex flex-col justify-between
-                    ${dark ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest'}`}>
-      <div className="flex justify-between items-start">
-        <span className={`material-symbols-outlined p-2 rounded-lg ${iconBg} ${iconColor}`}
-              style={{ fontVariationSettings: "'FILL' 1" }}>
+    <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/15 shadow-sm">
+      <div className={`w-10 h-10 rounded-xl ${tones[tone]} flex items-center justify-center mb-4`}>
+        <span
+          className="material-symbols-outlined text-lg"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
           {icon}
         </span>
-        {badge && (
-          <span className={`flex items-center font-bold text-xs px-2 py-1 rounded-full ${badgeColor}`}>
-            {badge}
-          </span>
-        )}
       </div>
-      <div className="mt-4">
-        <p className={`text-sm font-medium ${dark ? 'opacity-80' : 'text-on-surface-variant'}`}>{label}</p>
-        <h3 className={`font-extrabold mt-1 ${dark ? 'text-2xl' : 'text-3xl'}`}>{value}</h3>
-      </div>
+
+      <p className="text-3xl font-black font-headline text-on-surface">{formatCompact(value)}</p>
+      <p className="text-sm font-bold text-on-surface mt-1">{title}</p>
+      <p className="text-xs text-on-surface-variant mt-1">{subtitle}</p>
     </div>
   )
 }
 
-// ── Componente fila de paquete popular ─────────────────────────────────────
-function PaqueteRow({ icon, nombre, ventas, precio, porcentaje }) {
+function QuickAction({ title, subtitle, icon, onClick }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center">
-          <span className="material-symbols-outlined text-primary">{icon}</span>
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-5 hover:bg-surface-container-low/40 transition-all group"
+    >
+      <div className="flex items-start gap-4">
+        <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+          <span className="material-symbols-outlined text-xl">{icon}</span>
         </div>
-        <div>
-          <p className="font-bold text-sm">{nombre}</p>
-          <p className="text-xs text-on-surface-variant">{ventas} ventas este mes</p>
+
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm text-on-surface group-hover:text-primary transition-colors">
+            {title}
+          </p>
+          <p className="text-xs text-on-surface-variant mt-1">{subtitle}</p>
         </div>
+
+        <span className="material-symbols-outlined text-on-surface-variant text-lg">
+          arrow_forward
+        </span>
       </div>
-      <div className="text-right">
-        <p className="font-bold text-secondary text-sm">${precio}</p>
-        <div className="w-24 h-1.5 bg-surface-container rounded-full mt-1">
-          <div className="bg-secondary h-full rounded-full transition-all"
-               style={{ width: `${porcentaje}%` }} />
-        </div>
-      </div>
-    </div>
+    </button>
   )
 }
 
-// ── Componente fila de actividad reciente ──────────────────────────────────
-function ActividadRow({ nombre, accion, detalle, tiempo, avatar, initials, last }) {
-  return (
-    <div className="flex gap-4">
-      {avatar
-        ? <img src={avatar} alt={nombre}
-               className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-        : <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center
-                          text-primary font-bold text-xs flex-shrink-0">
-            {initials}
-          </div>
-      }
-      <div className={`w-full ${!last ? 'border-b border-outline-variant/20 pb-4' : ''}`}>
-        <p className="text-sm">
-          <span className="font-bold">{nombre} </span>
-          <span className="text-on-surface-variant">{accion} </span>
-          <span className="font-bold text-primary">{detalle}</span>
-        </p>
-        <p className="text-xs text-on-surface-variant mt-1">{tiempo}</p>
-      </div>
-    </div>
-  )
-}
-
-// ── Dashboard principal ────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const navigate = useNavigate()
-  const { user } = useAuth()
 
   const [stats, setStats] = useState({
-    totalUsuarios: 0,
-    suscriptoresPremium: 0,
-    ingresoTotal: 0,
-    cargando: true,
+    evaluaciones: 0,
+    usuarios: 0,
+    paquetes: 0,
+    preguntas: 0,
+    materiales: 0,
+    compras: 0,
+    activas: 0,
+    erroresPendientes: 0,
   })
 
-  const [paquetes, setPaquetes] = useState([])
   const [actividad, setActividad] = useState([])
-  const [chartData, setChartData] = useState([])
+  const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
-    cargarStats()
-    cargarPaquetes()
-    cargarActividad()
-    cargarChart()
+    cargarDashboard()
   }, [])
 
-  // ── Métricas principales ────────────────────────────────────────────────
-  async function cargarStats() {
-    const [{ count: totalUsuarios }, { count: suscriptoresPremium }, { data: compras }] =
-      await Promise.all([
+  async function cargarDashboard() {
+    setCargando(true)
+
+    try {
+      const [
+        { count: evaluaciones },
+        { count: usuarios },
+        { count: paquetes },
+        { count: preguntas },
+        { count: materiales },
+        { count: compras },
+        { count: activas },
+        { count: erroresPendientes },
+        { data: paquetesRecientes },
+        { data: usuariosRecientes },
+      ] = await Promise.all([
+        supabase.from('evaluations').select('*', { count: 'exact', head: true }),
         supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('purchases').select('*', { count: 'exact', head: true })
-          .eq('status', 'active'),
-        supabase.from('purchases').select('packages(price)').eq('status', 'active'),
+        supabase.from('packages').select('*', { count: 'exact', head: true }),
+        supabase.from('questions').select('*', { count: 'exact', head: true }),
+        supabase.from('study_materials').select('*', { count: 'exact', head: true }),
+        supabase.from('purchases').select('*', { count: 'exact', head: true }),
+        supabase.from('packages').select('*', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('system_errors').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase
+          .from('packages')
+          .select('id, name, created_at, is_active')
+          .order('created_at', { ascending: false })
+          .limit(4),
+        supabase
+          .from('users')
+          .select('id, full_name, created_at')
+          .order('created_at', { ascending: false })
+          .limit(4),
       ])
 
-    const ingresoTotal = compras?.reduce((sum, c) => sum + (c.packages?.price || 0), 0) || 0
-
-    setStats({
-      totalUsuarios: totalUsuarios || 0,
-      suscriptoresPremium: suscriptoresPremium || 0,
-      ingresoTotal,
-      cargando: false,
-    })
-  }
-
-  // ── Paquetes más vendidos ───────────────────────────────────────────────
-  async function cargarPaquetes() {
-    const { data } = await supabase
-      .from('packages')
-      .select('id, name, price')
-      .eq('is_active', true)
-      .limit(3)
-
-    if (!data) return
-
-    const conVentas = await Promise.all(
-      data.map(async (pkg) => {
-        const { count } = await supabase
-          .from('purchases')
-          .select('*', { count: 'exact', head: true })
-          .eq('package_id', pkg.id)
-        return { ...pkg, ventas: count || 0 }
+      setStats({
+        evaluaciones: evaluaciones || 0,
+        usuarios: usuarios || 0,
+        paquetes: paquetes || 0,
+        preguntas: preguntas || 0,
+        materiales: materiales || 0,
+        compras: compras || 0,
+        activas: activas || 0,
+        erroresPendientes: erroresPendientes || 0,
       })
-    )
 
-    const maxVentas = Math.max(...conVentas.map(p => p.ventas), 1)
-    const iconos = ['history_edu', 'military_tech', 'balance']
+      const actividadPaquetes = (paquetesRecientes || []).map(item => ({
+        tipo: 'paquete',
+        titulo: item.is_active ? 'Paquete publicado' : 'Paquete creado',
+        descripcion: item.name,
+        fecha: item.created_at,
+      }))
 
-    setPaquetes(conVentas.map((p, i) => ({
-      ...p,
-      icon: iconos[i] || 'school',
-      porcentaje: Math.round((p.ventas / maxVentas) * 100),
-    })))
+      const actividadUsuarios = (usuariosRecientes || []).map(item => ({
+        tipo: 'usuario',
+        titulo: 'Nuevo usuario registrado',
+        descripcion: item.full_name || item.id,
+        fecha: item.created_at,
+      }))
+
+      const mezclada = [...actividadPaquetes, ...actividadUsuarios]
+        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+        .slice(0, 6)
+
+      setActividad(mezclada)
+    } finally {
+      setCargando(false)
+    }
   }
 
-  // ── Actividad reciente ──────────────────────────────────────────────────
-  async function cargarActividad() {
-    const { data } = await supabase
-      .from('purchases')
-      .select('created_at, users(full_name), packages(name)')
-      .order('created_at', { ascending: false })
-      .limit(4)
+  const saludSistema = useMemo(() => {
+    if (stats.erroresPendientes === 0) return 'Estable'
+    if (stats.erroresPendientes <= 5) return 'Con alertas'
+    return 'Revisar'
+  }, [stats.erroresPendientes])
 
-    if (!data) return
-
-    setActividad(data.map((item) => ({
-      nombre: item.users?.full_name || 'Usuario',
-      accion: 'adquirió',
-      detalle: item.packages?.name || 'un paquete',
-      tiempo: tiempoRelativo(item.created_at),
-      initials: iniciales(item.users?.full_name),
-    })))
-  }
-
-  // ── Datos de la gráfica ─────────────────────────────────────────────────
-  async function cargarChart() {
-    const dias = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (6 - i))
-      return d.toISOString().split('T')[0]
-    })
-
-    const resultados = await Promise.all(
-      dias.map(async (dia) => {
-        const { count } = await supabase
-          .from('purchases')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', `${dia}T00:00:00`)
-          .lte('created_at', `${dia}T23:59:59`)
-        return { dia, count: count || 0 }
-      })
-    )
-
-    setChartData(resultados)
-  }
-
-  // ── Helpers ─────────────────────────────────────────────────────────────
-  function tiempoRelativo(fecha) {
-    const diff = Math.floor((Date.now() - new Date(fecha)) / 1000)
-    if (diff < 60) return 'hace un momento'
-    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`
-    if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`
-    return `hace ${Math.floor(diff / 86400)} días`
-  }
-
-  function iniciales(nombre) {
-    if (!nombre) return '?'
-    return nombre.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-  }
-
-  function formatNum(n) {
-    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString()
-  }
-
-  const maxChart = Math.max(...chartData.map(d => d.count), 1)
-  const diasLabel = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-
-  // ── Iniciales del admin ──────────────────────────────────────────────────
-  const nombreAdmin = user?.user_metadata?.full_name
-    || user?.user_metadata?.name
-    || user?.email?.split('@')[0]
-    || 'Admin'
-  const inicialesAdmin = nombreAdmin.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-  const avatarAdmin = user?.user_metadata?.avatar_url || null
-
-  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background">
+      <div className="p-8 max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+          <div>
+            <nav className="flex items-center gap-2 text-xs font-medium text-on-surface-variant mb-2">
+              <span>Consola</span>
+              <span className="material-symbols-outlined text-[10px]">chevron_right</span>
+              <span className="text-primary">Dashboard</span>
+            </nav>
 
-      {/* ── TopBar ── */}
-      
+            <h1 className="text-3xl font-extrabold font-headline text-on-surface tracking-tight">
+              Dashboard Admin
+            </h1>
 
-      {/* ── Body ── */}
-      {/* ✅ Cambio 1: padding responsivo y espacios */}
-      <div className="p-4 md:p-8 space-y-6 md:space-y-8">
-
-        {/* ── Stats Grid ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            icon="group"
-            iconBg="bg-primary-fixed"
-            iconColor="text-primary"
-            badge={stats.cargando ? '...' : null}
-            label="Total Usuarios"
-            value={stats.cargando ? '...' : formatNum(stats.totalUsuarios)}
-          />
-          <StatCard
-            icon="star"
-            iconBg="bg-tertiary-fixed"
-            iconColor="text-tertiary"
-            badge="En vivo"
-            badgeColor="text-on-surface-variant text-[10px] uppercase font-bold"
-            label="Suscriptores Activos"
-            value={stats.cargando ? '...' : formatNum(stats.suscriptoresPremium)}
-          />
-          <StatCard
-            icon="payments"
-            iconBg="bg-secondary-fixed"
-            iconColor="text-secondary"
-            badge="Últimos 30d"
-            badgeColor="text-secondary font-bold text-xs"
-            label="Ingresos Totales"
-            value={stats.cargando ? '...' : `$${stats.ingresoTotal.toLocaleString('es-CO')}`}
-          />
-          <StatCard
-            icon="dns"
-            iconBg="bg-white/10"
-            iconColor="text-primary-fixed"
-            badge={
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-secondary-fixed-dim rounded-full animate-pulse" />
-                En línea
-              </span>
-            }
-            badgeColor="text-secondary-fixed font-bold text-xs px-2 py-1 bg-white/10 rounded-full"
-            label="Estado del Sistema"
-            value="100% Activo"
-            dark
-          />
-        </div>
-
-        {/* ── Gráfica + Soporte ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-          {/* Gráfica de ventas */}
-          {/* ✅ Cambio 2: padding responsivo en la gráfica */}
-          <div className="lg:col-span-2 bg-surface-container-lowest p-4 md:p-8 rounded-xl
-                          border border-outline-variant/15">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h4 className="text-lg font-bold font-headline">Análisis de Ventas</h4>
-                <p className="text-sm text-on-surface-variant">Rendimiento diario — últimos 7 días</p>
-              </div>
-            </div>
-
-            {chartData.length === 0 ? (
-              <div className="h-64 flex items-center justify-center text-on-surface-variant text-sm">
-                Cargando datos...
-              </div>
-            ) : (
-              <>
-                <div className="h-64 flex items-end justify-between gap-2">
-                  {chartData.map((d, i) => {
-                    const alto = Math.max((d.count / maxChart) * 100, 4)
-                    const esMax = d.count === maxChart && d.count > 0
-                    return (
-                      <div key={i} className="w-full flex flex-col items-center gap-1">
-                        {d.count > 0 && (
-                          <span className="text-[10px] text-on-surface-variant">{d.count}</span>
-                        )}
-                        <div
-                          className={`w-full rounded-t-lg transition-all hover:opacity-80
-                            ${esMax ? 'bg-primary shadow-lg shadow-primary/20' : 'bg-primary/20'}`}
-                          style={{ height: `${alto}%` }}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="flex justify-between mt-4 text-[10px] font-bold
-                                text-on-surface-variant uppercase tracking-widest px-1">
-                  {diasLabel.map(d => <span key={d}>{d}</span>)}
-                </div>
-              </>
-            )}
+            <p className="text-on-surface-variant mt-1 text-sm max-w-2xl">
+              Vista general de la plataforma, contenido académico, usuarios, ventas y salud operativa.
+            </p>
           </div>
 
-          {/* Soporte pendiente */}
-          <div className="bg-surface-container-low p-8 rounded-xl flex flex-col">
-            <h4 className="text-lg font-bold font-headline mb-6">Soporte Pendiente</h4>
-            <div className="space-y-4 flex-1">
-              {[
-                { label: 'Pago fallido: #TX902',     sub: 'Hace 2 min • Facturación', color: 'bg-error'    },
-                { label: 'Error de acceso: Usuario', sub: 'Hace 14 min • Auth',       color: 'bg-tertiary' },
-                { label: 'Solicitud de reembolso',   sub: 'Hace 1 h • Tesorería',     color: 'bg-outline', opacity: true },
-              ].map((t, i) => (
-                <div key={i} className={`bg-surface-container-lowest p-4 rounded-lg
-                                         flex items-center gap-4 ${t.opacity ? 'opacity-60' : ''}`}>
-                  <div className={`w-2 h-10 ${t.color} rounded-full flex-shrink-0`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate">{t.label}</p>
-                    <p className="text-xs text-on-surface-variant">{t.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button className="mt-6 w-full py-2 text-primary font-bold text-sm hover:underline">
-              Ver todos los tickets
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={cargarDashboard}
+              className="px-5 py-2.5 bg-surface-container-lowest text-on-surface-variant font-semibold text-sm rounded-full flex items-center gap-2 shadow-sm hover:bg-surface-bright transition-all border border-outline-variant"
+            >
+              <span className="material-symbols-outlined text-lg">refresh</span>
+              Actualizar
+            </button>
+
+            <button
+              onClick={() => navigate('/admin/evaluaciones/nueva')}
+              className="px-6 py-3 rounded-full bg-primary text-on-primary font-bold text-sm shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+              Nuevo paquete
             </button>
           </div>
         </div>
 
-        {/* ── Paquetes + Actividad ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Hero */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 p-8 bg-primary rounded-3xl text-on-primary relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20" />
+            <div className="relative z-10">
+              <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                Estado general
+              </span>
 
-          {/* Paquetes populares */}
-          <div className="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/15">
-            <div className="flex justify-between items-center mb-8">
-              <h4 className="text-lg font-bold font-headline">Paquetes Populares</h4>
-              <button
-                onClick={() => navigate('/admin/paquetes')}
-                className="text-primary text-sm font-bold hover:underline"
-              >
-                Ver todos
-              </button>
+              <div className="mt-4">
+                <h2 className="text-4xl font-black font-headline tracking-tight">
+                  {cargando ? 'Cargando...' : `${stats.paquetes} paquetes · ${stats.evaluaciones} evaluaciones`}
+                </h2>
+                <p className="text-sm text-primary-fixed mt-2 max-w-2xl">
+                  {cargando
+                    ? 'Consultando información...'
+                    : `Actualmente hay ${stats.activas} paquetes activos, ${stats.preguntas} preguntas cargadas y ${stats.materiales} materiales de estudio en la base.`}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mt-6">
+                <span className="px-3 py-1 rounded-full bg-white/15 text-xs font-bold">
+                  Salud: {saludSistema}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-white/15 text-xs font-bold">
+                  Errores pendientes: {stats.erroresPendientes}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-white/15 text-xs font-bold">
+                  Compras: {stats.compras}
+                </span>
+              </div>
             </div>
-
-            {paquetes.length === 0 ? (
-              <div className="space-y-6">
-                {[85, 65, 45].map((p, i) => (
-                  <PaqueteRow
-                    key={i}
-                    icon={['history_edu', 'military_tech', 'balance'][i]}
-                    nombre="Sin datos aún"
-                    ventas={0}
-                    precio="0"
-                    porcentaje={p}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {paquetes.map((p) => (
-                  <PaqueteRow
-                    key={p.id}
-                    icon={p.icon}
-                    nombre={p.name}
-                    ventas={p.ventas}
-                    precio={p.price?.toLocaleString('es-CO') || '0'}
-                    porcentaje={p.porcentaje}
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* Actividad reciente */}
-          <div className="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/15">
-            <h4 className="text-lg font-bold font-headline mb-8">Actividad Reciente</h4>
+          <div className="p-6 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4">
+              Resumen rápido
+            </p>
 
-            {actividad.length === 0 ? (
-              <p className="text-sm text-on-surface-variant text-center py-8">
-                Sin actividad reciente
-              </p>
-            ) : (
-              <div className="space-y-6">
-                {actividad.map((a, i) => (
-                  <ActividadRow
-                    key={i}
-                    {...a}
-                    last={i === actividad.length - 1}
-                  />
+            <div className="space-y-4">
+              {[
+                { label: 'Usuarios registrados', value: stats.usuarios },
+                { label: 'Preguntas en banco', value: stats.preguntas },
+                { label: 'Materiales cargados', value: stats.materiales },
+                { label: 'Errores pendientes', value: stats.erroresPendientes },
+              ].map(item => (
+                <div key={item.label} className="flex items-center justify-between">
+                  <span className="text-sm text-on-surface-variant">{item.label}</span>
+                  <span className="text-sm font-black text-on-surface">{formatCompact(item.value)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-outline-variant/10">
+              <button
+                onClick={() => navigate('/admin/errores')}
+                className="w-full py-3 rounded-2xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-surface-container transition-all flex items-center justify-center gap-2"
+              >
+                Ver reporte de errores
+                <span className="material-symbols-outlined text-sm">open_in_new</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <DashboardCard
+            title="Evaluaciones"
+            value={stats.evaluaciones}
+            subtitle="Simulacros base registrados"
+            icon="inventory_2"
+            tone="primary"
+          />
+          <DashboardCard
+            title="Usuarios"
+            value={stats.usuarios}
+            subtitle="Cuentas registradas"
+            icon="group"
+            tone="secondary"
+          />
+          <DashboardCard
+            title="Paquetes"
+            value={stats.paquetes}
+            subtitle="Productos comerciales"
+            icon="package_2"
+            tone="blue"
+          />
+          <DashboardCard
+            title="Compras"
+            value={stats.compras}
+            subtitle="Accesos vendidos u otorgados"
+            icon="payments"
+            tone="green"
+          />
+        </div>
+
+        {/* Main grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="font-bold text-lg font-headline">Accesos rápidos</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    Atajos a las áreas que más vas a usar
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <QuickAction
+                  title="Gestión de evaluaciones"
+                  subtitle="Crear, editar y organizar simulacros, niveles y preguntas."
+                  icon="quiz"
+                  onClick={() => navigate('/admin/evaluaciones')}
+                />
+                <QuickAction
+                  title="Gestión de paquetes"
+                  subtitle="Revisar catálogo, estado comercial y publicación."
+                  icon="inventory_2"
+                  onClick={() => navigate('/admin/paquetes')}
+                />
+                <QuickAction
+                  title="Usuarios"
+                  subtitle="Ver estudiantes, accesos premium y campañas."
+                  icon="group"
+                  onClick={() => navigate('/admin/usuarios')}
+                />
+                <QuickAction
+                  title="Tesorería"
+                  subtitle="Control de ventas, cupones y accesos manuales."
+                  icon="account_balance_wallet"
+                  onClick={() => navigate('/admin/tesoreria')}
+                />
+                <QuickAction
+                  title="Editor administrativo"
+                  subtitle="Cambiar textos visibles en home, suscripciones y configuración."
+                  icon="edit_note"
+                  onClick={() => navigate('/admin/editor')}
+                />
+                <QuickAction
+                  title="Errores del sistema"
+                  subtitle="Monitorear fallos, incidencias y estado operativo."
+                  icon="bug_report"
+                  onClick={() => navigate('/admin/errores')}
+                />
+              </div>
+            </div>
+
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="font-bold text-lg font-headline">Guía rápida del flujo</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    Resumen del proceso correcto para crear contenido
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {[
+                  'Crea la evaluación base con su nombre, descripción y categoría.',
+                  'Agrega niveles si cambian preguntas o respuestas según cargo o profesión.',
+                  'Carga preguntas manualmente o por CSV en el nivel correcto.',
+                  'Agrega versiones y precios si el paquete cambia por profesión.',
+                  'Sube material de estudio y luego publica el paquete.',
+                ].map((item, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center text-xs font-bold shrink-0">
+                      {i + 1}
+                    </div>
+                    <p className="text-sm text-on-surface-variant">{item}</p>
+                  </div>
                 ))}
               </div>
-            )}
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 space-y-6">
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="font-bold text-lg font-headline">Actividad reciente</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    Últimos movimientos detectados en la plataforma
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {cargando ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-12 rounded-xl bg-surface-container animate-pulse" />
+                  ))
+                ) : actividad.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant">Sin actividad reciente</p>
+                ) : (
+                  actividad.map((item, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
+                        item.tipo === 'paquete' ? 'bg-primary' : 'bg-secondary'
+                      }`} />
+                      <div>
+                        <p className="text-sm font-bold text-on-surface">{item.titulo}</p>
+                        <p className="text-xs text-on-surface-variant">{item.descripcion}</p>
+                        <p className="text-[10px] text-on-surface-variant mt-1">
+                          {tiempoRelativo(item.fecha)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                  stats.erroresPendientes === 0
+                    ? 'bg-secondary-container/40 text-secondary'
+                    : 'bg-error-container/40 text-error'
+                }`}>
+                  <span className="material-symbols-outlined">
+                    {stats.erroresPendientes === 0 ? 'verified' : 'warning'}
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-lg font-headline">Salud operativa</h3>
+                  <p className="text-xs text-on-surface-variant">Estado actual del panel y sistema</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-on-surface-variant">Estado general</span>
+                  <span className="font-bold text-on-surface">{saludSistema}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-on-surface-variant">Paquetes activos</span>
+                  <span className="font-bold text-on-surface">{stats.activas}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-on-surface-variant">Errores pendientes</span>
+                  <span className={`font-bold ${stats.erroresPendientes > 0 ? 'text-error' : 'text-secondary'}`}>
+                    {stats.erroresPendientes}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-outline-variant/10">
+                <button
+                  onClick={() => navigate('/admin/errores')}
+                  className="w-full py-3 rounded-2xl border border-outline-variant text-sm font-bold text-on-surface-variant hover:bg-surface-container transition-all"
+                >
+                  Abrir monitoreo
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* ── FAB ── */}
-      <button
-        onClick={() => navigate('/admin/evaluaciones/nueva')}
-        className="fixed bottom-8 right-8 bg-primary text-on-primary w-14 h-14 rounded-full
-                   shadow-2xl flex items-center justify-center hover:scale-110
-                   active:scale-95 transition-all z-50"
-      >
-        <span className="material-symbols-outlined text-2xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}>
-          add
-        </span>
-      </button>
     </div>
   )
 }
