@@ -4,12 +4,15 @@ import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
 
+// Páginas públicas
+import InicioPublico from './pages/InicioPublico'  // ✅ Landing pública
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Catalogo from './pages/Catalogo'
 import DetallePrueba from './pages/DetallePrueba'
-import PagoResultado from './pages/PagoResultado'   // ✅ Import agregado
+import PagoResultado from './pages/PagoResultado'
 
+// Páginas privadas
 import Dashboard from './pages/Dashboard'
 import Simulacro from './pages/Simulacro'
 import Resultados from './pages/Resultados'
@@ -22,6 +25,7 @@ import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
 
+// Páginas de administración
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminUsuarios from './pages/admin/AdminUsuarios'
 import AdminPaquetes from './pages/admin/AdminPaquetes'
@@ -36,16 +40,21 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* 🏠 Ruta pública principal (landing) sin Layout */}
+          <Route path="/" element={<InicioPublico />} />
+
+          {/* 🔐 Autenticación */}
           <Route path="/login"    element={<Login />} />
           <Route path="/registro" element={<Register />} />
 
+          {/* 📚 Catálogo público (con Layout compartido) */}
           <Route element={<Layout title="SimulaTest Pro" />}>
-            <Route path="/" element={<Navigate to="/catalogo" replace />} />
-            <Route path="/catalogo"   element={<Catalogo />} />
-            <Route path="/prueba/:id" element={<DetallePrueba />} />
-            <Route path="/pago-resultado" element={<PagoResultado />} />   {/* ✅ Ruta agregada */}
+            <Route path="/catalogo"       element={<Catalogo />} />
+            <Route path="/prueba/:id"     element={<DetallePrueba />} />
+            <Route path="/pago-resultado" element={<PagoResultado />} />
           </Route>
 
+          {/* 🔒 Rutas privadas para usuarios autenticados */}
           <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
             <Route path="/dashboard"       element={<Dashboard />} />
             <Route path="/simulacro/:id"   element={<Simulacro />} />
@@ -55,11 +64,12 @@ export default function App() {
             <Route path="/perfil"          element={<Perfil />} />
             <Route path="/estudio"         element={<Estudio />} />
             <Route path="/configuracion"   element={<Configuracion />} />
-            <Route path="/salas"               element={<Salas />} />
-            <Route path="/sala/:roomId/lobby"  element={<SalaLobby />} />
-            <Route path="/sala/:roomId/juego"  element={<SalaSimulacro />} />
+            <Route path="/salas"           element={<Salas />} />
+            <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
+            <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />
           </Route>
 
+          {/* 👑 Panel de administración */}
           <Route path="/admin" element={<PrivateRoute requireAdmin><AdminLayout /></PrivateRoute>}>
             <Route index                          element={<AdminDashboard />} />
             <Route path="evaluaciones"            element={<EvaluacionesList />} />
@@ -71,6 +81,9 @@ export default function App() {
             <Route path="editor"                  element={<AdminEditor />} />
             <Route path="errores"                 element={<AdminErrores />} />
           </Route>
+
+          {/* 🔄 Redirección por defecto (por si acaso) */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

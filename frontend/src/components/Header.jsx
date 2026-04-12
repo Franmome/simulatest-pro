@@ -58,7 +58,7 @@ export default function Header({ title, children, expanded, onMenuClick }) {
 
     try {
       await logout()
-      navigate('/login', { replace: true })
+      navigate('/', { replace: true })
     } catch (err) {
       console.error('Error al cerrar sesión:', err)
       setLoggingOut(false)
