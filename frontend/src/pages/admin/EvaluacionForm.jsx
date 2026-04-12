@@ -1,5 +1,5 @@
 // frontend/src/pages/admin/EvaluacionForm.jsx
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../utils/supabase'
 
