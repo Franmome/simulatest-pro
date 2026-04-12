@@ -208,10 +208,11 @@ function iconoMaterial(type) {
 }
 
 // ============================================================================
-// COMPONENTES INTERNOS (PreguntaCard, NivelCard)
+// COMPONENTES INTERNOS
 // ============================================================================
-function PreguntaCard({ preg, idx, onChange, onDelete, expandido, onToggle, modoGuiado }) {
+function PreguntaCard({ preg, idx, onChange, onDelete, onDuplicate, expandido, onToggle, modoGuiado, modulos, nivelActivo, niveles, preguntas: todasPreguntas, onDuplicarANivel }) {
   const tieneCorrecta = preg.options.some(o => o.is_correct)
+  const [showDupMenu, setShowDupMenu] = useState(false)
 
   function setOpcion(i, field, value) {
     const opts = [...preg.options]
@@ -257,9 +258,19 @@ function PreguntaCard({ preg, idx, onChange, onDelete, expandido, onToggle, modo
           </InputField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <InputField label={modoGuiado ? "Módulo / área" : "Área temática"}>
-              <input type="text" value={preg.area} onChange={e => onChange({ ...preg, area: e.target.value })}
-                placeholder={modoGuiado ? "ej: Derecho Fiscal" : "ej: Derecho Fiscal"} className={INPUT_CLS} />
+            {/* Módulo/Área como selector con opción de nuevo */}
+            <InputField label={modoGuiado ? "Módulo" : "Área temática"}>
+              <input
+                type="text"
+                value={preg.area}
+                onChange={e => onChange({ ...preg, area: e.target.value })}
+                placeholder={modoGuiado ? "ej: Derecho Fiscal" : "ej: Derecho Fiscal"}
+                className={INPUT_CLS}
+                list={`modulos-list-${preg._id}`}
+              />
+              <datalist id={`modulos-list-${preg._id}`}>
+                {modulos.filter(Boolean).map(m => <option key={m} value={m} />)}
+              </datalist>
             </InputField>
             <InputField label="Dificultad">
               <select value={preg.difficulty} onChange={e => onChange({ ...preg, difficulty: e.target.value })} className={INPUT_CLS}>
@@ -293,12 +304,47 @@ function PreguntaCard({ preg, idx, onChange, onDelete, expandido, onToggle, modo
               placeholder="Explica por qué la respuesta es correcta..." className={`${INPUT_CLS} resize-none`} />
           </InputField>
 
-          <div className="flex justify-end">
-            <button type="button" onClick={onDelete}
-              className="flex items-center gap-1.5 text-xs font-bold text-error hover:bg-error-container/30 px-3 py-1.5 rounded-lg transition-colors">
-              <span className="material-symbols-outlined text-sm">delete</span>
-              Eliminar pregunta
-            </button>
+          <div className="flex justify-between items-center">
+            {/* Duplicar hacia otro nivel */}
+            <div className="relative">
+              <button type="button" onClick={() => setShowDupMenu(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-bold text-primary hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors">
+                <span className="material-symbols-outlined text-sm">content_copy</span>
+                Duplicar a otro nivel
+              </button>
+              {showDupMenu && (
+                <div className="absolute left-0 top-9 z-20 bg-surface rounded-xl shadow-lg border border-outline-variant/20 min-w-[180px]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-3 pt-3 pb-1">Copiar al nivel:</p>
+                  {niveles.filter(n => n._id !== nivelActivo).map(n => (
+                    <button key={n._id} type="button"
+                      onClick={() => { onDuplicarANivel(preg, n._id); setShowDupMenu(false) }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-surface-container transition-colors">
+                      {n.name || 'Sin nombre'}
+                    </button>
+                  ))}
+                  {niveles.filter(n => n._id !== nivelActivo).length === 0 && (
+                    <p className="px-3 py-2 text-xs text-on-surface-variant">No hay otros niveles</p>
+                  )}
+                  <button type="button" onClick={() => setShowDupMenu(false)}
+                    className="w-full text-left px-3 py-2 text-xs text-error hover:bg-error-container/20 transition-colors border-t border-outline-variant/10">
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onDuplicate}
+                className="flex items-center gap-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded-lg transition-colors">
+                <span className="material-symbols-outlined text-sm">add_circle</span>
+                Duplicar aquí
+              </button>
+              <button type="button" onClick={onDelete}
+                className="flex items-center gap-1.5 text-xs font-bold text-error hover:bg-error-container/30 px-3 py-1.5 rounded-lg transition-colors">
+                <span className="material-symbols-outlined text-sm">delete</span>
+                Eliminar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -306,13 +352,17 @@ function PreguntaCard({ preg, idx, onChange, onDelete, expandido, onToggle, modo
   )
 }
 
-function NivelCard({ nivel, idx, onChange, onDelete, preguntasCount, onDuplicate, modoGuiado }) {
+function NivelCard({ nivel, idx, onChange, onDelete, preguntasCount, onDuplicate, modoGuiado, onVerPreguntas }) {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">{idx + 1}</div>
         <h4 className="font-bold text-sm flex-1">{nivel.name || (modoGuiado ? `Banco ${idx + 1}` : `Nivel ${idx + 1}`)}</h4>
-        <span className="text-xs text-on-surface-variant">{preguntasCount} pregunta{preguntasCount !== 1 ? 's' : ''}</span>
+        <button type="button" onClick={onVerPreguntas}
+          className="flex items-center gap-1 text-xs font-bold text-primary hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors">
+          <span className="material-symbols-outlined text-sm">quiz</span>
+          {preguntasCount} preg.
+        </button>
         {idx > 0 && (
           <button type="button" onClick={onDelete} className="p-1.5 text-error hover:bg-error-container/30 rounded-lg transition-colors">
             <span className="material-symbols-outlined text-sm">close</span>
@@ -340,6 +390,14 @@ function NivelCard({ nivel, idx, onChange, onDelete, preguntasCount, onDuplicate
           <input type="number" min={50} max={100} value={nivel.passing_score}
             onChange={e => onChange({ ...nivel, passing_score: Number(e.target.value) })} className={INPUT_CLS} />
         </InputField>
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-outline-variant/10">
+        <button type="button" onClick={onVerPreguntas}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold bg-primary/5 text-primary hover:bg-primary/10 transition-colors">
+          <span className="material-symbols-outlined text-sm">edit_note</span>
+          Ver y editar preguntas de este {modoGuiado ? 'banco' : 'nivel'} ({preguntasCount})
+        </button>
       </div>
     </Card>
   )
@@ -374,8 +432,10 @@ export default function EvaluacionForm() {
   const [preguntas, setPreguntas] = useState({ n1: [preguntaVacia()] })
   const [pregExpandida, setPregExpandida] = useState(null)
 
+  // FIX: Módulo activo para filtrar preguntas
+  const [moduloActivo, setModuloActivo] = useState(null)
+
   const [versiones, setVersiones] = useState([])
-  const [levelsList, setLevelsList] = useState([])
   const [materiales, setMateriales] = useState([])
   const [nuevoMat, setNuevoMat] = useState({
     title: '',
@@ -392,6 +452,11 @@ export default function EvaluacionForm() {
   const [guardandoMat, setGuardandoMat] = useState(false)
   const [profesiones, setProfesiones] = useState([])
 
+  // FIX: Modal nueva categoría
+  const [showCatModal, setShowCatModal] = useState(false)
+  const [nuevaCategoria, setNuevaCategoria] = useState('')
+  const [guardandoCat, setGuardandoCat] = useState(false)
+
   const [showProfModal, setShowProfModal] = useState(false)
   const [nuevaProfesion, setNuevaProfesion] = useState('')
 
@@ -402,7 +467,7 @@ export default function EvaluacionForm() {
   const [warnings, setWarnings] = useState([])
 
   // ==========================================================================
-  // HELPERS (package_id, etc.)
+  // HELPERS
   // ==========================================================================
   const obtenerPackageIdDeEvaluacion = useCallback(async () => {
     if (!id) return null
@@ -428,7 +493,6 @@ export default function EvaluacionForm() {
   useEffect(() => {
     cargarCategorias()
     cargarProfesiones()
-    cargarLevels()
     if (isEdit) {
       cargarEvaluacion()
       cargarVersiones()
@@ -448,15 +512,6 @@ export default function EvaluacionForm() {
       return
     }
     setProfesiones(data || [])
-  }
-
-  async function cargarLevels() {
-    const { data, error } = await supabase.from('levels').select('id, name').order('id')
-    if (error) {
-      addToast('error', 'Error al cargar niveles: ' + error.message)
-      return
-    }
-    setLevelsList(data || [])
   }
 
   async function cargarEvaluacion() {
@@ -530,6 +585,31 @@ export default function EvaluacionForm() {
       return
     }
     setMateriales(data || [])
+  }
+
+  // ==========================================================================
+  // FIX: AGREGAR CATEGORÍA INLINE
+  // ==========================================================================
+  async function agregarCategoria() {
+    const nombre = nuevaCategoria.trim()
+    if (!nombre) {
+      addToast('warning', 'Escribe un nombre para la categoría')
+      return
+    }
+    setGuardandoCat(true)
+    try {
+      const { data, error } = await supabase.from('categories').insert({ name: nombre }).select().single()
+      if (error) throw error
+      setCategorias(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+      setForm(f => ({ ...f, category_id: data.id }))
+      setNuevaCategoria('')
+      setShowCatModal(false)
+      addToast('success', 'Categoría agregada correctamente')
+    } catch (err) {
+      addToast('error', 'Error al crear categoría: ' + err.message)
+    } finally {
+      setGuardandoCat(false)
+    }
   }
 
   // ==========================================================================
@@ -614,27 +694,9 @@ export default function EvaluacionForm() {
     await supabase.from('package_versions').update({ [campo]: valor }).eq('id', versionId)
   }
 
-  async function handleProfessionChange(versionId, professionId) {
-    const profesion = profesiones.find(p => p.id === parseInt(professionId))
-    const versionActual = versiones.find(v => v.id === versionId)
-
-    const debeAutocompletar = !versionActual?.display_name?.trim()
-      || versionActual.display_name === 'Nueva versión'
-
-    const nuevoDisplayName = debeAutocompletar && profesion
-      ? profesion.name
-      : versionActual?.display_name || ''
-
-    setVersiones(prev => prev.map(v =>
-      v.id === versionId
-        ? { ...v, profession_id: professionId ? parseInt(professionId) : null, display_name: nuevoDisplayName }
-        : v
-    ))
-
-    await supabase.from('package_versions').update({
-      profession_id: professionId ? parseInt(professionId) : null,
-      display_name: nuevoDisplayName,
-    }).eq('id', versionId)
+  // FIX: profession_id y level_id ahora son texto libre — guardamos directo
+  function handleVersionFieldChange(versionId, campo, valor) {
+    setVersiones(prev => prev.map(v => (v.id === versionId ? { ...v, [campo]: valor } : v)))
   }
 
   async function handleLevelChange(versionId, levelId) {
@@ -652,7 +714,7 @@ export default function EvaluacionForm() {
   }
 
   // ==========================================================================
-  // MATERIAL DE ESTUDIO
+  // MATERIAL DE ESTUDIO — FIX: subida local de archivos
   // ==========================================================================
   async function agregarMaterial() {
     if (!nuevoMat.title.trim()) {
@@ -678,22 +740,6 @@ export default function EvaluacionForm() {
     setNuevoMat(m => ({ ...m, uploading: true, uploadProgress: 0 }))
 
     try {
-      // Verificar existencia del bucket (sin listBuckets si no hay permisos)
-      let bucketExiste = true
-      try {
-        const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
-        if (!bucketError && !buckets?.find(b => b.name === 'materials')) {
-          bucketExiste = false
-        }
-      } catch (listError) {
-        // Si falla por permisos, asumimos que el bucket existe e intentamos subir igual
-        console.warn('No se pudo listar buckets, posible falta de permisos. Continuando...')
-      }
-
-      if (!bucketExiste) {
-        throw new Error('El bucket "materials" no existe en Supabase Storage. Créalo en la consola.')
-      }
-
       let finalUrl = ''
       let storagePath = ''
       let fileSize = 0
@@ -705,12 +751,24 @@ export default function EvaluacionForm() {
         const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
         storagePath = `study_materials/${packageId}/${fileName}`
 
+        // Verificar bucket
+        let bucketExiste = true
+        try {
+          const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
+          if (!bucketError && !buckets?.find(b => b.name === 'materials')) {
+            bucketExiste = false
+          }
+        } catch {
+          console.warn('No se pudo verificar el bucket, intentando subir...')
+        }
+
+        if (!bucketExiste) {
+          throw new Error('El bucket "materials" no existe. Créalo en Supabase Storage.')
+        }
+
         const { error: uploadError } = await supabase.storage
           .from('materials')
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: false,
-          })
+          .upload(storagePath, file, { cacheControl: '3600', upsert: false })
 
         if (uploadError) throw uploadError
 
@@ -718,6 +776,14 @@ export default function EvaluacionForm() {
         finalUrl = publicUrl
         fileSize = file.size
         mimeType = file.type
+
+        // Detectar tipo automáticamente si no fue seleccionado
+        if (!nuevoMat.type || nuevoMat.type === 'pdf') {
+          if (mimeType.includes('video')) setNuevoMat(m => ({ ...m, type: 'video' }))
+          else if (mimeType.includes('pdf')) setNuevoMat(m => ({ ...m, type: 'pdf' }))
+          else if (mimeType.includes('word') || mimeType.includes('document')) setNuevoMat(m => ({ ...m, type: 'doc' }))
+        }
+
       } else {
         finalUrl = nuevoMat.url
         storagePath = null
@@ -791,21 +857,17 @@ export default function EvaluacionForm() {
     if (!mats?.length) return
 
     const matIds = mats.map(m => m.id)
-
     const { data: relacionesActuales } = await supabase
       .from('study_material_versions')
       .select('study_material_id, package_version_id')
       .in('study_material_id', matIds)
 
     const existentes = new Set((relacionesActuales || []).map(r => `${r.study_material_id}:${r.package_version_id}`))
-
     const nuevas = []
     for (const matId of matIds) {
       for (const versionId of versionesActivasIds) {
         const key = `${matId}:${versionId}`
-        if (!existentes.has(key)) {
-          nuevas.push({ study_material_id: matId, package_version_id: versionId })
-        }
+        if (!existentes.has(key)) nuevas.push({ study_material_id: matId, package_version_id: versionId })
       }
     }
 
@@ -819,16 +881,13 @@ export default function EvaluacionForm() {
         .eq('package_version_id', r.package_version_id)
     }
 
-    if (nuevas.length) {
-      await supabase.from('study_material_versions').insert(nuevas)
-    }
+    if (nuevas.length) await supabase.from('study_material_versions').insert(nuevas)
   }
 
   async function sincronizarNivelesVersiones(versionesFrescas) {
     if (!versionesFrescas.length) return
 
     const versionIds = versionesFrescas.map(v => v.id)
-
     const levelMapEstado = {}
     versiones.forEach(v => { if (v.id && v.level_id) levelMapEstado[v.id] = v.level_id })
 
@@ -880,8 +939,8 @@ export default function EvaluacionForm() {
   // ==========================================================================
   // PREGUNTAS
   // ==========================================================================
-  function agregarPregunta() {
-    const nueva = preguntaVacia()
+  function agregarPregunta(moduloInicial = '') {
+    const nueva = { ...preguntaVacia(), area: moduloInicial }
     setPreguntas(prev => ({ ...prev, [nivelActivo]: [...(prev[nivelActivo] || []), nueva] }))
     setPregExpandida(nueva._id)
   }
@@ -892,6 +951,28 @@ export default function EvaluacionForm() {
 
   function eliminarPregunta(nId, pregId) {
     setPreguntas(prev => ({ ...prev, [nId]: prev[nId].filter(p => p._id !== pregId) }))
+  }
+
+  function duplicarPreguntaEnMismoNivel(nId, preg) {
+    const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
+    setPreguntas(prev => {
+      const arr = [...(prev[nId] || [])]
+      const idx = arr.findIndex(p => p._id === preg._id)
+      arr.splice(idx + 1, 0, copia)
+      return { ...prev, [nId]: arr }
+    })
+    addToast('success', 'Pregunta duplicada')
+  }
+
+  // FIX: Duplicar pregunta hacia otro nivel
+  function duplicarPreguntaANivel(preg, destinoNivelId) {
+    const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
+    setPreguntas(prev => ({
+      ...prev,
+      [destinoNivelId]: [...(prev[destinoNivelId] || []), copia]
+    }))
+    const nombreDestino = niveles.find(n => n._id === destinoNivelId)?.name || 'otro nivel'
+    addToast('success', `Pregunta duplicada al nivel "${nombreDestino}"`)
   }
 
   // ==========================================================================
@@ -996,12 +1077,6 @@ export default function EvaluacionForm() {
       warns.push(`${nivelesNoUsados.length} nivel(es) no están asignados a ninguna versión: ${nivelesNoUsados.map(n => n.name || 'sin nombre').join(', ')}.`)
     }
 
-    const nivelesIds = new Set(niveles.map(n => String(n._id)))
-    const versionesConLevelRoto = versionesActivas.filter(v => v.level_id && !nivelesIds.has(String(v.level_id)))
-    if (versionesConLevelRoto.length) {
-      warns.push(`Hay versiones con un nivel asignado que ya no existe: ${versionesConLevelRoto.map(v => v.display_name).join(', ')}.`)
-    }
-
     setWarnings(warns)
     return warns
   }, [versiones, niveles])
@@ -1028,12 +1103,6 @@ export default function EvaluacionForm() {
       }
       if (!v.price || v.price <= 0) {
         throw Object.assign(new Error(`La versión "${v.display_name}" debe tener un precio válido.`), { seccion: 'profesiones' })
-      }
-      if (!v.level_id) {
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" no tiene un nivel de preguntas asignado. Asígnalo en la pestaña Versiones y Precios.`),
-          { seccion: 'profesiones' }
-        )
       }
     }
 
@@ -1187,7 +1256,7 @@ export default function EvaluacionForm() {
         }
       }
 
-      // 3. Paquete y versiones (solo si se publica)
+      // 3. Paquete y versiones
       if (form.is_active) {
         setGuardadoStage('Configurando paquete y versiones...')
         let packageId = await obtenerPackageIdDeEvaluacion()
@@ -1308,15 +1377,32 @@ export default function EvaluacionForm() {
   }
 
   // ==========================================================================
-  // RENDER
+  // RENDER HELPERS
   // ==========================================================================
   const pregActivas = preguntas[nivelActivo] || []
   const totalPregs = Object.values(preguntas).reduce((sum, arr) => sum + arr.length, 0)
   const carpetas = [...new Set(materiales.map(m => m.folder))]
   const versionesActivas = versiones.filter(v => v.is_active)
   const precioMinimo = versionesActivas.length ? Math.min(...versionesActivas.map(v => Number(v.price) || 0)) : 0
-
   const esModoSimple = modoVersiones === 'simple'
+
+  // FIX: Módulos del nivel activo
+  const modulosDelNivelActivo = useMemo(() => {
+    const areas = (preguntas[nivelActivo] || []).map(p => p.area?.trim()).filter(Boolean)
+    return [...new Set(areas)]
+  }, [preguntas, nivelActivo])
+
+  // Todos los módulos de todos los niveles (para autocompletar)
+  const todosLosModulos = useMemo(() => {
+    const areas = Object.values(preguntas).flat().map(p => p.area?.trim()).filter(Boolean)
+    return [...new Set(areas)]
+  }, [preguntas])
+
+  // Preguntas filtradas por módulo activo
+  const pregsFiltradas = useMemo(() => {
+    if (!moduloActivo) return pregActivas
+    return pregActivas.filter(p => (p.area?.trim() || '') === moduloActivo)
+  }, [pregActivas, moduloActivo])
 
   const labels = useMemo(() => {
     if (!modoGuiado) {
@@ -1347,19 +1433,9 @@ export default function EvaluacionForm() {
     }
   }, [modoGuiado])
 
-  // Agrupación de preguntas por módulo (área) para vista opcional
-  const preguntasPorModulo = useMemo(() => {
-    const modulos = {}
-    Object.entries(preguntas).forEach(([nivelId, pregs]) => {
-      pregs.forEach(preg => {
-        const modulo = preg.area?.trim() || 'Sin módulo'
-        if (!modulos[modulo]) modulos[modulo] = []
-        modulos[modulo].push({ ...preg, nivelId })
-      })
-    })
-    return modulos
-  }, [preguntas])
-
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
     <ToastProvider>
       <div className="min-h-screen bg-background">
@@ -1384,6 +1460,12 @@ export default function EvaluacionForm() {
               {materiales.length > 0 && (
                 <span className="text-xs font-bold text-secondary bg-secondary-container/30 px-3 py-1 rounded-full">
                   {materiales.length} material{materiales.length !== 1 ? 'es' : ''}
+                </span>
+              )}
+              {warnings.length > 0 && (
+                <span className="text-xs font-bold text-tertiary bg-tertiary-container/30 px-3 py-1 rounded-full flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">warning</span>
+                  {warnings.length} aviso{warnings.length !== 1 ? 's' : ''}
                 </span>
               )}
             </div>
@@ -1471,10 +1553,34 @@ export default function EvaluacionForm() {
                   </p>
                   <div className="space-y-1">
                     {niveles.map(nv => (
-                      <button key={nv._id} type="button" onClick={() => setNivelActivo(nv._id)}
+                      <button key={nv._id} type="button" onClick={() => { setNivelActivo(nv._id); setModuloActivo(null) }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${nivelActivo === nv._id ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface-variant hover:bg-surface-container'}`}>
                         {nv.name || (modoGuiado ? 'Banco sin nombre' : 'Sin nombre')}
                         <span className="ml-2 text-[10px] opacity-70">({(preguntas[nv._id] || []).length} pregs.)</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* FIX: Módulos del nivel activo en sidebar cuando estamos en preguntas */}
+              {tab === 'preguntas' && modulosDelNivelActivo.length > 0 && (
+                <Card className="p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+                    {modoGuiado ? 'Módulos' : 'Áreas temáticas'}
+                  </p>
+                  <div className="space-y-1">
+                    <button type="button"
+                      onClick={() => setModuloActivo(null)}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${!moduloActivo ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
+                      Todos ({pregActivas.length})
+                    </button>
+                    {modulosDelNivelActivo.map(mod => (
+                      <button key={mod} type="button"
+                        onClick={() => setModuloActivo(mod)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${moduloActivo === mod ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
+                        {mod}
+                        <span className="ml-1 opacity-60">({pregActivas.filter(p => p.area?.trim() === mod).length})</span>
                       </button>
                     ))}
                   </div>
@@ -1496,11 +1602,27 @@ export default function EvaluacionForm() {
                   </div>
                 </div>
               </Card>
+
+              {/* Avisos de consistencia */}
+              {warnings.length > 0 && (
+                <Card className="p-4 border border-tertiary/20 bg-tertiary-container/10">
+                  <p className="text-xs font-bold uppercase tracking-widest text-tertiary mb-2 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">warning</span>
+                    Avisos de consistencia
+                  </p>
+                  <ul className="space-y-1">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="text-xs text-on-surface-variant">{w}</li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
             </div>
 
             {/* Contenido principal */}
             <div className="lg:col-span-2 space-y-6">
-              {/* GENERAL */}
+
+              {/* ===== GENERAL ===== */}
               {tab === 'general' && (
                 <Card className="p-6 space-y-5">
                   <h3 className="font-bold text-lg font-headline">Información del Paquete</h3>
@@ -1512,12 +1634,22 @@ export default function EvaluacionForm() {
                     <textarea rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
                       placeholder="Describe qué cubre este paquete, áreas temáticas, cantidad de preguntas..." className={`${INPUT_CLS} resize-none`} />
                   </InputField>
+
+                  {/* FIX: Categoría con botón agregar */}
                   <InputField label="Categoría">
-                    <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={INPUT_CLS}>
-                      <option value="">Sin categoría</option>
-                      {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <div className="flex gap-2">
+                      <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={`${INPUT_CLS} flex-1`}>
+                        <option value="">Sin categoría</option>
+                        {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <button type="button" onClick={() => setShowCatModal(true)}
+                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold hover:bg-primary/20 transition-colors">
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        Nueva
+                      </button>
+                    </div>
                   </InputField>
+
                   <div className="flex items-center justify-between p-4 bg-surface-container rounded-xl">
                     <div>
                       <p className="text-sm font-bold">Publicar paquete</p>
@@ -1528,10 +1660,16 @@ export default function EvaluacionForm() {
                       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.is_active ? 'right-0.5' : 'left-0.5'}`} />
                     </button>
                   </div>
+
+                  <HelpBox title="Cómo funciona esta sección" items={[
+                    'Aquí defines la información general del paquete que se publica en la plataforma.',
+                    'Si activas "Publicar paquete", aparecerá disponible para compra.',
+                    'La descripción debe explicar qué incluye: simulacros, módulos, videos y material.',
+                  ]} />
                 </Card>
               )}
 
-              {/* VERSIONES */}
+              {/* ===== VERSIONES / PRECIOS ===== */}
               {tab === 'profesiones' && (
                 <Card className="p-6 space-y-5">
                   <div className="flex items-center justify-between gap-4">
@@ -1571,20 +1709,19 @@ export default function EvaluacionForm() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setShowProfModal(true)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1">
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      Agregar profesión
-                    </button>
-                  </div>
+                  <HelpBox title="Cómo funcionan las versiones" items={[
+                    'Cada versión representa un cargo, profesión o perfil de acceso.',
+                    'Cada versión debe tener nombre, precio y nivel de preguntas asignado.',
+                    'El nivel define qué preguntas ve el usuario al comprar esta versión.',
+                    'Modo avanzado: múltiples versiones con precios independientes.',
+                  ]} />
 
                   {id && versiones.map((version, idx) => {
                     const esVersionExtraEnSimple = esModoSimple && idx > 0
                     if (esVersionExtraEnSimple) return null
 
                     return (
-                      <div key={version.id} className={`rounded-2xl border-2 p-5 space-y-4 ${!version.is_active ? 'border-outline-variant/10 opacity-60' : version.level_id ? 'border-secondary/20' : 'border-orange-200'}`}>
+                      <div key={version.id} className={`rounded-2xl border-2 p-5 space-y-4 ${!version.is_active ? 'border-outline-variant/10 opacity-60' : 'border-secondary/20'}`}>
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-primary/10 text-primary">{idx + 1}</div>
@@ -1622,27 +1759,50 @@ export default function EvaluacionForm() {
                           </div>
                         </div>
 
+                        {/* FIX: Profesión asociada — texto libre con autocompletar */}
                         {!esModoSimple && (
                           <div className="space-y-1">
                             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                              Profesión asociada (opcional)
+                              Profesión asociada <span className="normal-case font-normal">(opcional)</span>
                             </label>
-                            <select value={version.profession_id || ''} onChange={e => handleProfessionChange(version.id, e.target.value)} className={INPUT_CLS}>
-                              <option value="">— Ninguna —</option>
-                              {profesiones.map(prof => <option key={prof.id} value={prof.id}>{prof.name}</option>)}
-                            </select>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={version.profession_name || ''}
+                                onChange={e => handleVersionFieldChange(version.id, 'profession_name', e.target.value)}
+                                placeholder="ej: Abogado, Contador..."
+                                className={`${INPUT_CLS} flex-1`}
+                                list={`profesiones-list-${version.id}`}
+                              />
+                              <datalist id={`profesiones-list-${version.id}`}>
+                                {profesiones.map(p => <option key={p.id} value={p.name} />)}
+                              </datalist>
+                              <button type="button" onClick={() => setShowProfModal(true)}
+                                className="flex-shrink-0 px-3 py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold hover:bg-primary/20 transition-colors">
+                                <span className="material-symbols-outlined text-sm">add</span>
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-on-surface-variant">Escribe o selecciona de la lista. El nombre de la versión se sugiere automáticamente si el campo está vacío.</p>
                           </div>
                         )}
 
+                        {/* FIX: Nivel de preguntas — texto libre con autocompletar */}
                         <div className="space-y-1">
-                          <label className={`text-[10px] font-bold uppercase tracking-widest ${version.is_active && !version.level_id ? 'text-orange-600' : 'text-on-surface-variant'}`}>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                             {labels.nivel} {version.is_active ? '*' : ''}
                           </label>
-                          <select value={version.level_id || ''} onChange={e => handleLevelChange(version.id, e.target.value)}
-                            className={`${INPUT_CLS} ${version.is_active && !version.level_id ? 'border-orange-300 ring-1 ring-orange-200' : ''}`}>
-                            <option value="">— Seleccionar —</option>
-                            {levelsList.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
-                          </select>
+                          <input
+                            type="text"
+                            value={version.level_name || ''}
+                            onChange={e => handleVersionFieldChange(version.id, 'level_name', e.target.value)}
+                            placeholder="ej: profesional, técnico..."
+                            className={INPUT_CLS}
+                            list={`niveles-list-${version.id}`}
+                          />
+                          <datalist id={`niveles-list-${version.id}`}>
+                            {niveles.map(n => <option key={n._id} value={n.name} />)}
+                          </datalist>
+                          <p className="text-[10px] text-on-surface-variant">Escribe el nombre del nivel o selecciónalo de la lista. Define qué banco de preguntas cargará esta versión.</p>
                         </div>
 
                         <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
@@ -1666,7 +1826,7 @@ export default function EvaluacionForm() {
                 </Card>
               )}
 
-              {/* NIVELES */}
+              {/* ===== NIVELES ===== */}
               {tab === 'niveles' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -1688,80 +1848,118 @@ export default function EvaluacionForm() {
                       onDelete={() => eliminarNivel(nv._id)}
                       onDuplicate={() => duplicarNivel(nv)}
                       preguntasCount={(preguntas[nv._id] || []).length}
-                      modoGuiado={modoGuiado} />
+                      modoGuiado={modoGuiado}
+                      onVerPreguntas={() => { setNivelActivo(nv._id); setModuloActivo(null); setTab('preguntas') }}
+                    />
                   ))}
                 </div>
               )}
 
-              {/* PREGUNTAS */}
+              {/* ===== PREGUNTAS ===== */}
               {tab === 'preguntas' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  {/* Encabezado con nivel y módulo activo */}
+                  <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                       <h3 className="font-bold text-lg font-headline">
                         Preguntas — {niveles.find(n => n._id === nivelActivo)?.name || (modoGuiado ? 'Banco' : 'Nivel')}
+                        {moduloActivo && <span className="text-primary ml-2">› {moduloActivo}</span>}
                       </h3>
                       <p className="text-xs text-on-surface-variant mt-0.5">
-                        {pregActivas.length} pregunta{pregActivas.length !== 1 ? 's' : ''} en este {modoGuiado ? 'banco' : 'nivel'}
+                        {moduloActivo
+                          ? `${pregsFiltradas.length} pregunta${pregsFiltradas.length !== 1 ? 's' : ''} en este módulo`
+                          : `${pregActivas.length} pregunta${pregActivas.length !== 1 ? 's' : ''} en este ${modoGuiado ? 'banco' : 'nivel'}`}
                       </p>
                     </div>
-                    <button type="button" onClick={agregarPregunta}
-                      className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      Agregar pregunta
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {moduloActivo && (
+                        <button type="button" onClick={() => setModuloActivo(null)}
+                          className="flex items-center gap-1 text-xs text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded-lg transition-colors">
+                          <span className="material-symbols-outlined text-sm">close</span>
+                          Quitar filtro
+                        </button>
+                      )}
+                      <button type="button" onClick={() => agregarPregunta(moduloActivo || '')}
+                        className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        Agregar pregunta{moduloActivo ? ` en "${moduloActivo}"` : ''}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Vista de módulos */}
-                  <details className="bg-surface-container-lowest rounded-xl border border-outline-variant/15">
-                    <summary className="p-4 font-bold text-sm cursor-pointer">
-                      {modoGuiado ? 'Ver por módulos' : 'Ver por áreas temáticas'}
-                    </summary>
-                    <div className="p-4 border-t border-outline-variant/15 space-y-3">
-                      {Object.keys(preguntasPorModulo).length === 0 ? (
-                        <p className="text-xs text-on-surface-variant">No hay preguntas aún.</p>
-                      ) : (
-                        Object.entries(preguntasPorModulo).map(([modulo, pregs]) => (
-                          <div key={modulo}>
-                            <p className="text-sm font-bold mb-1">{modulo} ({pregs.length})</p>
-                            <ul className="text-xs space-y-1 list-disc list-inside">
-                              {pregs.slice(0, 5).map(p => (
-                                <li key={p._id} className="truncate">{p.text || 'Sin enunciado'}</li>
-                              ))}
-                              {pregs.length > 5 && <li className="text-on-surface-variant">...y {pregs.length - 5} más</li>}
-                            </ul>
-                          </div>
-                        ))
-                      )}
+                  {/* FIX: Módulos como bloques colapsables */}
+                  {!moduloActivo && modulosDelNivelActivo.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm">category</span>
+                        {modoGuiado ? 'Módulos' : 'Áreas temáticas'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {modulosDelNivelActivo.map(mod => (
+                          <button key={mod} type="button" onClick={() => setModuloActivo(mod)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-secondary-container/40 text-secondary hover:bg-secondary-container/60 transition-colors">
+                            {mod}
+                            <span className="bg-secondary text-on-secondary rounded-full w-4 h-4 flex items-center justify-center text-[9px]">
+                              {pregActivas.filter(p => p.area?.trim() === mod).length}
+                            </span>
+                          </button>
+                        ))}
+                        <button type="button" onClick={() => agregarPregunta('')}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors">
+                          <span className="material-symbols-outlined text-sm">add</span>
+                          Nuevo módulo
+                        </button>
+                      </div>
                     </div>
-                  </details>
+                  )}
 
-                  {pregActivas.length === 0 ? (
+                  {/* Sin módulo asignado */}
+                  {!moduloActivo && pregActivas.filter(p => !p.area?.trim()).length > 0 && (
+                    <div className="p-3 bg-tertiary-container/20 rounded-xl border border-tertiary/20">
+                      <p className="text-xs font-bold text-tertiary mb-1">
+                        {pregActivas.filter(p => !p.area?.trim()).length} pregunta(s) sin {modoGuiado ? 'módulo' : 'área temática'}
+                      </p>
+                      <p className="text-xs text-on-surface-variant">Asigna un módulo a cada pregunta para organizarlas mejor.</p>
+                    </div>
+                  )}
+
+                  {pregsFiltradas.length === 0 ? (
                     <Card className="p-10 text-center text-on-surface-variant">
                       <span className="material-symbols-outlined text-4xl opacity-30 mb-2 block">quiz</span>
-                      <p className="font-semibold text-sm">Sin preguntas en este {modoGuiado ? 'banco' : 'nivel'}</p>
+                      <p className="font-semibold text-sm">
+                        {moduloActivo
+                          ? `Sin preguntas en el módulo "${moduloActivo}"`
+                          : `Sin preguntas en este ${modoGuiado ? 'banco' : 'nivel'}`}
+                      </p>
                       <p className="text-xs mt-1">Agrégalas manualmente o importa desde CSV</p>
                     </Card>
                   ) : (
-                    pregActivas.map((preg, i) => (
+                    pregsFiltradas.map((preg, i) => (
                       <PreguntaCard key={preg._id} preg={preg} idx={i}
                         expandido={pregExpandida === preg._id}
                         onToggle={() => setPregExpandida(pregExpandida === preg._id ? null : preg._id)}
                         onChange={datos => actualizarPregunta(nivelActivo, preg._id, datos)}
                         onDelete={() => eliminarPregunta(nivelActivo, preg._id)}
-                        modoGuiado={modoGuiado} />
+                        onDuplicate={() => duplicarPreguntaEnMismoNivel(nivelActivo, preg)}
+                        onDuplicarANivel={(p, destId) => duplicarPreguntaANivel(p, destId)}
+                        modoGuiado={modoGuiado}
+                        modulos={todosLosModulos}
+                        nivelActivo={nivelActivo}
+                        niveles={niveles}
+                        preguntas={preguntas}
+                      />
                     ))
                   )}
                 </div>
               )}
 
-              {/* MATERIAL */}
+              {/* ===== MATERIAL DE ESTUDIO ===== */}
               {tab === 'material' && (
                 <div className="space-y-5">
                   <div>
                     <h3 className="font-bold text-lg font-headline">{labels.material}</h3>
                     <p className="text-xs text-on-surface-variant mt-1">
-                      {!id ? 'Guarda el paquete primero para agregar material.' : 'Sube archivos (PDF, Word, videos) o agrega enlaces. El material se asigna a todas las versiones activas.'}
+                      {!id ? 'Guarda el paquete primero para agregar material.' : 'Sube archivos (PDF, Word, videos) o agrega enlaces externos. El material se asigna a todas las versiones activas.'}
                     </p>
                   </div>
 
@@ -1779,88 +1977,122 @@ export default function EvaluacionForm() {
                         </h4>
 
                         <div className="space-y-3">
+                          {/* FIX: Toggle subir archivo / pegar enlace */}
                           <div className="flex gap-2 p-1 bg-surface-container rounded-full">
                             <button
                               type="button"
                               onClick={() => setNuevoMat(m => ({ ...m, source_type: 'upload', url: '', file: null }))}
-                              className={`flex-1 py-2 rounded-full text-xs font-bold transition ${
+                              className={`flex-1 py-2 rounded-full text-xs font-bold transition flex items-center justify-center gap-1 ${
                                 nuevoMat.source_type === 'upload' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
                               }`}
                             >
+                              <span className="material-symbols-outlined text-sm">upload_file</span>
                               Subir archivo
                             </button>
                             <button
                               type="button"
                               onClick={() => setNuevoMat(m => ({ ...m, source_type: 'link', file: null }))}
-                              className={`flex-1 py-2 rounded-full text-xs font-bold transition ${
+                              className={`flex-1 py-2 rounded-full text-xs font-bold transition flex items-center justify-center gap-1 ${
                                 nuevoMat.source_type === 'link' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
                               }`}
                             >
+                              <span className="material-symbols-outlined text-sm">link</span>
                               Pegar enlace
                             </button>
                           </div>
 
+                          {/* FIX: Zona de subida de archivo local */}
                           {nuevoMat.source_type === 'upload' ? (
-                            <div className="border-2 border-dashed border-outline-variant rounded-xl p-6 text-center">
+                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${nuevoMat.file ? 'border-secondary bg-secondary-container/10' : 'border-outline-variant hover:border-primary'}`}>
                               <input
                                 type="file"
-                                accept=".pdf,.doc,.docx,.mp4,.mov,.jpg,.png"
-                                onChange={e => setNuevoMat(m => ({ ...m, file: e.target.files[0] }))}
+                                accept=".pdf,.doc,.docx,.mp4,.mov,.avi,.jpg,.jpeg,.png,.xlsx,.pptx"
+                                onChange={e => {
+                                  const file = e.target.files[0]
+                                  if (!file) return
+                                  // Auto-detectar tipo
+                                  let tipo = nuevoMat.type
+                                  if (file.type.includes('pdf')) tipo = 'pdf'
+                                  else if (file.type.includes('video')) tipo = 'video'
+                                  else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) tipo = 'doc'
+                                  setNuevoMat(m => ({ ...m, file, type: tipo, title: m.title || file.name.replace(/\.[^.]+$/, '') }))
+                                }}
                                 className="hidden"
                                 id="file-upload"
                               />
-                              <label htmlFor="file-upload" className="cursor-pointer">
-                                <span className="material-symbols-outlined text-3xl text-primary mb-2">upload_file</span>
-                                <p className="text-sm font-bold">
-                                  {nuevoMat.file ? nuevoMat.file.name : 'Seleccionar archivo'}
-                                </p>
-                                <p className="text-xs text-on-surface-variant">PDF, Word, videos (máx. 50MB)</p>
+                              <label htmlFor="file-upload" className="cursor-pointer block">
+                                {nuevoMat.file ? (
+                                  <div className="space-y-1">
+                                    <span className="material-symbols-outlined text-3xl text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                      {iconoMaterial(nuevoMat.type)}
+                                    </span>
+                                    <p className="text-sm font-bold text-secondary">{nuevoMat.file.name}</p>
+                                    <p className="text-xs text-on-surface-variant">
+                                      {(nuevoMat.file.size / 1024 / 1024).toFixed(2)} MB
+                                    </p>
+                                    <p className="text-[10px] text-primary underline cursor-pointer">Cambiar archivo</p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <span className="material-symbols-outlined text-3xl text-primary">upload_file</span>
+                                    <p className="text-sm font-bold">Haz clic para seleccionar</p>
+                                    <p className="text-xs text-on-surface-variant">PDF, Word, Excel, PowerPoint, Videos (máx. 50MB)</p>
+                                  </div>
+                                )}
                               </label>
                               {nuevoMat.uploading && (
                                 <div className="mt-3 w-full bg-surface-container-high rounded-full h-2">
                                   <div
                                     className="bg-primary h-2 rounded-full transition-all"
-                                    style={{ width: `${nuevoMat.uploadProgress}%` }}
+                                    style={{ width: `${nuevoMat.uploadProgress || 30}%` }}
                                   />
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <InputField label="URL / Link" required>
+                            <InputField label="URL / Link externo" required>
                               <input
                                 type="url"
                                 value={nuevoMat.url}
                                 onChange={e => setNuevoMat(m => ({ ...m, url: e.target.value }))}
-                                placeholder="https://..."
+                                placeholder="https://drive.google.com/... o https://youtube.com/..."
                                 className={INPUT_CLS}
                               />
+                              <p className="text-[10px] text-on-surface-variant mt-1">
+                                Útil para videos de YouTube, documentos de Drive, páginas web, etc.
+                              </p>
                             </InputField>
                           )}
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <InputField label="Título" required>
-                              <input type="text" value={nuevoMat.title} onChange={e => setNuevoMat(m => ({ ...m, title: e.target.value }))}
+                              <input type="text" value={nuevoMat.title}
+                                onChange={e => setNuevoMat(m => ({ ...m, title: e.target.value }))}
                                 placeholder="ej: Guía de Control Fiscal" className={INPUT_CLS} />
                             </InputField>
-                            <InputField label="Tipo">
-                              <select value={nuevoMat.type} onChange={e => setNuevoMat(m => ({ ...m, type: e.target.value }))} className={INPUT_CLS}>
+                            <InputField label="Tipo de recurso">
+                              <select value={nuevoMat.type}
+                                onChange={e => setNuevoMat(m => ({ ...m, type: e.target.value }))}
+                                className={INPUT_CLS}>
                                 <option value="pdf">📄 PDF</option>
                                 <option value="video">🎥 Video</option>
                                 <option value="link">🔗 Link externo</option>
-                                <option value="doc">📝 Documento</option>
+                                <option value="doc">📝 Documento Word/Excel</option>
                               </select>
                             </InputField>
                             <InputField label="Carpeta" hint="Para organizar">
-                              <input type="text" value={nuevoMat.folder} onChange={e => setNuevoMat(m => ({ ...m, folder: e.target.value }))}
-                                placeholder="ej: Módulo 1, Videos..." className={INPUT_CLS} list="carpetas-existentes" />
+                              <input type="text" value={nuevoMat.folder}
+                                onChange={e => setNuevoMat(m => ({ ...m, folder: e.target.value }))}
+                                placeholder="ej: Módulo 1, Videos..." className={INPUT_CLS}
+                                list="carpetas-existentes" />
                               <datalist id="carpetas-existentes">{carpetas.map(c => <option key={c} value={c} />)}</datalist>
                             </InputField>
+                            <InputField label="Descripción" hint="Opcional">
+                              <input type="text" value={nuevoMat.description}
+                                onChange={e => setNuevoMat(m => ({ ...m, description: e.target.value }))}
+                                placeholder="Breve descripción del contenido..." className={INPUT_CLS} />
+                            </InputField>
                           </div>
-
-                          <InputField label="Descripción" hint="Opcional">
-                            <input type="text" value={nuevoMat.description} onChange={e => setNuevoMat(m => ({ ...m, description: e.target.value }))}
-                              placeholder="Breve descripción del contenido..." className={INPUT_CLS} />
-                          </InputField>
 
                           <div className="flex items-center justify-between p-4 bg-surface-container rounded-xl">
                             <div>
@@ -1874,10 +2106,14 @@ export default function EvaluacionForm() {
                           </div>
 
                           <button type="button" onClick={agregarMaterial}
-                            disabled={guardandoMat || !nuevoMat.title.trim() || (nuevoMat.source_type === 'link' && !nuevoMat.url.trim()) || (nuevoMat.source_type === 'upload' && !nuevoMat.file)}
+                            disabled={guardandoMat
+                              || !nuevoMat.title.trim()
+                              || (nuevoMat.source_type === 'link' && !nuevoMat.url.trim())
+                              || (nuevoMat.source_type === 'upload' && !nuevoMat.file)}
                             className="w-full py-3 bg-secondary text-on-secondary rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-secondary/90 transition-all flex items-center justify-center gap-2">
-                            {guardandoMat ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-sm">add</span>}
-                            {guardandoMat ? 'Guardando...' : 'Agregar recurso'}
+                            {guardandoMat
+                              ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
+                              : <><span className="material-symbols-outlined text-sm">add</span>Agregar recurso</>}
                           </button>
                         </div>
                       </Card>
@@ -1886,6 +2122,7 @@ export default function EvaluacionForm() {
                         <div className="p-10 text-center text-on-surface-variant bg-surface-container rounded-2xl">
                           <span className="material-symbols-outlined text-4xl opacity-30 mb-2 block">folder_open</span>
                           <p className="font-semibold text-sm">Sin material agregado</p>
+                          <p className="text-xs mt-1 opacity-70">Sube un archivo o pega un enlace externo arriba</p>
                         </div>
                       ) : (
                         carpetas.map(carpeta => (
@@ -1905,17 +2142,18 @@ export default function EvaluacionForm() {
                                     <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>{iconoMaterial(m.type)}</span>
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <p className="font-bold text-sm truncate">{m.title}</p>
                                       {m.is_shared && <span className="text-[10px] bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-bold">Compartido</span>}
-                                      {m.source_type === 'upload' && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Archivo</span>}
+                                      {m.source_type === 'upload' && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Archivo local</span>}
+                                      {m.source_type === 'link' && <span className="text-[10px] bg-tertiary/10 text-tertiary px-2 py-0.5 rounded-full font-bold">Enlace externo</span>}
                                     </div>
                                     {m.description && <p className="text-xs text-on-surface-variant truncate">{m.description}</p>}
                                     <div className="flex items-center gap-2 mt-1">
                                       <a href={m.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline truncate">
                                         {m.source_type === 'upload' ? 'Descargar archivo' : 'Abrir enlace'}
                                       </a>
-                                      {m.file_size && <span className="text-[10px] text-on-surface-variant">{(m.file_size / 1024 / 1024).toFixed(1)} MB</span>}
+                                      {m.file_size > 0 && <span className="text-[10px] text-on-surface-variant">{(m.file_size / 1024 / 1024).toFixed(1)} MB</span>}
                                     </div>
                                   </div>
                                   <button type="button" onClick={() => eliminarMaterial(m.id)}
@@ -1933,7 +2171,7 @@ export default function EvaluacionForm() {
                 </div>
               )}
 
-              {/* IMPORTAR */}
+              {/* ===== IMPORTAR CSV ===== */}
               {tab === 'importar' && (
                 <Card className="p-6 space-y-6">
                   <div>
@@ -2027,7 +2265,34 @@ export default function EvaluacionForm() {
           </div>
         </form>
 
-        {/* Modal agregar profesión */}
+        {/* ===== MODAL: NUEVA CATEGORÍA ===== */}
+        {showCatModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowCatModal(false)}>
+            <div className="bg-surface rounded-xl p-6 w-96 shadow-xl" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold mb-1 text-lg">Nueva categoría</h3>
+              <p className="text-xs text-on-surface-variant mb-4">La categoría se guardará y seleccionará automáticamente.</p>
+              <input
+                type="text"
+                value={nuevaCategoria}
+                onChange={e => setNuevaCategoria(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') agregarCategoria() }}
+                placeholder="ej: Contraloría, ICFES, Procuraduría..."
+                className={INPUT_CLS}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button type="button" onClick={() => setShowCatModal(false)} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-xl">Cancelar</button>
+                <button type="button" onClick={agregarCategoria} disabled={guardandoCat || !nuevaCategoria.trim()}
+                  className="px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold disabled:opacity-40 flex items-center gap-2">
+                  {guardandoCat && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  Agregar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== MODAL: NUEVA PROFESIÓN ===== */}
         {showProfModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowProfModal(false)}>
             <div className="bg-surface rounded-xl p-6 w-96 shadow-xl" onClick={e => e.stopPropagation()}>
@@ -2036,13 +2301,14 @@ export default function EvaluacionForm() {
                 type="text"
                 value={nuevaProfesion}
                 onChange={e => setNuevaProfesion(e.target.value)}
-                placeholder="Ej: Abogado"
+                onKeyDown={e => { if (e.key === 'Enter') agregarProfesion() }}
+                placeholder="Ej: Abogado, Contador..."
                 className={INPUT_CLS}
                 autoFocus
               />
               <div className="flex justify-end gap-2 mt-4">
-                <button type="button" onClick={() => setShowProfModal(false)} className="px-4 py-2 text-sm">Cancelar</button>
-                <button type="button" onClick={agregarProfesion} className="px-4 py-2 bg-primary text-on-primary rounded-full text-sm">Agregar</button>
+                <button type="button" onClick={() => setShowProfModal(false)} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-xl">Cancelar</button>
+                <button type="button" onClick={agregarProfesion} className="px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold">Agregar</button>
               </div>
             </div>
           </div>
