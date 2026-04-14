@@ -1,449 +1,44 @@
 // frontend/src/pages/admin/EvaluacionForm.jsx
-import React, { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../utils/supabase'
 
-// ============================================================================
-// SISTEMA DE TOAST
-// ============================================================================
-const ToastContext = createContext(null)
+// — Sistema Toast
+import ToastProvider, { useToast } from './components/evaluacion-form/ToastProvider'
 
-function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([])
+// — UI primitivos
+import Card from './components/evaluacion-form/Card'
+import ErrorBanner from './components/evaluacion-form/ErrorBanner'
+import ChecklistPublicacion from './components/evaluacion-form/ChecklistPublicacion'
 
-  const addToast = useCallback((tipo, mensaje, duracion = 5000) => {
-    const id = Date.now() + Math.random().toString(36)
-    setToasts(prev => [...prev, { id, tipo, mensaje }])
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id))
-    }, duracion)
-  }, [])
+// — Secciones de tabs
+import GeneralSection from './components/evaluacion-form/GeneralSection'
+import VersionsSection from './components/evaluacion-form/VersionsSection'
+import LevelsSection from './components/evaluacion-form/LevelsSection'
+import QuestionsSection from './components/evaluacion-form/QuestionsSection'
+import MaterialSection from './components/evaluacion-form/MaterialSection'
+import CsvImportSection from './components/evaluacion-form/CsvImportSection'
 
-  const removeToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }, [])
+// — Helpers y servicios
+import { preguntaVacia, parseCSVLine, buildLabels } from './components/evaluacion-form/lib/helpers'
+import { LETRAS, CSV_COLUMNS, DEBUG_EVAL_FORM } from './components/evaluacion-form/lib/constants'
+import { saveEvaluation, saveAllLevels } from './components/evaluacion-form/services/evalService'
+import {
+  getPackageIdFromEvaluation,
+  savePackage,
+  syncPackageVersions,
+  syncEvaluationVersions,
+  syncMaterialsWithVersions,
+  syncPackageVersionLevels,
+  loadVersionesWithDetails,
+} from './components/evaluacion-form/services/packageService'
 
-  return (
-    <ToastContext.Provider value={{ addToast }}>
-      {children}
-      <div className="fixed top-20 right-6 z-[100] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
-        {toasts.map(toast => (
-          <div key={toast.id} className="pointer-events-auto">
-            <ToastItem tipo={toast.tipo} mensaje={toast.mensaje} onClose={() => removeToast(toast.id)} />
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  )
-}
-
-function ToastItem({ tipo, mensaje, onClose }) {
-  const bg = {
-    error: 'bg-error-container border-error text-on-error-container',
-    warning: 'bg-tertiary-container border-tertiary text-on-tertiary-container',
-    success: 'bg-secondary-container border-secondary text-on-secondary-container',
-    info: 'bg-primary-container border-primary text-on-primary-container',
-  }[tipo] || 'bg-surface-container border-outline text-on-surface'
-
-  const icono = {
-    error: 'error',
-    warning: 'warning',
-    success: 'check_circle',
-    info: 'info',
-  }[tipo] || 'info'
-
-  return (
-    <div className={`p-4 rounded-xl border shadow-lg flex items-start gap-3 animate-fade-in-up ${bg}`}>
-      <span className="material-symbols-outlined">{icono}</span>
-      <p className="text-sm flex-1">{mensaje}</p>
-      {onClose && (
-        <button onClick={onClose} className="text-current opacity-70 hover:opacity-100">
-          <span className="material-symbols-outlined text-base">close</span>
-        </button>
-      )}
-    </div>
-  )
-}
-
-const useToast = () => {
-  const context = useContext(ToastContext)
-  if (!context) throw new Error('useToast must be used within ToastProvider')
-  return context.addToast
+function dbg(msg, data) {
+  if (DEBUG_EVAL_FORM) console.log(`[EvaluacionForm] ${msg}`, data ?? '')
 }
 
 // ============================================================================
-// COMPONENTES AUXILIARES
-// ============================================================================
-function InputField({ label, required, hint, children }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-          {label}
-          {required && <span className="text-error ml-1">*</span>}
-        </label>
-        {hint && <span className="text-[10px] text-on-surface-variant italic">{hint}</span>}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function Card({ children, className = '' }) {
-  return (
-    <div className={`bg-surface-container-lowest rounded-2xl border border-outline-variant/15 shadow-sm ${className}`}>
-      {children}
-    </div>
-  )
-}
-
-// ============================================================================
-// BANNER DE ERROR PERSISTENTE — visible en pantalla, no solo en toast
-// ============================================================================
-const TAB_LABEL_MAP = {
-  general: 'Info del Paquete',
-  profesiones: 'Versiones y Precios',
-  niveles: 'Niveles',
-  preguntas: 'Preguntas',
-  material: 'Material de Estudio',
-  importar: 'Importar CSV',
-}
-
-function ErrorBanner({ error, onClose, onIrASeccion }) {
-  if (!error) return null
-  const seccionLabel = TAB_LABEL_MAP[error.seccion] || error.seccion || 'general'
-  return (
-    <div className="flex items-start gap-3 p-4 bg-error-container rounded-xl border border-error/40 shadow-md">
-      <span className="material-symbols-outlined text-on-error-container text-xl flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
-        error
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-on-error-container">{error.message}</p>
-        {error.seccion && (
-          <button
-            type="button"
-            onClick={() => onIrASeccion(error.seccion)}
-            className="mt-1 text-xs underline text-on-error-container/80 hover:text-on-error-container"
-          >
-            Ir a la sección: <strong>{seccionLabel}</strong>
-          </button>
-        )}
-      </div>
-      <button type="button" onClick={onClose} className="text-on-error-container/70 hover:text-on-error-container flex-shrink-0">
-        <span className="material-symbols-outlined text-lg">close</span>
-      </button>
-    </div>
-  )
-}
-
-function HelpBox({ title, items, tone = 'primary' }) {
-  const toneCls = tone === 'secondary'
-    ? 'bg-secondary-container/20 border-secondary/20 text-secondary'
-    : 'bg-primary/5 border-primary/10 text-primary'
-
-  return (
-    <div className={`p-4 rounded-xl border ${toneCls}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="material-symbols-outlined text-sm">info</span>
-        <p className="text-xs font-bold uppercase tracking-widest">{title}</p>
-      </div>
-      <ul className="space-y-1.5 text-xs text-on-surface-variant">
-        {items.map((item, i) => (
-          <li key={i} className="flex gap-2">
-            <span className="font-bold text-primary">{i + 1}.</span>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function ChecklistPublicacion({ form, versiones, niveles, preguntas, materiales, modoGuiado }) {
-  const versionesActivas = versiones.filter(v => v.is_active)
-  const tieneNombre = Boolean(form.title?.trim())
-  const tieneVersionesActivas = versionesActivas.length > 0
-  const todasVersionesConPrecio = versionesActivas.every(v => v.price && v.price > 0)
-  // FIX: checklist usa level_id real, no level_display
-  const todasVersionesConNivel = versionesActivas.every(v => v.level_id)
-  const nivelesConPreguntasValidas = niveles.every(nv => {
-    const pregs = preguntas[nv._id] || []
-    return pregs.length > 0 && pregs.some(p => p.text?.trim())
-  })
-  const tieneMateriales = materiales.length > 0
-  const categoriaAsignada = Boolean(form.category_id)
-
-  const items = [
-    { label: modoGuiado ? 'Nombre del plan' : 'Nombre del paquete', ok: tieneNombre },
-    { label: modoGuiado ? 'Al menos un plan activo' : 'Al menos una versión activa', ok: tieneVersionesActivas },
-    { label: modoGuiado ? 'Precio válido en todos los planes' : 'Precio válido en todas las versiones', ok: todasVersionesConPrecio },
-    { label: modoGuiado ? 'Banco de preguntas asignado a cada plan' : 'Nivel asignado a cada versión activa', ok: todasVersionesConNivel },
-    { label: 'Preguntas válidas en todos los bancos', ok: nivelesConPreguntasValidas },
-    { label: modoGuiado ? 'Recursos de apoyo (opcional)' : 'Material de estudio (opcional)', ok: tieneMateriales, optional: true },
-    { label: 'Categoría asignada (recomendado)', ok: categoriaAsignada, optional: true },
-  ]
-
-  const completados = items.filter(i => i.ok).length
-  const total = items.length
-
-  return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-bold text-sm">✅ Checklist para publicar</h4>
-        <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-1 rounded-full">
-          {completados}/{total}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {items.map((item, idx) => (
-          <div key={idx} className="flex items-center gap-2 text-xs">
-            <span className={`material-symbols-outlined text-base ${item.ok ? 'text-secondary' : item.optional ? 'text-on-surface-variant' : 'text-error'}`}>
-              {item.ok ? 'check_circle' : item.optional ? 'radio_button_unchecked' : 'cancel'}
-            </span>
-            <span className={item.ok ? 'text-on-surface' : 'text-on-surface-variant'}>
-              {item.label}
-              {item.optional && <span className="text-[10px] ml-1 text-on-surface-variant">(opcional)</span>}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
-// ============================================================================
-// CONSTANTES Y HELPERS
-// ============================================================================
-const INPUT_CLS = `w-full px-4 py-2.5 bg-surface-container border border-outline-variant/30
-  rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20
-  focus:border-primary/40 transition-all placeholder:text-on-surface-variant/50`
-
-const LETRAS = ['A', 'B', 'C', 'D']
-const CSV_COLUMNS = ['area', 'dificultad', 'enunciado', 'A', 'B', 'C', 'D', 'correcta', 'explicacion']
-
-const PROMPT_IA_CSV = `Convierte este material en preguntas para un archivo CSV con esta estructura exacta:
-area,dificultad,enunciado,A,B,C,D,correcta,explicacion
-
-Reglas:
-- "correcta" solo puede ser A, B, C o D
-- no cambies el orden de las columnas
-- no agregues columnas extra
-- cada fila debe representar una sola pregunta
-- "dificultad" debe ser: facil, medio o dificil
-- "explicacion" debe ser breve, clara y útil para retroalimentación
-- devuelve únicamente el CSV limpio, sin markdown, sin comentarios y sin explicación adicional`
-
-function preguntaVacia() {
-  return {
-    _id: Math.random().toString(36).slice(2),
-    text: '',
-    explanation: '',
-    difficulty: 'medio',
-    area: '',
-    options: LETRAS.map(letter => ({ letter, text: '', is_correct: false })),
-  }
-}
-
-function iconoMaterial(type) {
-  return { pdf: 'picture_as_pdf', video: 'play_circle', link: 'link', doc: 'description' }[type] || 'attachment'
-}
-
-// ============================================================================
-// COMPONENTES INTERNOS
-// ============================================================================
-function PreguntaCard({ preg, idx, onChange, onDelete, onDuplicate, expandido, onToggle, modoGuiado, modulos, nivelActivo, niveles, onDuplicarANivel }) {
-  const tieneCorrecta = preg.options.some(o => o.is_correct)
-  const [showDupMenu, setShowDupMenu] = useState(false)
-
-  function setOpcion(i, field, value) {
-    const opts = [...preg.options]
-    if (field === 'is_correct') {
-      opts.forEach((o, j) => { opts[j] = { ...o, is_correct: j === i } })
-    } else {
-      opts[i] = { ...opts[i], [field]: value }
-    }
-    onChange({ ...preg, options: opts })
-  }
-
-  return (
-    <div className={`rounded-xl border transition-all ${tieneCorrecta ? 'border-outline-variant/20' : 'border-error/30 bg-error-container/5'}`}>
-      <button type="button" onClick={onToggle} className="w-full flex items-center gap-3 p-4 text-left">
-        <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${tieneCorrecta ? 'bg-secondary text-on-secondary' : 'bg-error text-on-error'}`}>
-          {idx + 1}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate text-on-surface">
-            {preg.text || <span className="text-on-surface-variant italic">Pregunta sin enunciado</span>}
-          </p>
-          {preg.area && (
-            <p className="text-[10px] text-on-surface-variant truncate">
-              {modoGuiado ? 'Módulo' : 'Área'}: {preg.area}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {!tieneCorrecta && (
-            <span className="text-[10px] font-bold text-error bg-error-container px-2 py-0.5 rounded-full">Sin correcta</span>
-          )}
-          <span className="material-symbols-outlined text-on-surface-variant text-lg">
-            {expandido ? 'expand_less' : 'expand_more'}
-          </span>
-        </div>
-      </button>
-
-      {expandido && (
-        <div className="px-4 pb-4 space-y-4 border-t border-outline-variant/10 pt-4">
-          <InputField label="Enunciado" required>
-            <textarea rows={3} value={preg.text} onChange={e => onChange({ ...preg, text: e.target.value })}
-              placeholder="Escribe la pregunta aquí..." className={`${INPUT_CLS} resize-none`} />
-          </InputField>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <InputField label={modoGuiado ? "Módulo" : "Área temática"}>
-              <input
-                type="text"
-                value={preg.area}
-                onChange={e => onChange({ ...preg, area: e.target.value })}
-                placeholder={modoGuiado ? "ej: Derecho Fiscal" : "ej: Derecho Fiscal"}
-                className={INPUT_CLS}
-                list={`modulos-list-${preg._id}`}
-              />
-              <datalist id={`modulos-list-${preg._id}`}>
-                {modulos.filter(Boolean).map(m => <option key={m} value={m} />)}
-              </datalist>
-            </InputField>
-            <InputField label="Dificultad">
-              <select value={preg.difficulty} onChange={e => onChange({ ...preg, difficulty: e.target.value })} className={INPUT_CLS}>
-                <option value="facil">Fácil</option>
-                <option value="medio">Medio</option>
-                <option value="dificil">Difícil</option>
-              </select>
-            </InputField>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Opciones — marca la correcta</p>
-            {preg.options.map((op, i) => (
-              <div key={op.letter} className="flex items-center gap-3">
-                <button type="button" onClick={() => setOpcion(i, 'is_correct', true)}
-                  className={`w-8 h-8 rounded-full flex-shrink-0 font-bold text-sm transition-all ${op.is_correct ? 'bg-secondary text-on-secondary shadow-md' : 'bg-surface-container text-on-surface-variant hover:bg-secondary-container'}`}>
-                  {op.letter}
-                </button>
-                <input type="text" value={op.text} onChange={e => setOpcion(i, 'text', e.target.value)}
-                  placeholder={`Opción ${op.letter}`}
-                  className={`${INPUT_CLS} flex-1 ${op.is_correct ? 'border-secondary/40 ring-1 ring-secondary/20' : ''}`} />
-                {op.is_correct && (
-                  <span className="material-symbols-outlined text-secondary text-lg flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <InputField label="Explicación (retroalimentación)">
-            <textarea rows={2} value={preg.explanation} onChange={e => onChange({ ...preg, explanation: e.target.value })}
-              placeholder="Explica por qué la respuesta es correcta..." className={`${INPUT_CLS} resize-none`} />
-          </InputField>
-
-          <div className="flex justify-between items-center">
-            <div className="relative">
-              <button type="button" onClick={() => setShowDupMenu(v => !v)}
-                className="flex items-center gap-1.5 text-xs font-bold text-primary hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors">
-                <span className="material-symbols-outlined text-sm">content_copy</span>
-                Duplicar a otro nivel
-              </button>
-              {showDupMenu && (
-                <div className="absolute left-0 top-9 z-20 bg-surface rounded-xl shadow-lg border border-outline-variant/20 min-w-[180px]">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-3 pt-3 pb-1">Copiar al nivel:</p>
-                  {niveles.filter(n => n._id !== nivelActivo).map(n => (
-                    <button key={n._id} type="button"
-                      onClick={() => { onDuplicarANivel(preg, n._id); setShowDupMenu(false) }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-surface-container transition-colors">
-                      {n.name || 'Sin nombre'}
-                    </button>
-                  ))}
-                  {niveles.filter(n => n._id !== nivelActivo).length === 0 && (
-                    <p className="px-3 py-2 text-xs text-on-surface-variant">No hay otros niveles</p>
-                  )}
-                  <button type="button" onClick={() => setShowDupMenu(false)}
-                    className="w-full text-left px-3 py-2 text-xs text-error hover:bg-error-container/20 transition-colors border-t border-outline-variant/10">
-                    Cancelar
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={onDuplicate}
-                className="flex items-center gap-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded-lg transition-colors">
-                <span className="material-symbols-outlined text-sm">add_circle</span>
-                Duplicar aquí
-              </button>
-              <button type="button" onClick={onDelete}
-                className="flex items-center gap-1.5 text-xs font-bold text-error hover:bg-error-container/30 px-3 py-1.5 rounded-lg transition-colors">
-                <span className="material-symbols-outlined text-sm">delete</span>
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function NivelCard({ nivel, idx, onChange, onDelete, preguntasCount, onDuplicate, modoGuiado, onVerPreguntas }) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">{idx + 1}</div>
-        <h4 className="font-bold text-sm flex-1">{nivel.name || (modoGuiado ? `Banco ${idx + 1}` : `Nivel ${idx + 1}`)}</h4>
-        <button type="button" onClick={onVerPreguntas}
-          className="flex items-center gap-1 text-xs font-bold text-primary hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors">
-          <span className="material-symbols-outlined text-sm">quiz</span>
-          {preguntasCount} preg.
-        </button>
-        {idx > 0 && (
-          <button type="button" onClick={onDelete} className="p-1.5 text-error hover:bg-error-container/30 rounded-lg transition-colors">
-            <span className="material-symbols-outlined text-sm">close</span>
-          </button>
-        )}
-        <button type="button" onClick={onDuplicate} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Duplicar">
-          <span className="material-symbols-outlined text-sm">content_copy</span>
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <InputField label={modoGuiado ? "Nombre del banco" : "Nombre del nivel"} required>
-          <input type="text" value={nivel.name} onChange={e => onChange({ ...nivel, name: e.target.value })}
-            placeholder={modoGuiado ? "ej: Banco principal" : "ej: Profesional Universitario"} className={INPUT_CLS} />
-        </InputField>
-        <InputField label="Descripción">
-          <input type="text" value={nivel.description} onChange={e => onChange({ ...nivel, description: e.target.value })}
-            placeholder="Descripción breve" className={INPUT_CLS} />
-        </InputField>
-        <InputField label="Tiempo límite (minutos)" required>
-          <input type="number" min={10} max={360} value={nivel.time_limit}
-            onChange={e => onChange({ ...nivel, time_limit: Number(e.target.value) })} className={INPUT_CLS} />
-        </InputField>
-        <InputField label="Puntaje de aprobación (%)">
-          <input type="number" min={50} max={100} value={nivel.passing_score}
-            onChange={e => onChange({ ...nivel, passing_score: Number(e.target.value) })} className={INPUT_CLS} />
-        </InputField>
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-outline-variant/10">
-        <button type="button" onClick={onVerPreguntas}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold bg-primary/5 text-primary hover:bg-primary/10 transition-colors">
-          <span className="material-symbols-outlined text-sm">edit_note</span>
-          Ver y editar preguntas de este {modoGuiado ? 'banco' : 'nivel'} ({preguntasCount})
-        </button>
-      </div>
-    </Card>
-  )
-}
-
-// ============================================================================
-// WRAPPER — ToastProvider envuelve el contenido para que useToast() funcione
+// WRAPPER PÚBLICO — provee el contexto de Toast
 // ============================================================================
 export default function EvaluacionFormWrapper() {
   return (
@@ -453,6 +48,9 @@ export default function EvaluacionFormWrapper() {
   )
 }
 
+// ============================================================================
+// COMPONENTE PRINCIPAL
+// ============================================================================
 function EvaluacionFormContent() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -460,73 +58,62 @@ function EvaluacionFormContent() {
   const addToast = useToast()
   const isEdit = Boolean(id)
 
+  // — Datos del formulario general
   const [form, setForm] = useState({ title: '', description: '', category_id: '', is_active: true })
   const [categorias, setCategorias] = useState([])
+  const [profesiones, setProfesiones] = useState([])
+
+  // — Estado del guardado
   const [guardando, setGuardando] = useState(false)
   const [guardadoStage, setGuardadoStage] = useState('')
-
-  // errorBloque: banner rojo visible en pantalla, no solo toast
   const [errorBloque, setErrorBloque] = useState(null)
   const [exitoMsg, setExitoMsg] = useState(null)
 
+  // — Navegación de tabs
   const [tab, setTab] = useState('general')
   const [modoVersiones, setModoVersiones] = useState('avanzado')
   const [modoGuiado, setModoGuiado] = useState(false)
 
+  // — Niveles y preguntas
   const [niveles, setNiveles] = useState([
     { _id: 'n1', name: '', description: '', time_limit: 90, passing_score: 70, sort_order: 1 },
   ])
   const [nivelActivo, setNivelActivo] = useState('n1')
   const [preguntas, setPreguntas] = useState({ n1: [preguntaVacia()] })
   const [pregExpandida, setPregExpandida] = useState(null)
-
   const [moduloActivo, setModuloActivo] = useState(null)
 
-  // versiones: profession_id y level_id son fuentes reales.
-  // profession_display y level_display son solo inputs visuales.
+  // — Versiones
   const [versiones, setVersiones] = useState([])
+
+  // — Materiales
   const [materiales, setMateriales] = useState([])
   const [nuevoMat, setNuevoMat] = useState({
     title: '', type: 'pdf', source_type: 'upload', file: null, url: '',
-    folder: 'General', description: '', is_shared: true, uploading: false, uploadProgress: 0
+    folder: 'General', description: '', is_shared: true, uploading: false, uploadProgress: 0,
   })
   const [matError, setMatError] = useState(null)
   const [guardandoMat, setGuardandoMat] = useState(false)
-  const [profesiones, setProfesiones] = useState([])
 
+  // — Modales inline
   const [showCatModal, setShowCatModal] = useState(false)
   const [nuevaCategoria, setNuevaCategoria] = useState('')
   const [guardandoCat, setGuardandoCat] = useState(false)
-
   const [showProfModal, setShowProfModal] = useState(false)
   const [nuevaProfesion, setNuevaProfesion] = useState('')
 
+  // — CSV
   const [importando, setImportando] = useState(false)
   const [importError, setImportError] = useState(null)
   const [importOk, setImportOk] = useState(null)
 
+  // — Warnings de consistencia
   const [warnings, setWarnings] = useState([])
 
   // ==========================================================================
-  // HELPERS
+  // HELPER: package_id de esta evaluación
   // ==========================================================================
-  const obtenerPackageIdDeEvaluacion = useCallback(async () => {
-    if (!id) return null
-    const { data: evalVers } = await supabase
-      .from('evaluation_versions')
-      .select('package_version_id')
-      .eq('evaluation_id', parseInt(id, 10))
-
-    if (!evalVers?.length) return null
-
-    const versionIds = evalVers.map(ev => ev.package_version_id)
-    const { data: versionesData } = await supabase
-      .from('package_versions')
-      .select('package_id')
-      .in('id', versionIds)
-
-    return versionesData?.[0]?.package_id || null
-  }, [id])
+  const obtenerPackageId = useCallback(() => getPackageIdFromEvaluation(id), [id])
 
   // ==========================================================================
   // CARGA INICIAL
@@ -581,24 +168,17 @@ function EvaluacionFormContent() {
   }
 
   async function cargarVersiones() {
-    const packageId = await obtenerPackageIdDeEvaluacion()
+    const packageId = await obtenerPackageId()
     if (!packageId) { setVersiones([]); return }
 
     const { data: vers, error } = await supabase
-      .from('package_versions')
-      .select('*')
-      .eq('package_id', packageId)
-      .order('sort_order', { ascending: true })
-
+      .from('package_versions').select('*').eq('package_id', packageId).order('sort_order', { ascending: true })
     if (error) { addToast('error', 'Error al cargar versiones: ' + error.message); return }
     if (!vers?.length) { setVersiones([]); return }
 
     const versionIds = vers.map(v => v.id)
     const { data: pvLevels } = await supabase
-      .from('package_version_levels')
-      .select('package_version_id, level_id')
-      .in('package_version_id', versionIds)
-
+      .from('package_version_levels').select('package_version_id, level_id').in('package_version_id', versionIds)
     const levelMap = {}
     pvLevels?.forEach(row => { levelMap[row.package_version_id] = row.level_id })
 
@@ -606,43 +186,33 @@ function EvaluacionFormContent() {
     const levelNameMap = {}
     lvs?.forEach(l => { levelNameMap[l.id] = l.name })
 
-    // Construir versiones con level_id real y level_display para el input
     const versionesBase = vers.map(v => {
       const lvId = levelMap[v.id] || null
-      return {
-        ...v,
-        level_id: lvId,
-        level_display: lvId ? (levelNameMap[lvId] || '') : '',
-        profession_display: '',
-      }
+      return { ...v, level_id: lvId, level_display: lvId ? (levelNameMap[lvId] || '') : '', profession_display: '' }
     })
-
     setVersiones(versionesBase)
 
-    // Cargar nombres de profesiones para el display
     const profIds = [...new Set(vers.map(v => v.profession_id).filter(Boolean))]
     if (profIds.length) {
       const { data: profs } = await supabase.from('professions').select('id, name').in('id', profIds)
       if (profs?.length) {
         setVersiones(prev => prev.map(v => ({
-          ...v,
-          profession_display: profs.find(p => p.id === v.profession_id)?.name || '',
+          ...v, profession_display: profs.find(p => p.id === v.profession_id)?.name || '',
         })))
       }
     }
   }
 
   async function cargarMateriales() {
-    const packageId = await obtenerPackageIdDeEvaluacion()
+    const packageId = await obtenerPackageId()
     if (!packageId) { setMateriales([]); return }
-
     const { data, error } = await supabase.from('study_materials').select('*').eq('package_id', packageId).order('folder').order('sort_order')
     if (error) { addToast('error', 'Error al cargar materiales: ' + error.message); return }
     setMateriales(data || [])
   }
 
   // ==========================================================================
-  // CATEGORÍA INLINE
+  // CATEGORÍAS
   // ==========================================================================
   async function agregarCategoria() {
     const nombre = nuevaCategoria.trim()
@@ -664,7 +234,7 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // PROFESIONES INLINE
+  // PROFESIONES
   // ==========================================================================
   async function agregarProfesion() {
     const nombre = nuevaProfesion.trim()
@@ -678,40 +248,30 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // VERSIONES
+  // VERSIONES — CRUD
   // ==========================================================================
   async function agregarVersion() {
-    const packageId = await obtenerPackageIdDeEvaluacion()
-    if (!packageId) {
-      addToast('warning', 'Primero guarda o publica el paquete para poder agregar versiones.')
-      return
-    }
-
+    const packageId = await obtenerPackageId()
+    if (!packageId) { addToast('warning', 'Primero guarda o publica el paquete para poder agregar versiones.'); return }
     const { data, error } = await supabase
       .from('package_versions')
       .insert({ package_id: packageId, profession_id: null, display_name: 'Nueva versión', price: 0, is_active: true, sort_order: versiones.length })
       .select().single()
-
     if (error) { addToast('error', 'No se pudo agregar la versión: ' + error.message); return }
     if (data) setVersiones(prev => [...prev, { ...data, level_id: null, level_display: '', profession_display: '' }])
   }
 
   async function duplicarVersion(version) {
-    const packageId = await obtenerPackageIdDeEvaluacion()
+    const packageId = await obtenerPackageId()
     if (!packageId) return
-
     const { data, error } = await supabase
       .from('package_versions')
       .insert({
-        package_id: packageId,
-        display_name: `${version.display_name} (copia)`,
-        price: version.price,
-        is_active: version.is_active,
-        profession_id: version.profession_id || null,
-        sort_order: versiones.length,
+        package_id: packageId, display_name: `${version.display_name} (copia)`,
+        price: version.price, is_active: version.is_active,
+        profession_id: version.profession_id || null, sort_order: versiones.length,
       })
       .select().single()
-
     if (error) { addToast('error', 'No se pudo duplicar la versión: ' + error.message); return }
     if (data) {
       setVersiones(prev => [...prev, { ...data, level_id: version.level_id, level_display: version.level_display || '', profession_display: version.profession_display || '' }])
@@ -722,38 +282,28 @@ function EvaluacionFormContent() {
     }
   }
 
-  // FIX: actualizarVersion ahora maneja errores de Supabase y los muestra en pantalla
   async function actualizarVersion(versionId, campo, valor) {
-    // Actualizar estado local inmediatamente (optimistic update)
-    setVersiones(prev => prev.map(v => (v.id === versionId ? { ...v, [campo]: valor } : v)))
+    const versionPrevia = versiones.find(v => v.id === versionId)
+    const valorPrevio = versionPrevia?.[campo]
 
-    const { error } = await supabase
-      .from('package_versions')
-      .update({ [campo]: valor })
-      .eq('id', versionId)
+    // Update optimista
+    setVersiones(prev => prev.map(v => v.id === versionId ? { ...v, [campo]: valor } : v))
 
+    const { error } = await supabase.from('package_versions').update({ [campo]: valor }).eq('id', versionId)
     if (error) {
-      // Revertir estado local si falló
-      setVersiones(prev => prev.map(v => {
-        if (v.id !== versionId) return v
-        // Recargar desde servidor sería ideal, pero al menos informamos
-        return v
-      }))
+      // Revertir al valor previo real
+      setVersiones(prev => prev.map(v => v.id === versionId ? { ...v, [campo]: valorPrevio } : v))
       const msg = `Error al guardar cambio en versión: ${error.message}`
       addToast('error', msg)
       setErrorBloque({ seccion: 'profesiones', message: msg })
     }
   }
 
-  // FIX: handleProfesionDisplayChange — resuelve profession_id si coincide con profesión real
   function handleProfesionDisplayChange(versionId, texto) {
     const match = profesiones.find(p => p.name.toLowerCase() === texto.toLowerCase())
     setVersiones(prev => prev.map(v =>
-      v.id === versionId
-        ? { ...v, profession_display: texto, profession_id: match ? match.id : null }
-        : v
+      v.id === versionId ? { ...v, profession_display: texto, profession_id: match ? match.id : null } : v
     ))
-    // Persistir profession_id si coincide
     if (match) {
       supabase.from('package_versions').update({ profession_id: match.id }).eq('id', versionId).then(({ error }) => {
         if (error) addToast('error', `Error al guardar profesión: ${error.message}`)
@@ -765,14 +315,11 @@ function EvaluacionFormContent() {
     }
   }
 
-  // FIX: handleLevelDisplayChange — resuelve level_id si coincide con nivel real
   function handleLevelDisplayChange(versionId, texto) {
     const match = niveles.find(n => n.name.toLowerCase() === texto.toLowerCase())
     const levelId = match ? (typeof match._id === 'number' ? match._id : null) : null
     setVersiones(prev => prev.map(v =>
-      v.id === versionId
-        ? { ...v, level_display: texto, level_id: levelId }
-        : v
+      v.id === versionId ? { ...v, level_display: texto, level_id: levelId } : v
     ))
   }
 
@@ -787,38 +334,22 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // MATERIAL DE ESTUDIO
+  // MATERIALES — CRUD
   // ==========================================================================
   async function agregarMaterial() {
     setMatError(null)
-    if (!nuevoMat.title.trim()) {
-      const msg = 'El título es obligatorio'
-      setMatError(msg); addToast('warning', msg); return
-    }
-    if (nuevoMat.source_type === 'link' && !nuevoMat.url.trim()) {
-      const msg = 'La URL es obligatoria'
-      setMatError(msg); addToast('warning', msg); return
-    }
-    if (nuevoMat.source_type === 'upload' && !nuevoMat.file) {
-      const msg = 'Selecciona un archivo'
-      setMatError(msg); addToast('warning', msg); return
-    }
+    if (!nuevoMat.title.trim()) { const m = 'El título es obligatorio'; setMatError(m); addToast('warning', m); return }
+    if (nuevoMat.source_type === 'link' && !nuevoMat.url.trim()) { const m = 'La URL es obligatoria'; setMatError(m); addToast('warning', m); return }
+    if (nuevoMat.source_type === 'upload' && !nuevoMat.file) { const m = 'Selecciona un archivo'; setMatError(m); addToast('warning', m); return }
 
-    const packageId = await obtenerPackageIdDeEvaluacion()
-    if (!packageId) {
-      const msg = 'Guarda el paquete primero para poder agregar materiales.'
-      setMatError(msg); addToast('warning', msg); return
-    }
+    const packageId = await obtenerPackageId()
+    if (!packageId) { const m = 'Guarda el paquete primero para poder agregar materiales.'; setMatError(m); addToast('warning', m); return }
 
     setGuardandoMat(true)
     setNuevoMat(m => ({ ...m, uploading: true, uploadProgress: 0 }))
 
     try {
-      let finalUrl = ''
-      let storagePath = ''
-      let fileSize = 0
-      let mimeType = ''
-      let tipoFinal = nuevoMat.type
+      let finalUrl = '', storagePath = '', fileSize = 0, mimeType = '', tipoFinal = nuevoMat.type
 
       if (nuevoMat.source_type === 'upload' && nuevoMat.file) {
         const file = nuevoMat.file
@@ -832,23 +363,7 @@ function EvaluacionFormContent() {
         else if (mimeType.includes('pdf')) tipoFinal = 'pdf'
         else if (mimeType.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) tipoFinal = 'doc'
 
-        // Verificar bucket antes de subir
-        let bucketExiste = true
-        try {
-          const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
-          if (!bucketError && !buckets?.find(b => b.name === 'materials')) bucketExiste = false
-        } catch {
-          // No se pudo verificar, intentamos igual
-        }
-
-        if (!bucketExiste) {
-          throw new Error('El bucket "materials" no existe en Supabase Storage. Créalo en el panel de Supabase antes de subir archivos.')
-        }
-
-        const { error: uploadError } = await supabase.storage
-          .from('materials')
-          .upload(storagePath, file, { cacheControl: '3600', upsert: false })
-
+        const { error: uploadError } = await supabase.storage.from('materials').upload(storagePath, file, { cacheControl: '3600', upsert: false })
         if (uploadError) throw new Error('Error al subir al storage: ' + uploadError.message)
 
         const { data: { publicUrl } } = supabase.storage.from('materials').getPublicUrl(storagePath)
@@ -862,13 +377,10 @@ function EvaluacionFormContent() {
         package_id: packageId, title: nuevoMat.title, type: tipoFinal,
         source_type: nuevoMat.source_type, url: finalUrl, storage_path: storagePath,
         mime_type: mimeType, file_size: fileSize, folder: nuevoMat.folder || 'General',
-        description: nuevoMat.description, sort_order: materiales.length,
-        is_active: true, is_shared: nuevoMat.is_shared,
+        description: nuevoMat.description, sort_order: materiales.length, is_active: true, is_shared: nuevoMat.is_shared,
       }
 
-      const { data: material, error: insertError } = await supabase
-        .from('study_materials').insert(payload).select().single()
-
+      const { data: material, error: insertError } = await supabase.from('study_materials').insert(payload).select().single()
       if (insertError) throw new Error('Error al guardar el material: ' + insertError.message)
 
       const versionesActivas = versiones.filter(v => v.is_active)
@@ -884,8 +396,7 @@ function EvaluacionFormContent() {
       addToast('success', 'Material agregado correctamente')
     } catch (err) {
       const msg = err.message || 'Error desconocido al subir material'
-      setMatError(msg)
-      addToast('error', msg)
+      setMatError(msg); addToast('error', msg)
     } finally {
       setGuardandoMat(false)
       setNuevoMat(m => ({ ...m, uploading: false }))
@@ -904,54 +415,8 @@ function EvaluacionFormContent() {
     addToast('info', 'Material eliminado')
   }
 
-  async function sincronizarMaterialesConVersiones(packageId, versionesActivasIds) {
-    if (!packageId || !versionesActivasIds.length) return
-    const { data: mats } = await supabase.from('study_materials').select('id').eq('package_id', packageId)
-    if (!mats?.length) return
-
-    const matIds = mats.map(m => m.id)
-    const { data: relacionesActuales } = await supabase
-      .from('study_material_versions')
-      .select('study_material_id, package_version_id')
-      .in('study_material_id', matIds)
-
-    const existentes = new Set((relacionesActuales || []).map(r => `${r.study_material_id}:${r.package_version_id}`))
-    const nuevas = []
-    for (const matId of matIds) {
-      for (const versionId of versionesActivasIds) {
-        if (!existentes.has(`${matId}:${versionId}`)) nuevas.push({ study_material_id: matId, package_version_id: versionId })
-      }
-    }
-
-    const versionesActivasSet = new Set(versionesActivasIds.map(String))
-    const eliminar = (relacionesActuales || []).filter(r => !versionesActivasSet.has(String(r.package_version_id)))
-    for (const r of eliminar) {
-      await supabase.from('study_material_versions')
-        .delete().eq('study_material_id', r.study_material_id).eq('package_version_id', r.package_version_id)
-    }
-    if (nuevas.length) await supabase.from('study_material_versions').insert(nuevas)
-  }
-
-  async function sincronizarNivelesVersiones(versionesFrescas) {
-    if (!versionesFrescas.length) return
-    const versionIds = versionesFrescas.map(v => v.id)
-    const levelMapEstado = {}
-    versiones.forEach(v => { if (v.id && v.level_id) levelMapEstado[v.id] = v.level_id })
-
-    await supabase.from('package_version_levels').delete().in('package_version_id', versionIds)
-
-    const nuevasRelaciones = versionesFrescas
-      .filter(v => levelMapEstado[v.id])
-      .map(v => ({ package_version_id: v.id, level_id: levelMapEstado[v.id] }))
-
-    if (nuevasRelaciones.length) {
-      const { error } = await supabase.from('package_version_levels').insert(nuevasRelaciones)
-      if (error) throw new Error(`Error vinculando niveles a versiones: ${error.message}`)
-    }
-  }
-
   // ==========================================================================
-  // NIVELES
+  // NIVELES — CRUD
   // ==========================================================================
   function agregarNivel() {
     const _id = Math.random().toString(36).slice(2)
@@ -966,13 +431,12 @@ function EvaluacionFormContent() {
     const copia = { ...nivelOriginal, _id, name: `${nivelOriginal.name} (copia)`, sort_order: niveles.length + 1 }
     setNiveles(prev => [...prev, copia])
     const pregsOriginales = preguntas[nivelOriginal._id] || []
-    const pregsCopiadas = pregsOriginales.map(p => ({ ...p, _id: Math.random().toString(36).slice(2) }))
-    setPreguntas(prev => ({ ...prev, [_id]: pregsCopiadas }))
+    setPreguntas(prev => ({ ...prev, [_id]: pregsOriginales.map(p => ({ ...p, _id: Math.random().toString(36).slice(2) })) }))
     addToast('success', 'Nivel duplicado con sus preguntas')
   }
 
   function actualizarNivel(_id, datos) {
-    setNiveles(prev => prev.map(n => (n._id === _id ? { ...n, ...datos } : n)))
+    setNiveles(prev => prev.map(n => n._id === _id ? { ...n, ...datos } : n))
   }
 
   function eliminarNivel(_id) {
@@ -984,7 +448,7 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // PREGUNTAS
+  // PREGUNTAS — CRUD
   // ==========================================================================
   function agregarPregunta(moduloInicial = '') {
     const nueva = { ...preguntaVacia(), area: moduloInicial }
@@ -993,14 +457,14 @@ function EvaluacionFormContent() {
   }
 
   function actualizarPregunta(nId, pregId, datos) {
-    setPreguntas(prev => ({ ...prev, [nId]: prev[nId].map(p => (p._id === pregId ? { ...p, ...datos } : p)) }))
+    setPreguntas(prev => ({ ...prev, [nId]: prev[nId].map(p => p._id === pregId ? { ...p, ...datos } : p) }))
   }
 
   function eliminarPregunta(nId, pregId) {
     setPreguntas(prev => ({ ...prev, [nId]: prev[nId].filter(p => p._id !== pregId) }))
   }
 
-  function duplicarPreguntaEnMismoNivel(nId, preg) {
+  function duplicarPreguntaMismoNivel(nId, preg) {
     const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
     setPreguntas(prev => {
       const arr = [...(prev[nId] || [])]
@@ -1013,10 +477,7 @@ function EvaluacionFormContent() {
 
   function duplicarPreguntaANivel(preg, destinoNivelId) {
     const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
-    setPreguntas(prev => ({
-      ...prev,
-      [destinoNivelId]: [...(prev[destinoNivelId] || []), copia],
-    }))
+    setPreguntas(prev => ({ ...prev, [destinoNivelId]: [...(prev[destinoNivelId] || []), copia] }))
     const nombreDestino = niveles.find(n => n._id === destinoNivelId)?.name || 'otro nivel'
     addToast('success', `Pregunta duplicada al nivel "${nombreDestino}"`)
   }
@@ -1024,19 +485,6 @@ function EvaluacionFormContent() {
   // ==========================================================================
   // CSV
   // ==========================================================================
-  function parseCSVLine(line) {
-    const result = []; let current = ''; let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]; const next = line[i + 1]
-      if (char === '"' && inQuotes && next === '"') { current += '"'; i++ }
-      else if (char === '"') { inQuotes = !inQuotes }
-      else if (char === ',' && !inQuotes) { result.push(current); current = '' }
-      else { current += char }
-    }
-    result.push(current)
-    return result.map(v => v.trim())
-  }
-
   function importarCSV(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1060,11 +508,8 @@ function EvaluacionFormContent() {
           if (!LETRAS.includes(correcta)) throw new Error(`Fila ${i + 2}: el campo "correcta" debe ser A, B, C o D. Valor encontrado: "${get('correcta')}"`)
           return {
             _id: Math.random().toString(36).slice(2),
-            text: get('enunciado'),
-            explanation: get('explicacion'),
-            difficulty: get('dificultad') || 'medio',
-            // FIX: conservar área/módulo del CSV correctamente
-            area: get('area') || '',
+            text: get('enunciado'), explanation: get('explicacion'),
+            difficulty: get('dificultad') || 'medio', area: get('area') || '',
             options: LETRAS.map(letter => ({ letter, text: get(letter.toLowerCase()), is_correct: letter === correcta })),
           }
         })
@@ -1097,7 +542,8 @@ function EvaluacionFormContent() {
   }
 
   async function copiarPromptIA() {
-    try { await navigator.clipboard.writeText(PROMPT_IA_CSV); setImportOk('✅ Prompt copiado.'); setTimeout(() => setImportOk(null), 2000) }
+    const PROMPT = `Convierte este material en preguntas para un archivo CSV con esta estructura exacta:\narea,dificultad,enunciado,A,B,C,D,correcta,explicacion\n\nReglas:\n- "correcta" solo puede ser A, B, C o D\n- no cambies el orden de las columnas\n- no agregues columnas extra\n- cada fila debe representar una sola pregunta\n- "dificultad" debe ser: facil, medio o dificil\n- "explicacion" debe ser breve, clara y útil para retroalimentación\n- devuelve únicamente el CSV limpio, sin markdown, sin comentarios y sin explicación adicional`
+    try { await navigator.clipboard.writeText(PROMPT); setImportOk('✅ Prompt copiado.'); setTimeout(() => setImportOk(null), 2000) }
     catch { setImportError('No se pudo copiar el prompt.') }
   }
 
@@ -1108,34 +554,24 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // VALIDACIONES Y WARNINGS
+  // WARNINGS
   // ==========================================================================
   const calcularWarnings = useCallback(() => {
     const warns = []
-
     const versionesActivas = versiones.filter(v => v.is_active)
+
     const nombres = versionesActivas.map(v => v.display_name?.trim().toLowerCase()).filter(Boolean)
     const duplicados = nombres.filter((n, i) => nombres.indexOf(n) !== i)
-    if (duplicados.length) {
-      warns.push(`Hay versiones activas con el mismo nombre: "${duplicados[0]}". Cada versión debe tener un nombre único.`)
-    }
+    if (duplicados.length) warns.push(`Hay versiones activas con el mismo nombre: "${duplicados[0]}". Cada versión debe tener un nombre único.`)
 
-    // FIX: usar level_id real para detectar niveles no asignados
     const levelIdsUsados = new Set(versiones.map(v => v.level_id).filter(Boolean).map(String))
     const nivelesConId = niveles.filter(n => typeof n._id === 'number')
     const nivelesNoUsados = nivelesConId.filter(n => !levelIdsUsados.has(String(n._id)))
-    if (nivelesNoUsados.length) {
-      warns.push(`${nivelesNoUsados.length} nivel(es) no están asignados a ninguna versión: ${nivelesNoUsados.map(n => n.name || 'sin nombre').join(', ')}.`)
-    }
+    if (nivelesNoUsados.length) warns.push(`${nivelesNoUsados.length} nivel(es) no están asignados a ninguna versión: ${nivelesNoUsados.map(n => n.name || 'sin nombre').join(', ')}.`)
 
-    // Advertir si level_display no coincide con ningún nivel real
     for (const v of versionesActivas) {
-      if (v.level_display && !v.level_id) {
-        warns.push(`La versión "${v.display_name}" tiene nivel "${v.level_display}" pero no coincide con ningún nivel real. Selecciónalo de la lista.`)
-      }
-      if (v.profession_display && !v.profession_id) {
-        warns.push(`La versión "${v.display_name}" tiene profesión "${v.profession_display}" que no existe en la base. Créala con el botón "+" o déjala vacía.`)
-      }
+      if (v.level_display && !v.level_id) warns.push(`La versión "${v.display_name}" tiene nivel "${v.level_display}" pero no coincide con ningún nivel real.`)
+      if (v.profession_display && !v.profession_id) warns.push(`La versión "${v.display_name}" tiene profesión "${v.profession_display}" que no existe en la base.`)
     }
 
     setWarnings(warns)
@@ -1145,68 +581,31 @@ function EvaluacionFormContent() {
   useEffect(() => { calcularWarnings() }, [versiones, niveles, calcularWarnings])
 
   // ==========================================================================
-  // FIX CRÍTICO: validarAntesDeGuardar
-  // Toda versión activa DEBE tener level_id real, no solo level_display.
-  // Si level_display está pero level_id es null → falla con mensaje claro.
-  // Si ambos están vacíos en versión activa → falla con mensaje de banco no asignado.
+  // VALIDACIÓN
   // ==========================================================================
   function validarAntesDeGuardar() {
-    if (!form.title.trim()) {
-      throw Object.assign(new Error('El nombre del paquete es obligatorio.'), { seccion: 'general' })
-    }
-    if (niveles.some(n => !n.name.trim())) {
-      throw Object.assign(new Error('Todos los niveles deben tener nombre.'), { seccion: 'niveles' })
-    }
+    if (!form.title.trim()) throw Object.assign(new Error('El nombre del paquete es obligatorio.'), { seccion: 'general' })
+    if (niveles.some(n => !n.name.trim())) throw Object.assign(new Error('Todos los niveles deben tener nombre.'), { seccion: 'niveles' })
 
     const versionesActivas = versiones.filter(v => v.is_active)
-    if (!versionesActivas.length) {
-      throw Object.assign(new Error('Debes tener al menos una versión activa.'), { seccion: 'profesiones' })
-    }
+    if (!versionesActivas.length) throw Object.assign(new Error('Debes tener al menos una versión activa.'), { seccion: 'profesiones' })
 
     for (const v of versionesActivas) {
-      if (!v.display_name?.trim()) {
-        throw Object.assign(new Error('Todas las versiones activas deben tener nombre.'), { seccion: 'profesiones' })
-      }
-      if (!v.price || v.price <= 0) {
-        throw Object.assign(new Error(`La versión "${v.display_name}" debe tener un precio válido.`), { seccion: 'profesiones' })
-      }
-
-      // FIX CRÍTICO: validar level_id real, no solo level_display
-      if (!v.level_id && !v.level_display) {
-        // No tiene nivel asignado en absoluto
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" debe tener un banco de preguntas asignado antes de publicar.`),
-          { seccion: 'profesiones' }
-        )
-      }
-      if (v.level_display && !v.level_id) {
-        // Tiene texto pero no coincide con nivel real
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" tiene un banco de preguntas que no coincide con ningún nivel real. Selecciónalo de la lista desplegable o crea el nivel primero.`),
-          { seccion: 'profesiones' }
-        )
-      }
-      // Si level_id es null y level_display está vacío ya fue capturado arriba.
-      // Si level_id tiene valor pero es string (temporal) y no número real, validar:
-      if (v.level_id !== null && typeof v.level_id !== 'number') {
-        // level_id temporal (string) no es un ID real de BD
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" tiene un banco de preguntas que no ha sido guardado en la base de datos. Guarda los niveles primero.`),
-          { seccion: 'niveles' }
-        )
-      }
+      if (!v.display_name?.trim()) throw Object.assign(new Error('Todas las versiones activas deben tener nombre.'), { seccion: 'profesiones' })
+      if (!v.price || v.price <= 0) throw Object.assign(new Error(`La versión "${v.display_name}" debe tener un precio válido.`), { seccion: 'profesiones' })
+      if (!v.level_id && !v.level_display) throw Object.assign(new Error(`La versión "${v.display_name}" debe tener un banco de preguntas asignado.`), { seccion: 'profesiones' })
+      if (v.level_display && !v.level_id) throw Object.assign(new Error(`La versión "${v.display_name}" tiene un banco que no coincide con ningún nivel real. Selecciónalo de la lista.`), { seccion: 'profesiones' })
+      if (v.level_id !== null && typeof v.level_id !== 'number') throw Object.assign(new Error(`La versión "${v.display_name}" tiene un banco que no ha sido guardado aún. Guarda los niveles primero.`), { seccion: 'niveles' })
     }
 
     for (const nv of niveles) {
       const pregs = preguntas[nv._id] || []
-      if (pregs.length === 0 || pregs.every(p => !p.text?.trim())) {
-        throw Object.assign(new Error(`El nivel "${nv.name || 'sin nombre'}" no tiene preguntas válidas.`), { seccion: 'preguntas' })
-      }
+      if (pregs.length === 0 || pregs.every(p => !p.text?.trim())) throw Object.assign(new Error(`El nivel "${nv.name || 'sin nombre'}" no tiene preguntas válidas.`), { seccion: 'preguntas' })
     }
   }
 
   // ==========================================================================
-  // GUARDADO PRINCIPAL — sin loading infinito, etapas visibles, error en pantalla
+  // GUARDADO PRINCIPAL — orquestador limpio por etapas
   // ==========================================================================
   async function handleSubmit(e) {
     e.preventDefault()
@@ -1219,242 +618,61 @@ function EvaluacionFormContent() {
       if (form.is_active) {
         validarAntesDeGuardar()
       } else {
-        if (!form.title.trim()) {
-          throw Object.assign(new Error('El nombre del paquete es obligatorio incluso para borrador.'), { seccion: 'general' })
-        }
+        if (!form.title.trim()) throw Object.assign(new Error('El nombre del paquete es obligatorio incluso para borrador.'), { seccion: 'general' })
       }
 
-      let evalId = id
-
-      // 1. Evaluación
+      // ETAPA 1: Evaluación
       setGuardadoStage('Guardando información del paquete...')
-      try {
-        if (isEdit) {
-          const { error: e1 } = await supabase.from('evaluations').update({
-            title: form.title, description: form.description,
-            category_id: form.category_id || null, is_active: form.is_active,
-          }).eq('id', id)
-          if (e1) throw e1
-        } else {
-          const { data: ev, error: e1 } = await supabase.from('evaluations').insert({
-            title: form.title, description: form.description,
-            category_id: form.category_id || null, is_active: form.is_active,
-          }).select('id').single()
-          if (e1) throw e1
-          evalId = ev.id
-        }
-      } catch (err) {
-        throw Object.assign(new Error(`Error guardando evaluación: ${err.message}`), { seccion: 'general' })
-      }
+      dbg('etapa 1: saveEvaluation')
+      const { evalId } = await saveEvaluation({ isEdit, id, form })
 
-      // 2. Niveles y preguntas
+      // ETAPA 2: Niveles y preguntas
       setGuardadoStage('Guardando niveles y preguntas...')
-      const { data: nivelesExistentesDB, error: errNivelesDB } = await supabase
-        .from('levels').select('id').eq('evaluation_id', evalId)
-      if (errNivelesDB) throw Object.assign(new Error(`Error cargando niveles: ${errNivelesDB.message}`), { seccion: 'niveles' })
+      dbg('etapa 2: saveAllLevels', { evalId })
+      await saveAllLevels({ evalId, niveles, preguntas, isEdit })
 
-      const nuevosNivelesIds = []
-
-      for (const [idx, nv] of niveles.entries()) {
-        let levelId = typeof nv._id === 'number' ? nv._id : null
-
-        try {
-          if (isEdit && levelId) {
-            const { error: e2 } = await supabase.from('levels').update({
-              name: nv.name, description: nv.description,
-              time_limit: nv.time_limit, passing_score: nv.passing_score, sort_order: idx + 1,
-            }).eq('id', levelId)
-            if (e2) throw e2
-            nuevosNivelesIds.push(levelId)
-          } else {
-            const { data: lv, error: e2 } = await supabase.from('levels').insert({
-              evaluation_id: evalId, name: nv.name, description: nv.description,
-              time_limit: nv.time_limit, passing_score: nv.passing_score, sort_order: idx + 1,
-            }).select('id').single()
-            if (e2) throw e2
-            levelId = lv.id
-            nuevosNivelesIds.push(levelId)
-          }
-        } catch (err) {
-          throw Object.assign(new Error(`Error guardando nivel "${nv.name}": ${err.message}`), { seccion: 'niveles' })
-        }
-
-        const pregsDelNivel = preguntas[nv._id] || []
-        const { data: preguntasExistentesDB, error: errPregDB } = await supabase
-          .from('questions').select('id').eq('level_id', levelId)
-        if (errPregDB) throw Object.assign(new Error(`Error cargando preguntas del nivel "${nv.name}": ${errPregDB.message}`), { seccion: 'preguntas' })
-
-        const nuevasPregIds = []
-
-        for (const preg of pregsDelNivel) {
-          const pregExiste = typeof preg._id === 'number'
-          let qId = preg._id
-
-          try {
-            if (isEdit && pregExiste) {
-              const { error: e3 } = await supabase.from('questions').update({
-                text: preg.text, explanation: preg.explanation, difficulty: preg.difficulty, area: preg.area,
-              }).eq('id', qId)
-              if (e3) throw e3
-
-              const { data: optsExistentesDB } = await supabase.from('options').select('id, letter').eq('question_id', qId)
-              const idsOptsExistentes = new Set(optsExistentesDB?.map(o => o.id) || [])
-              const nuevasOpts = preg.options.filter(op => !op.id)
-              const optsActualizar = preg.options.filter(op => op.id && idsOptsExistentes.has(op.id))
-              const optsEliminar = optsExistentesDB?.filter(op => !preg.options.some(po => po.id === op.id)) || []
-
-              for (const op of optsEliminar) { await supabase.from('options').delete().eq('id', op.id) }
-              for (const op of optsActualizar) { await supabase.from('options').update({ text: op.text, is_correct: op.is_correct }).eq('id', op.id) }
-              if (nuevasOpts.length) {
-                await supabase.from('options').insert(nuevasOpts.map(op => ({ question_id: qId, text: op.text, letter: op.letter, is_correct: op.is_correct })))
-              }
-              nuevasPregIds.push(qId)
-            } else {
-              const { data: q, error: e3 } = await supabase.from('questions').insert({
-                level_id: levelId, text: preg.text, explanation: preg.explanation,
-                question_type: 'multiple', difficulty: preg.difficulty, area: preg.area,
-              }).select('id').single()
-              if (e3) throw e3
-              qId = q.id
-
-              const { error: e4 } = await supabase.from('options').insert(
-                preg.options.map(op => ({ question_id: qId, text: op.text, letter: op.letter, is_correct: op.is_correct }))
-              )
-              if (e4) throw e4
-              nuevasPregIds.push(qId)
-            }
-          } catch (err) {
-            throw Object.assign(new Error(`Error guardando preguntas del nivel "${nv.name}": ${err.message}`), { seccion: 'preguntas' })
-          }
-        }
-
-        for (const p of preguntasExistentesDB) {
-          if (!nuevasPregIds.includes(p.id)) {
-            await supabase.from('options').delete().eq('question_id', p.id)
-            await supabase.from('questions').delete().eq('id', p.id)
-          }
-        }
-      }
-
-      for (const lv of nivelesExistentesDB) {
-        if (!nuevosNivelesIds.includes(lv.id)) {
-          const { data: pregNivel } = await supabase.from('questions').select('id').eq('level_id', lv.id)
-          for (const preg of pregNivel || []) {
-            await supabase.from('options').delete().eq('question_id', preg.id)
-            await supabase.from('questions').delete().eq('id', preg.id)
-          }
-          await supabase.from('levels').delete().eq('id', lv.id)
-        }
-      }
-
-      // 3. Paquete y versiones (solo si publicando)
+      // ETAPAS 3-7: Solo si publicando
       if (form.is_active) {
         setGuardadoStage('Configurando paquete y versiones...')
-        let packageId = await obtenerPackageIdDeEvaluacion()
+        dbg('etapa 3: savePackage')
 
-        const versionesActivas = versiones.filter(v => v.is_active)
-        const precioBase = versionesActivas.length
-          ? Math.min(...versionesActivas.map(v => Number(v.price) || 0))
-          : 0
+        let packageId = await obtenerPackageId()
+        const { packageId: pkgId } = await savePackage({ packageId, form, versiones, modoVersiones })
+        packageId = pkgId
 
-        const payloadPackage = {
-          name: form.title, description: form.description, base_price: precioBase,
-          package_type: 'normal', duration_days: 365, is_active: true,
-          pricing_mode: modoVersiones === 'simple' ? 'global' : 'per_profession',
-          content_mode: 'shared', has_study_material: true, has_practice_mode: true,
-          has_exam_mode: true, has_online_room: true,
-          has_level_selector: versionesActivas.length > 1,
-        }
-
-        try {
-          if (packageId) {
-            const { error: e5 } = await supabase.from('packages').update(payloadPackage).eq('id', packageId)
-            if (e5) throw e5
-          } else {
-            const { data: newPkg, error: e5 } = await supabase.from('packages').insert(payloadPackage).select('id').single()
-            if (e5) throw e5
-            packageId = newPkg.id
-          }
-        } catch (err) {
-          throw Object.assign(new Error(`Error guardando el paquete: ${err.message}`), { seccion: 'general' })
-        }
-
-        try {
-          const { data: versionesEnBD } = await supabase.from('package_versions').select('id').eq('package_id', packageId)
-          const idsEnBD = new Set(versionesEnBD.map(v => v.id))
-          const idsEnEstado = new Set(versiones.filter(v => v.id).map(v => v.id))
-
-          for (const v of versionesEnBD) {
-            if (!idsEnEstado.has(v.id)) await supabase.from('package_versions').delete().eq('id', v.id)
-          }
-
-          for (let i = 0; i < versiones.length; i++) {
-            const v = versiones[i]
-            const versionData = {
-              package_id: packageId, display_name: v.display_name, price: v.price,
-              is_active: v.is_active, sort_order: i,
-              // Guardamos profession_id real (puede ser null si no fue resuelto)
-              profession_id: v.profession_id || null,
-            }
-            if (v.id && idsEnBD.has(v.id)) {
-              const { error: updErr } = await supabase.from('package_versions').update(versionData).eq('id', v.id)
-              if (updErr) throw updErr
-            } else {
-              const { data: nueva, error: insErr } = await supabase.from('package_versions').insert(versionData).select('id').single()
-              if (insErr) throw insErr
-              if (nueva) v.id = nueva.id
-            }
-          }
-        } catch (err) {
-          throw Object.assign(new Error(`Error sincronizando versiones: ${err.message}`), { seccion: 'profesiones' })
-        }
+        dbg('etapa 4: syncPackageVersions')
+        const { versionesSincronizadas } = await syncPackageVersions({ packageId, versiones })
+        // Actualizar IDs de versiones nuevas en estado local
+        setVersiones(prev => prev.map((v, i) => versionesSincronizadas[i] ? { ...v, id: versionesSincronizadas[i].id } : v))
 
         setGuardadoStage('Vinculando evaluación con versiones...')
+        dbg('etapa 5: recargar y vincular versiones')
         const { data: versionesFrescas, error: fetchErr } = await supabase
           .from('package_versions').select('id, is_active').eq('package_id', packageId)
         if (fetchErr) throw Object.assign(new Error(`Error obteniendo versiones frescas: ${fetchErr.message}`), { seccion: 'profesiones' })
 
-        try {
-          await supabase.from('evaluation_versions').delete().eq('evaluation_id', evalId)
-          const nuevasRelaciones = versionesFrescas.filter(v => v.is_active).map(v => ({ evaluation_id: evalId, package_version_id: v.id }))
-          if (nuevasRelaciones.length) {
-            const { error: relErr } = await supabase.from('evaluation_versions').insert(nuevasRelaciones)
-            if (relErr) throw relErr
-          }
-        } catch (err) {
-          throw Object.assign(new Error(`Error vinculando evaluación con versiones: ${err.message}`), { seccion: 'profesiones' })
-        }
+        await syncEvaluationVersions({ evalId, versionesFrescas })
 
         setGuardadoStage('Sincronizando materiales...')
-        try {
-          const versionesActivasIds = versionesFrescas.filter(v => v.is_active).map(v => v.id)
-          if (versionesActivasIds.length) await sincronizarMaterialesConVersiones(packageId, versionesActivasIds)
-        } catch (err) {
-          throw Object.assign(new Error(`Error vinculando materiales: ${err.message}`), { seccion: 'material' })
+        dbg('etapa 6: syncMaterials')
+        const versionesActivasIds = versionesFrescas.filter(v => v.is_active).map(v => v.id)
+        if (versionesActivasIds.length) {
+          await syncMaterialsWithVersions({ packageId, versionesActivasIds })
         }
 
         setGuardadoStage('Vinculando niveles a versiones...')
-        try {
-          await sincronizarNivelesVersiones(versionesFrescas)
-        } catch (err) {
-          throw Object.assign(new Error(`Error vinculando niveles a versiones: ${err.message}`), { seccion: 'profesiones' })
-        }
+        dbg('etapa 7: syncPackageVersionLevels')
+        const levelMapEstado = {}
+        versiones.forEach(v => { if (v.id && v.level_id) levelMapEstado[v.id] = v.level_id })
+        await syncPackageVersionLevels({ versionesFrescas, levelMapEstado })
 
-        const { data: versionesFinales } = await supabase
-          .from('package_versions').select('*').eq('package_id', packageId).order('sort_order', { ascending: true })
-
-        if (versionesFinales) {
-          const allVersionIds = versionesFinales.map(v => v.id)
-          const { data: pvLevels } = await supabase.from('package_version_levels').select('package_version_id, level_id').in('package_version_id', allVersionIds)
-          const levelMap = {}
-          pvLevels?.forEach(row => { levelMap[row.package_version_id] = row.level_id })
-          setVersiones(versionesFinales.map(v => ({
-            ...v,
-            level_id: levelMap[v.id] || null,
-            level_display: levelMap[v.id] ? (niveles.find(n => n._id === levelMap[v.id] || n.id === levelMap[v.id])?.name || '') : '',
-            profession_display: profesiones.find(p => p.id === v.profession_id)?.name || '',
-          })))
-        }
+        // Recargar versiones con detalles completos
+        const versionesActualizadas = await loadVersionesWithDetails({
+          packageId, evalId,
+          nivelesToActuales: niveles,
+          profesiones,
+        })
+        if (versionesActualizadas) setVersiones(versionesActualizadas)
       }
 
       setExitoMsg(form.is_active ? 'publicado' : 'borrador')
@@ -1464,7 +682,6 @@ function EvaluacionFormContent() {
 
     } catch (err) {
       const mensaje = err.message || 'Error al guardar'
-      // FIX: error visible en pantalla (banner rojo) + toast
       setErrorBloque({ seccion: err.seccion || 'general', message: mensaje })
       addToast('error', mensaje)
       const tabMap = { general: 'general', niveles: 'niveles', preguntas: 'preguntas', profesiones: 'profesiones', material: 'material' }
@@ -1476,44 +693,17 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // RENDER HELPERS
+  // VALORES DERIVADOS
   // ==========================================================================
-  const pregActivas = preguntas[nivelActivo] || []
   const totalPregs = Object.values(preguntas).reduce((sum, arr) => sum + arr.length, 0)
-  const carpetas = [...new Set(materiales.map(m => m.folder))]
   const versionesActivas = versiones.filter(v => v.is_active)
   const precioMinimo = versionesActivas.length ? Math.min(...versionesActivas.map(v => Number(v.price) || 0)) : 0
-  const esModoSimple = modoVersiones === 'simple'
-
-  const modulosDelNivelActivo = useMemo(() => {
-    const areas = (preguntas[nivelActivo] || []).map(p => p.area?.trim()).filter(Boolean)
-    return [...new Set(areas)]
-  }, [preguntas, nivelActivo])
+  const labels = useMemo(() => buildLabels(modoGuiado), [modoGuiado])
 
   const todosLosModulos = useMemo(() => {
     const areas = Object.values(preguntas).flat().map(p => p.area?.trim()).filter(Boolean)
     return [...new Set(areas)]
   }, [preguntas])
-
-  const pregsFiltradas = useMemo(() => {
-    if (!moduloActivo) return pregActivas
-    return pregActivas.filter(p => (p.area?.trim() || '') === moduloActivo)
-  }, [pregActivas, moduloActivo])
-
-  const labels = useMemo(() => {
-    if (!modoGuiado) return {
-      versiones: 'Versiones y Precios', profesion: 'Profesión / Cargo',
-      nivel: 'Nivel de preguntas', material: 'Material de Estudio',
-      version: 'Versión', nivelActivo: 'Nivel activo', banco: 'Banco de preguntas',
-      planes: 'Planes de acceso', recursos: 'Recursos de apoyo', modulos: 'Módulos / Áreas',
-    }
-    return {
-      versiones: 'Planes de acceso', profesion: 'Cargo o perfil',
-      nivel: 'Banco de preguntas', material: 'Recursos de apoyo',
-      version: 'Plan', nivelActivo: 'Banco activo', banco: 'Banco de preguntas',
-      planes: 'Planes de acceso', recursos: 'Recursos de apoyo', modulos: 'Módulos',
-    }
-  }, [modoGuiado])
 
   // ==========================================================================
   // RENDER
@@ -1560,30 +750,26 @@ function EvaluacionFormContent() {
           <button type="submit" form="eval-form" disabled={guardando || Boolean(exitoMsg)}
             className="flex items-center gap-2 bg-primary text-on-primary px-6 py-2 rounded-full font-bold text-sm shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-60">
             {guardando && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            {exitoMsg === 'publicado' ? (
-              <><span className="material-symbols-outlined text-sm">check</span>¡Publicado!</>
-            ) : exitoMsg === 'borrador' ? (
-              <><span className="material-symbols-outlined text-sm">draft</span>Borrador guardado</>
-            ) : guardando ? guardadoStage || 'Guardando...' : isEdit ? 'Actualizar paquete' : 'Publicar paquete'}
+            {exitoMsg === 'publicado' ? (<><span className="material-symbols-outlined text-sm">check</span>¡Publicado!</>)
+              : exitoMsg === 'borrador' ? (<><span className="material-symbols-outlined text-sm">draft</span>Borrador guardado</>)
+              : guardando ? (guardadoStage || 'Guardando...')
+              : isEdit ? 'Actualizar paquete' : 'Publicar paquete'}
           </button>
         </div>
       </header>
 
-      {/* FIX: Banner de error visible en pantalla con botón "Ir a la sección" */}
+      {/* Banner de error */}
       {errorBloque && (
         <div className="px-8 pt-4 max-w-7xl mx-auto">
           <ErrorBanner
             error={errorBloque}
             onClose={() => setErrorBloque(null)}
-            onIrASeccion={(sec) => {
-              setTab(sec)
-              // Mantenemos el error visible al navegar (no lo cerramos)
-            }}
+            onIrASeccion={(sec) => setTab(sec)}
           />
         </div>
       )}
 
-      {/* Indicador de etapas de guardado */}
+      {/* Indicador de etapa */}
       {guardando && guardadoStage && (
         <div className="px-8 pt-2 max-w-7xl mx-auto">
           <div className="flex items-center gap-2 text-xs text-primary font-medium">
@@ -1595,7 +781,8 @@ function EvaluacionFormContent() {
 
       <form id="eval-form" onSubmit={handleSubmit}>
         <div className="p-8 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Sidebar */}
+
+          {/* ==================== SIDEBAR ==================== */}
           <div className="space-y-6">
             <Card className="p-4">
               <div className="flex items-center justify-between">
@@ -1610,7 +797,6 @@ function EvaluacionFormContent() {
               </p>
             </Card>
 
-            {/* Tabs de navegación con badge de error */}
             <div className="flex flex-col gap-1">
               {[
                 { key: 'general', icon: 'inventory_2', label: 'Info del Paquete' },
@@ -1620,19 +806,15 @@ function EvaluacionFormContent() {
                 { key: 'material', icon: 'menu_book', label: labels.material },
                 { key: 'importar', icon: 'upload_file', label: 'Importar CSV' },
               ].map(t => {
-                // FIX: resaltar pestaña si el error pertenece a esa sección
                 const tieneError = errorBloque?.seccion === t.key
                 return (
                   <button key={t.key} type="button" onClick={() => setTab(t.key)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all text-left
                       ${tab === t.key ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container'}
-                      ${tieneError ? 'ring-2 ring-error/50 bg-error-container/10 text-error' : ''}
-                    `}>
+                      ${tieneError ? 'ring-2 ring-error/50 bg-error-container/10 text-error' : ''}`}>
                     <span className={`material-symbols-outlined text-lg ${tieneError ? 'text-error' : ''}`}>{t.icon}</span>
                     {t.label}
-                    {tieneError && (
-                      <span className="ml-auto w-2.5 h-2.5 rounded-full bg-error flex-shrink-0 animate-pulse" />
-                    )}
+                    {tieneError && <span className="ml-auto w-2.5 h-2.5 rounded-full bg-error flex-shrink-0 animate-pulse" />}
                     {!tieneError && t.key === 'preguntas' && totalPregs > 0 && (
                       <span className="ml-auto text-[10px] bg-primary text-on-primary px-2 py-0.5 rounded-full">{totalPregs}</span>
                     )}
@@ -1649,7 +831,6 @@ function EvaluacionFormContent() {
 
             <ChecklistPublicacion form={form} versiones={versiones} niveles={niveles} preguntas={preguntas} materiales={materiales} modoGuiado={modoGuiado} />
 
-            {/* Selector de nivel activo */}
             {(tab === 'preguntas' || tab === 'importar') && niveles.length > 0 && (
               <Card className="p-4 border-2 border-primary/20">
                 <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3 flex items-center gap-1">
@@ -1671,29 +852,32 @@ function EvaluacionFormContent() {
               </Card>
             )}
 
-            {/* Módulos del nivel activo */}
-            {tab === 'preguntas' && modulosDelNivelActivo.length > 0 && (
-              <Card className="p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
-                  {modoGuiado ? 'Módulos' : 'Áreas temáticas'}
-                </p>
-                <div className="space-y-1">
-                  <button type="button" onClick={() => setModuloActivo(null)}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${!moduloActivo ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
-                    Todos ({pregActivas.length})
-                  </button>
-                  {modulosDelNivelActivo.map(mod => (
-                    <button key={mod} type="button" onClick={() => setModuloActivo(mod)}
-                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${moduloActivo === mod ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
-                      {mod}
-                      <span className="ml-1 opacity-60">({pregActivas.filter(p => p.area?.trim() === mod).length})</span>
+            {tab === 'preguntas' && (() => {
+              const pregActivas = preguntas[nivelActivo] || []
+              const modulosDelNivel = [...new Set(pregActivas.map(p => p.area?.trim()).filter(Boolean))]
+              if (modulosDelNivel.length === 0) return null
+              return (
+                <Card className="p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+                    {modoGuiado ? 'Módulos' : 'Áreas temáticas'}
+                  </p>
+                  <div className="space-y-1">
+                    <button type="button" onClick={() => setModuloActivo(null)}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${!moduloActivo ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
+                      Todos ({pregActivas.length})
                     </button>
-                  ))}
-                </div>
-              </Card>
-            )}
+                    {modulosDelNivel.map(mod => (
+                      <button key={mod} type="button" onClick={() => setModuloActivo(mod)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${moduloActivo === mod ? 'bg-secondary/10 text-secondary font-bold' : 'text-on-surface-variant hover:bg-surface-container'}`}>
+                        {mod}
+                        <span className="ml-1 opacity-60">({pregActivas.filter(p => p.area?.trim() === mod).length})</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )
+            })()}
 
-            {/* Resumen rápido */}
             <Card className="p-4">
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Resumen rápido</p>
               <div className="space-y-2 text-xs text-on-surface-variant">
@@ -1702,14 +886,11 @@ function EvaluacionFormContent() {
                 <div className="flex justify-between"><span>Materiales</span><span className="font-bold text-on-surface">{materiales.length}</span></div>
                 <div className="flex justify-between">
                   <span>Estado</span>
-                  <span className={`font-bold ${form.is_active ? 'text-secondary' : 'text-tertiary'}`}>
-                    {form.is_active ? 'Publicado' : 'Borrador'}
-                  </span>
+                  <span className={`font-bold ${form.is_active ? 'text-secondary' : 'text-tertiary'}`}>{form.is_active ? 'Publicado' : 'Borrador'}</span>
                 </div>
               </div>
             </Card>
 
-            {/* Avisos de consistencia */}
             {warnings.length > 0 && (
               <Card className="p-4 border border-tertiary/20 bg-tertiary-container/10">
                 <p className="text-xs font-bold uppercase tracking-widest text-tertiary mb-2 flex items-center gap-1">
@@ -1717,742 +898,97 @@ function EvaluacionFormContent() {
                   Avisos de consistencia
                 </p>
                 <ul className="space-y-1">
-                  {warnings.map((w, i) => (
-                    <li key={i} className="text-xs text-on-surface-variant">{w}</li>
-                  ))}
+                  {warnings.map((w, i) => <li key={i} className="text-xs text-on-surface-variant">{w}</li>)}
                 </ul>
               </Card>
             )}
           </div>
 
-          {/* Contenido principal */}
+          {/* ==================== CONTENIDO PRINCIPAL ==================== */}
           <div className="lg:col-span-2 space-y-6">
-
-            {/* ===== GENERAL ===== */}
             {tab === 'general' && (
-              <Card className="p-6 space-y-5">
-                <h3 className="font-bold text-lg font-headline">Información del Paquete</h3>
-                <InputField label="Nombre del paquete" required>
-                  <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-                    placeholder="ej: Contraloría General de la República" className={INPUT_CLS} required />
-                </InputField>
-                <InputField label="Descripción" hint="Qué incluye este paquete">
-                  <textarea rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                    placeholder="Describe qué cubre este paquete, áreas temáticas, cantidad de preguntas..." className={`${INPUT_CLS} resize-none`} />
-                </InputField>
-
-                {/* Categoría con modal inline */}
-                <InputField label="Categoría">
-                  <div className="flex gap-2">
-                    <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })} className={`${INPUT_CLS} flex-1`}>
-                      <option value="">Sin categoría</option>
-                      {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button type="button" onClick={() => setShowCatModal(true)}
-                      className="flex-shrink-0 flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold hover:bg-primary/20 transition-colors">
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      Nueva
-                    </button>
-                  </div>
-                </InputField>
-
-                <div className="flex items-center justify-between p-4 bg-surface-container rounded-xl">
-                  <div>
-                    <p className="text-sm font-bold">Publicar paquete</p>
-                    <p className="text-xs text-on-surface-variant">Visible en planes y disponible para compra</p>
-                  </div>
-                  <button type="button" onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
-                    className={`w-12 h-6 rounded-full transition-all relative ${form.is_active ? 'bg-secondary' : 'bg-outline-variant'}`}>
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.is_active ? 'right-0.5' : 'left-0.5'}`} />
-                  </button>
-                </div>
-
-                <HelpBox title="Cómo funciona esta sección" items={[
-                  'Aquí defines la información general del paquete que se publica en la plataforma.',
-                  'Si activas "Publicar paquete", aparecerá disponible para compra.',
-                  'La descripción debe explicar qué incluye: simulacros, módulos, videos y material.',
-                ]} />
-              </Card>
+              <GeneralSection
+                form={form} setForm={setForm}
+                categorias={categorias}
+                showCatModal={showCatModal} setShowCatModal={setShowCatModal}
+                nuevaCategoria={nuevaCategoria} setNuevaCategoria={setNuevaCategoria}
+                guardandoCat={guardandoCat}
+                onAgregarCategoria={agregarCategoria}
+              />
             )}
 
-            {/* ===== VERSIONES / PRECIOS ===== */}
             {tab === 'profesiones' && (
-              <Card className="p-6 space-y-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h3 className="font-bold text-lg font-headline">{labels.versiones}</h3>
-                    <p className="text-xs text-on-surface-variant mt-1">
-                      {!id ? 'Guarda el paquete primero para agregar versiones.' : 'Cada versión puede representar una profesión, cargo o acceso especial.'}
-                    </p>
-                  </div>
-                  {id && (
-                    <button type="button" onClick={agregarVersion}
-                      className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      + {modoGuiado ? 'Plan' : 'Versión'}
-                    </button>
-                  )}
-                </div>
-
-                <div className="p-4 bg-surface-container rounded-xl border border-outline-variant/15 space-y-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-bold">Modo de configuración</p>
-                      <p className="text-xs text-on-surface-variant">
-                        {esModoSimple
-                          ? 'Simple: un solo precio global para todo el paquete.'
-                          : 'Avanzado: múltiples versiones con precios independientes por profesión o cargo.'}
-                      </p>
-                    </div>
-                    <div className="flex bg-surface-container-high rounded-full p-1">
-                      {['simple', 'avanzado'].map(modo => (
-                        <button key={modo} type="button" onClick={() => setModoVersiones(modo)}
-                          className={`px-4 py-2 rounded-full text-xs font-bold transition-all capitalize ${modoVersiones === modo ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}>
-                          {modo}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <HelpBox title="Cómo funcionan las versiones" items={[
-                  'Cada versión representa un cargo, profesión o perfil de acceso.',
-                  'Cada versión debe tener nombre, precio y nivel de preguntas asignado.',
-                  'El nivel define qué preguntas ve el usuario al comprar esta versión.',
-                  'Escribe el nombre del nivel: si coincide exactamente, se asigna automáticamente. Si no, selecciónalo de la lista.',
-                ]} />
-
-                {id && versiones.map((version, idx) => {
-                  const esVersionExtraEnSimple = esModoSimple && idx > 0
-                  if (esVersionExtraEnSimple) return null
-
-                  // Detectar inconsistencias display↔id
-                  const levelSinResolver = version.level_display && !version.level_id
-                  const profSinResolver = version.profession_display && !version.profession_id
-
-                  return (
-                    <div key={version.id} className={`rounded-2xl border-2 p-5 space-y-4 ${!version.is_active ? 'border-outline-variant/10 opacity-60' : 'border-secondary/20'}`}>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-primary/10 text-primary">{idx + 1}</div>
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
-                            {esModoSimple ? (modoGuiado ? 'Plan único' : 'Versión única') : (modoGuiado ? 'Plan' : 'Versión')}
-                          </span>
-                        </div>
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => duplicarVersion(version)}
-                            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Duplicar">
-                            <span className="material-symbols-outlined text-sm">content_copy</span>
-                          </button>
-                          <button type="button" onClick={() => eliminarVersion(version.id)}
-                            className="p-1.5 text-error hover:bg-error-container/30 rounded-lg transition-colors">
-                            <span className="material-symbols-outlined text-sm">delete</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                            {esModoSimple ? 'Nombre' : labels.profesion}
-                          </label>
-                          <input type="text" value={version.display_name}
-                            onChange={e => actualizarVersion(version.id, 'display_name', e.target.value)}
-                            placeholder={esModoSimple ? 'ej: Acceso Completo' : 'ej: Profesional Universitario'}
-                            className={INPUT_CLS} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Precio (COP)</label>
-                          <input type="number" value={version.price}
-                            onChange={e => actualizarVersion(version.id, 'price', parseInt(e.target.value || '0', 10))}
-                            placeholder="50000" className={INPUT_CLS} />
-                        </div>
-                      </div>
-
-                      {/* FIX: Profesión asociada — input con autocompletar que resuelve profession_id */}
-                      {!esModoSimple && (
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                            Profesión asociada <span className="normal-case font-normal">(opcional)</span>
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={version.profession_display || ''}
-                              onChange={e => handleProfesionDisplayChange(version.id, e.target.value)}
-                              placeholder="ej: Abogado, Contador..."
-                              className={`${INPUT_CLS} flex-1 ${profSinResolver ? 'border-tertiary/50 ring-1 ring-tertiary/20' : ''}`}
-                              list={`profesiones-list-${version.id}`}
-                            />
-                            <datalist id={`profesiones-list-${version.id}`}>
-                              {profesiones.map(p => <option key={p.id} value={p.name} />)}
-                            </datalist>
-                            <button type="button" onClick={() => setShowProfModal(true)}
-                              className="flex-shrink-0 px-3 py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold hover:bg-primary/20 transition-colors">
-                              <span className="material-symbols-outlined text-sm">add</span>
-                            </button>
-                          </div>
-                          {profSinResolver && (
-                            <p className="text-[10px] text-tertiary flex items-center gap-1">
-                              <span className="material-symbols-outlined text-xs">warning</span>
-                              "{version.profession_display}" no existe. Créala con + o selecciónala de la lista.
-                            </p>
-                          )}
-                          {version.profession_id && !profSinResolver && (
-                            <p className="text-[10px] text-secondary flex items-center gap-1">
-                              <span className="material-symbols-outlined text-xs">check_circle</span>
-                              Asociada: {version.profession_display}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* FIX: Nivel de preguntas — input con autocompletar que resuelve level_id */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                          {labels.nivel} {version.is_active ? <span className="text-error">*</span> : ''}
-                        </label>
-                        <input
-                          type="text"
-                          value={version.level_display || ''}
-                          onChange={e => handleLevelDisplayChange(version.id, e.target.value)}
-                          placeholder="Escribe el nombre del nivel y selecciónalo..."
-                          className={`${INPUT_CLS} ${levelSinResolver ? 'border-error/50 ring-1 ring-error/20' : version.level_id ? 'border-secondary/40 ring-1 ring-secondary/20' : ''}`}
-                          list={`niveles-list-${version.id}`}
-                        />
-                        <datalist id={`niveles-list-${version.id}`}>
-                          {niveles.map(n => <option key={n._id} value={n.name} />)}
-                        </datalist>
-                        {levelSinResolver && (
-                          <p className="text-[10px] text-error flex items-center gap-1">
-                            <span className="material-symbols-outlined text-xs">error</span>
-                            "{version.level_display}" no coincide con ningún nivel. Selecciónalo de la lista desplegable o crea el nivel primero.
-                          </p>
-                        )}
-                        {version.level_id && !levelSinResolver && (
-                          <p className="text-[10px] text-secondary flex items-center gap-1">
-                            <span className="material-symbols-outlined text-xs">check_circle</span>
-                            Nivel asignado: {version.level_display}
-                          </p>
-                        )}
-                        {!version.level_display && version.is_active && (
-                          <p className="text-[10px] text-error/70 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-xs">info</span>
-                            Obligatorio para versiones activas. Escribe el nombre del nivel y selecciónalo de la lista.
-                          </p>
-                        )}
-                        {!version.level_display && !version.is_active && (
-                          <p className="text-[10px] text-on-surface-variant">Escribe el nombre del nivel y selecciónalo de la lista desplegable.</p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
-                        <div className="text-sm font-extrabold text-primary">
-                          ${Number(version.price || 0).toLocaleString('es-CO')} COP
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <button type="button"
-                            onClick={() => actualizarVersion(version.id, 'is_active', !version.is_active)}
-                            className={`w-10 h-5 rounded-full relative transition-all ${version.is_active ? 'bg-secondary' : 'bg-outline-variant'}`}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${version.is_active ? 'right-0.5' : 'left-0.5'}`} />
-                          </button>
-                          <span className="text-xs font-semibold text-on-surface-variant">
-                            {version.is_active ? 'Visible' : 'Oculta'}
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-                  )
-                })}
-              </Card>
+              <VersionsSection
+                id={id} versiones={versiones} niveles={niveles} profesiones={profesiones}
+                modoVersiones={modoVersiones} setModoVersiones={setModoVersiones}
+                modoGuiado={modoGuiado} labels={labels}
+                showProfModal={showProfModal} setShowProfModal={setShowProfModal}
+                nuevaProfesion={nuevaProfesion} setNuevaProfesion={setNuevaProfesion}
+                onAgregarVersion={agregarVersion}
+                onDuplicarVersion={duplicarVersion}
+                onActualizarVersion={actualizarVersion}
+                onEliminarVersion={eliminarVersion}
+                onProfesionChange={handleProfesionDisplayChange}
+                onLevelChange={handleLevelDisplayChange}
+                onAgregarProfesion={agregarProfesion}
+              />
             )}
 
-            {/* ===== NIVELES ===== */}
             {tab === 'niveles' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-lg font-headline">{modoGuiado ? 'Bancos de preguntas' : 'Niveles de preguntas'}</h3>
-                  <button type="button" onClick={agregarNivel}
-                    className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
-                    <span className="material-symbols-outlined text-sm">add</span>
-                    {modoGuiado ? 'Agregar banco' : 'Agregar nivel'}
-                  </button>
-                </div>
-
-                <div className="p-3 bg-surface-container rounded-xl text-xs text-on-surface-variant">
-                  💡 <strong>¿Cuándo crear {modoGuiado ? 'bancos' : 'niveles'}?</strong> Si todos los usuarios ven las mismas preguntas, usa un solo {modoGuiado ? 'banco' : 'nivel'}. Si cada profesión o cargo tiene preguntas distintas, crea un {modoGuiado ? 'banco' : 'nivel'} por cada uno. Luego asigna cada {modoGuiado ? 'banco' : 'nivel'} a su {modoGuiado ? 'plan' : 'versión'} en la pestaña <strong>{labels.versiones}</strong>.
-                </div>
-
-                {niveles.map((nv, i) => (
-                  <NivelCard key={nv._id} nivel={nv} idx={i}
-                    onChange={datos => actualizarNivel(nv._id, datos)}
-                    onDelete={() => eliminarNivel(nv._id)}
-                    onDuplicate={() => duplicarNivel(nv)}
-                    preguntasCount={(preguntas[nv._id] || []).length}
-                    modoGuiado={modoGuiado}
-                    onVerPreguntas={() => { setNivelActivo(nv._id); setModuloActivo(null); setTab('preguntas') }}
-                  />
-                ))}
-              </div>
+              <LevelsSection
+                niveles={niveles} preguntas={preguntas}
+                modoGuiado={modoGuiado} labels={labels}
+                onAgregarNivel={agregarNivel}
+                onActualizarNivel={actualizarNivel}
+                onEliminarNivel={eliminarNivel}
+                onDuplicarNivel={duplicarNivel}
+                onVerPreguntas={(_id) => { setNivelActivo(_id); setModuloActivo(null); setTab('preguntas') }}
+              />
             )}
 
-            {/* ===== PREGUNTAS ===== */}
             {tab === 'preguntas' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div>
-                    <h3 className="font-bold text-lg font-headline">
-                      Preguntas — {niveles.find(n => n._id === nivelActivo)?.name || (modoGuiado ? 'Banco' : 'Nivel')}
-                      {moduloActivo && <span className="text-primary ml-2">› {moduloActivo}</span>}
-                    </h3>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      {moduloActivo
-                        ? `${pregsFiltradas.length} pregunta${pregsFiltradas.length !== 1 ? 's' : ''} en este módulo`
-                        : `${pregActivas.length} pregunta${pregActivas.length !== 1 ? 's' : ''} en este ${modoGuiado ? 'banco' : 'nivel'}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {moduloActivo && (
-                      <button type="button" onClick={() => setModuloActivo(null)}
-                        className="flex items-center gap-1 text-xs text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded-lg transition-colors">
-                        <span className="material-symbols-outlined text-sm">close</span>
-                        Quitar filtro
-                      </button>
-                    )}
-                    <button type="button" onClick={() => agregarPregunta(moduloActivo || '')}
-                      className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      Agregar pregunta{moduloActivo ? ` en "${moduloActivo}"` : ''}
-                    </button>
-                  </div>
-                </div>
-
-                {!moduloActivo && modulosDelNivelActivo.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-1">
-                      <span className="material-symbols-outlined text-sm">category</span>
-                      {modoGuiado ? 'Módulos' : 'Áreas temáticas'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {modulosDelNivelActivo.map(mod => (
-                        <button key={mod} type="button" onClick={() => setModuloActivo(mod)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-secondary-container/40 text-secondary hover:bg-secondary-container/60 transition-colors">
-                          {mod}
-                          <span className="bg-secondary text-on-secondary rounded-full w-4 h-4 flex items-center justify-center text-[9px]">
-                            {pregActivas.filter(p => p.area?.trim() === mod).length}
-                          </span>
-                        </button>
-                      ))}
-                      <button type="button" onClick={() => agregarPregunta('')}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors">
-                        <span className="material-symbols-outlined text-sm">add</span>
-                        Nuevo módulo
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {!moduloActivo && pregActivas.filter(p => !p.area?.trim()).length > 0 && (
-                  <div className="p-3 bg-tertiary-container/20 rounded-xl border border-tertiary/20">
-                    <p className="text-xs font-bold text-tertiary mb-1">
-                      {pregActivas.filter(p => !p.area?.trim()).length} pregunta(s) sin {modoGuiado ? 'módulo' : 'área temática'}
-                    </p>
-                    <p className="text-xs text-on-surface-variant">Asigna un módulo a cada pregunta para organizarlas mejor.</p>
-                  </div>
-                )}
-
-                {pregsFiltradas.length === 0 ? (
-                  <Card className="p-10 text-center text-on-surface-variant">
-                    <span className="material-symbols-outlined text-4xl opacity-30 mb-2 block">quiz</span>
-                    <p className="font-semibold text-sm">
-                      {moduloActivo ? `Sin preguntas en el módulo "${moduloActivo}"` : `Sin preguntas en este ${modoGuiado ? 'banco' : 'nivel'}`}
-                    </p>
-                    <p className="text-xs mt-1">Agrégalas manualmente o importa desde CSV</p>
-                  </Card>
-                ) : (
-                  pregsFiltradas.map((preg, i) => (
-                    <PreguntaCard key={preg._id} preg={preg} idx={i}
-                      expandido={pregExpandida === preg._id}
-                      onToggle={() => setPregExpandida(pregExpandida === preg._id ? null : preg._id)}
-                      onChange={datos => actualizarPregunta(nivelActivo, preg._id, datos)}
-                      onDelete={() => eliminarPregunta(nivelActivo, preg._id)}
-                      onDuplicate={() => duplicarPreguntaEnMismoNivel(nivelActivo, preg)}
-                      onDuplicarANivel={(p, destId) => duplicarPreguntaANivel(p, destId)}
-                      modoGuiado={modoGuiado}
-                      modulos={todosLosModulos}
-                      nivelActivo={nivelActivo}
-                      niveles={niveles}
-                      preguntas={preguntas}
-                    />
-                  ))
-                )}
-              </div>
+              <QuestionsSection
+                niveles={niveles} nivelActivo={nivelActivo}
+                preguntas={preguntas}
+                pregExpandida={pregExpandida} setPregExpandida={setPregExpandida}
+                moduloActivo={moduloActivo} setModuloActivo={setModuloActivo}
+                modoGuiado={modoGuiado}
+                todosLosModulos={todosLosModulos}
+                onAgregarPregunta={agregarPregunta}
+                onActualizarPregunta={actualizarPregunta}
+                onEliminarPregunta={eliminarPregunta}
+                onDuplicarPreguntaMismoNivel={duplicarPreguntaMismoNivel}
+                onDuplicarPreguntaANivel={duplicarPreguntaANivel}
+              />
             )}
 
-            {/* ===== MATERIAL DE ESTUDIO ===== */}
             {tab === 'material' && (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="font-bold text-lg font-headline">{labels.material}</h3>
-                  <p className="text-xs text-on-surface-variant mt-1">
-                    {!id ? 'Guarda el paquete primero para agregar material.' : 'Sube archivos o agrega enlaces externos. El material se asigna a todas las versiones activas.'}
-                  </p>
-                </div>
-
-                {/* FIX: error de material visible en pantalla */}
-                {matError && (
-                  <div className="flex items-start gap-3 p-4 bg-error-container rounded-xl border border-error/30">
-                    <span className="material-symbols-outlined text-on-error-container text-lg flex-shrink-0">error</span>
-                    <p className="text-sm text-on-error-container font-medium flex-1">{matError}</p>
-                    <button type="button" onClick={() => setMatError(null)} className="text-on-error-container/70 hover:text-on-error-container">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                    </button>
-                  </div>
-                )}
-
-                {!id ? (
-                  <div className="p-8 text-center text-on-surface-variant bg-surface-container rounded-xl">
-                    <span className="material-symbols-outlined text-3xl opacity-40 mb-2 block">lock</span>
-                    <p className="text-sm font-semibold">Guarda el paquete primero</p>
-                  </div>
-                ) : (
-                  <>
-                    <Card className="p-5 space-y-4">
-                      <h4 className="font-bold text-sm flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary text-lg">add_circle</span>
-                        Agregar nuevo recurso
-                      </h4>
-
-                      <div className="space-y-3">
-                        <div className="flex gap-2 p-1 bg-surface-container rounded-full">
-                          <button type="button"
-                            onClick={() => setNuevoMat(m => ({ ...m, source_type: 'upload', url: '', file: null }))}
-                            className={`flex-1 py-2 rounded-full text-xs font-bold transition flex items-center justify-center gap-1 ${nuevoMat.source_type === 'upload' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}>
-                            <span className="material-symbols-outlined text-sm">upload_file</span>
-                            Subir archivo
-                          </button>
-                          <button type="button"
-                            onClick={() => setNuevoMat(m => ({ ...m, source_type: 'link', file: null }))}
-                            className={`flex-1 py-2 rounded-full text-xs font-bold transition flex items-center justify-center gap-1 ${nuevoMat.source_type === 'link' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}>
-                            <span className="material-symbols-outlined text-sm">link</span>
-                            Pegar enlace
-                          </button>
-                        </div>
-
-                        {nuevoMat.source_type === 'upload' ? (
-                          <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${nuevoMat.file ? 'border-secondary bg-secondary-container/10' : 'border-outline-variant hover:border-primary'}`}>
-                            <input type="file" accept=".pdf,.doc,.docx,.mp4,.mov,.avi,.jpg,.jpeg,.png,.xlsx,.pptx"
-                              onChange={e => {
-                                const file = e.target.files[0]
-                                if (!file) return
-                                let tipo = nuevoMat.type
-                                if (file.type.includes('pdf')) tipo = 'pdf'
-                                else if (file.type.includes('video')) tipo = 'video'
-                                else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) tipo = 'doc'
-                                setMatError(null)
-                                setNuevoMat(m => ({ ...m, file, type: tipo, title: m.title || file.name.replace(/\.[^.]+$/, '') }))
-                              }}
-                              className="hidden" id="file-upload" />
-                            <label htmlFor="file-upload" className="cursor-pointer block">
-                              {nuevoMat.file ? (
-                                <div className="space-y-1">
-                                  <span className="material-symbols-outlined text-3xl text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                                    {iconoMaterial(nuevoMat.type)}
-                                  </span>
-                                  <p className="text-sm font-bold text-secondary">{nuevoMat.file.name}</p>
-                                  <p className="text-xs text-on-surface-variant">{(nuevoMat.file.size / 1024 / 1024).toFixed(2)} MB</p>
-                                  <p className="text-[10px] text-primary underline cursor-pointer">Cambiar archivo</p>
-                                </div>
-                              ) : (
-                                <div className="space-y-1">
-                                  <span className="material-symbols-outlined text-3xl text-primary">upload_file</span>
-                                  <p className="text-sm font-bold">Haz clic para seleccionar</p>
-                                  <p className="text-xs text-on-surface-variant">PDF, Word, Excel, PowerPoint, Videos (máx. 50MB)</p>
-                                </div>
-                              )}
-                            </label>
-                            {nuevoMat.uploading && (
-                              <div className="mt-3 w-full bg-surface-container-high rounded-full h-2">
-                                <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${nuevoMat.uploadProgress || 30}%` }} />
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <InputField label="URL / Link externo" required>
-                            <input type="url" value={nuevoMat.url}
-                              onChange={e => { setMatError(null); setNuevoMat(m => ({ ...m, url: e.target.value })) }}
-                              placeholder="https://drive.google.com/... o https://youtube.com/..."
-                              className={INPUT_CLS} />
-                            <p className="text-[10px] text-on-surface-variant mt-1">
-                              Útil para videos de YouTube, documentos de Drive, páginas web, etc.
-                            </p>
-                          </InputField>
-                        )}
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <InputField label="Título" required>
-                            <input type="text" value={nuevoMat.title}
-                              onChange={e => setNuevoMat(m => ({ ...m, title: e.target.value }))}
-                              placeholder="ej: Guía de Control Fiscal" className={INPUT_CLS} />
-                          </InputField>
-                          <InputField label="Tipo de recurso">
-                            <select value={nuevoMat.type}
-                              onChange={e => setNuevoMat(m => ({ ...m, type: e.target.value }))}
-                              className={INPUT_CLS}>
-                              <option value="pdf">📄 PDF</option>
-                              <option value="video">🎥 Video</option>
-                              <option value="link">🔗 Link externo</option>
-                              <option value="doc">📝 Documento Word/Excel</option>
-                            </select>
-                          </InputField>
-                          <InputField label="Carpeta" hint="Para organizar">
-                            <input type="text" value={nuevoMat.folder}
-                              onChange={e => setNuevoMat(m => ({ ...m, folder: e.target.value }))}
-                              placeholder="ej: Módulo 1, Videos..." className={INPUT_CLS}
-                              list="carpetas-existentes" />
-                            <datalist id="carpetas-existentes">{carpetas.map(c => <option key={c} value={c} />)}</datalist>
-                          </InputField>
-                          <InputField label="Descripción" hint="Opcional">
-                            <input type="text" value={nuevoMat.description}
-                              onChange={e => setNuevoMat(m => ({ ...m, description: e.target.value }))}
-                              placeholder="Breve descripción..." className={INPUT_CLS} />
-                          </InputField>
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 bg-surface-container rounded-xl">
-                          <div>
-                            <p className="text-sm font-bold">Material compartido</p>
-                            <p className="text-xs text-on-surface-variant">Visible para todas las versiones activas del paquete.</p>
-                          </div>
-                          <button type="button" onClick={() => setNuevoMat(m => ({ ...m, is_shared: !m.is_shared }))}
-                            className={`w-12 h-6 rounded-full transition-all relative ${nuevoMat.is_shared ? 'bg-secondary' : 'bg-outline-variant'}`}>
-                            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${nuevoMat.is_shared ? 'right-0.5' : 'left-0.5'}`} />
-                          </button>
-                        </div>
-
-                        <button type="button" onClick={agregarMaterial}
-                          disabled={guardandoMat || !nuevoMat.title.trim() || (nuevoMat.source_type === 'link' && !nuevoMat.url.trim()) || (nuevoMat.source_type === 'upload' && !nuevoMat.file)}
-                          className="w-full py-3 bg-secondary text-on-secondary rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-secondary/90 transition-all flex items-center justify-center gap-2">
-                          {guardandoMat
-                            ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
-                            : <><span className="material-symbols-outlined text-sm">add</span>Agregar recurso</>}
-                        </button>
-                      </div>
-                    </Card>
-
-                    {materiales.length === 0 ? (
-                      <div className="p-10 text-center text-on-surface-variant bg-surface-container rounded-2xl">
-                        <span className="material-symbols-outlined text-4xl opacity-30 mb-2 block">folder_open</span>
-                        <p className="font-semibold text-sm">Sin material agregado</p>
-                        <p className="text-xs mt-1 opacity-70">Sube un archivo o pega un enlace externo arriba</p>
-                      </div>
-                    ) : (
-                      carpetas.map(carpeta => (
-                        <div key={carpeta}>
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>folder</span>
-                            <h4 className="font-extrabold text-sm uppercase tracking-widest text-primary">{carpeta}</h4>
-                            <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">
-                              {materiales.filter(m => m.folder === carpeta).length}
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {materiales.filter(m => m.folder === carpeta).map(m => (
-                              <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/15">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${m.type === 'pdf' ? 'bg-red-50 text-red-500' : m.type === 'video' ? 'bg-blue-50 text-blue-600' : m.type === 'link' ? 'bg-primary/10 text-primary' : 'bg-amber-50 text-amber-600'}`}>
-                                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>{iconoMaterial(m.type)}</span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="font-bold text-sm truncate">{m.title}</p>
-                                    {m.is_shared && <span className="text-[10px] bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-bold">Compartido</span>}
-                                    {m.source_type === 'upload' && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Archivo local</span>}
-                                    {m.source_type === 'link' && <span className="text-[10px] bg-tertiary/10 text-tertiary px-2 py-0.5 rounded-full font-bold">Enlace externo</span>}
-                                  </div>
-                                  {m.description && <p className="text-xs text-on-surface-variant truncate">{m.description}</p>}
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <a href={m.url} target="_blank" rel="noopener noreferrer"
-                                      className="text-[10px] text-primary hover:underline truncate">
-                                      {m.source_type === 'upload' ? 'Descargar archivo' : 'Abrir enlace'}
-                                    </a>
-                                    {m.file_size > 0 && (
-                                      <span className="text-[10px] text-on-surface-variant">{(m.file_size / 1024 / 1024).toFixed(1)} MB</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <button type="button" onClick={() => eliminarMaterial(m.id)}
-                                  className="p-1.5 text-error hover:bg-error-container/30 rounded-lg transition-colors flex-shrink-0">
-                                  <span className="material-symbols-outlined text-sm">delete</span>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </>
-                )}
-              </div>
+              <MaterialSection
+                id={id} materiales={materiales} versiones={versiones}
+                nuevoMat={nuevoMat} setNuevoMat={setNuevoMat}
+                matError={matError} setMatError={setMatError}
+                guardandoMat={guardandoMat}
+                onAgregarMaterial={agregarMaterial}
+                onEliminarMaterial={eliminarMaterial}
+              />
             )}
 
-            {/* ===== IMPORTAR CSV ===== */}
             {tab === 'importar' && (
-              <Card className="p-6 space-y-6">
-                <div>
-                  <h3 className="font-bold text-lg font-headline mb-1">Importar preguntas desde CSV</h3>
-                  <p className="text-sm text-on-surface-variant">
-                    {modoGuiado ? 'Banco activo' : 'Nivel activo'}: <span className="font-bold text-primary">{niveles.find(n => n._id === nivelActivo)?.name || 'sin nombre'}</span>
-                  </p>
-                  <p className="text-xs text-on-surface-variant mt-1">
-                    Las preguntas importadas se agregarán al {modoGuiado ? 'banco' : 'nivel'} activo indicado arriba. Cámbialo desde el panel lateral.
-                  </p>
-                </div>
-
-                <div className="bg-surface-container rounded-xl p-5 space-y-4">
-                  <p className="text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Flujo recomendado</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { n: 1, title: `Crea los ${modoGuiado ? 'bancos' : 'niveles'}`, desc: `Crea un ${modoGuiado ? 'banco' : 'nivel'} por profesión o cargo antes de importar preguntas.` },
-                      { n: 2, title: `Selecciona el ${modoGuiado ? 'banco' : 'nivel'} activo`, desc: 'El CSV que subas se agregará al activo actual.' },
-                      { n: 3, title: 'Descarga la plantilla', desc: 'Usa siempre la misma estructura para evitar errores al importar.' },
-                      { n: 4, title: 'Si usas IA, pásale el prompt', desc: 'Convierte PDFs o bases manuales a CSV usando el prompt de abajo.' },
-                    ].map(({ n, title, desc }) => (
-                      <div key={n} className="p-4 bg-surface-container-high rounded-xl">
-                        <p className="text-xs font-bold text-primary mb-2">{n}. {title}</p>
-                        <p className="text-xs text-on-surface-variant">{desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-surface-container rounded-xl p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Columnas obligatorias</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CSV_COLUMNS.map(col => (
-                      <span key={col} className={`px-2 py-1 rounded-lg text-[10px] font-bold ${['enunciado', 'A', 'B', 'C', 'D', 'correcta'].includes(col) ? 'bg-primary-fixed text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
-                        {col}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-primary/5 rounded-xl border border-primary/10 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-bold text-primary uppercase tracking-widest">Prompt para IA</p>
-                    <button type="button" onClick={copiarPromptIA}
-                      className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-[10px] font-bold">
-                      Copiar prompt
-                    </button>
-                  </div>
-                  <textarea readOnly value={PROMPT_IA_CSV} rows={10} className={`${INPUT_CLS} resize-none text-[11px]`} />
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={copiarInstruccionesExcel}
-                    className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold hover:bg-surface-container transition-colors">
-                    Copiar instrucciones para Excel / Sheets
-                  </button>
-                  <button type="button" onClick={descargarPlantilla}
-                    className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold hover:bg-surface-container transition-colors">
-                    Descargar plantilla CSV
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${importando ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary bg-surface-container-low/50'}`}>
-                    <span className={`material-symbols-outlined text-3xl mb-2 ${importando ? 'text-primary animate-bounce' : 'text-on-surface-variant'}`}>cloud_upload</span>
-                    <p className="text-sm font-bold">{importando ? 'Importando...' : 'Haz clic o arrastra tu CSV'}</p>
-                    <p className="text-xs text-on-surface-variant mt-1">El archivo se agregará al {modoGuiado ? 'banco' : 'nivel'} activo</p>
-                    <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={importarCSV} />
-                  </label>
-
-                  <div className="border rounded-xl p-6 flex flex-col justify-center gap-2 border-outline-variant bg-surface-container-low/40">
-                    <p className="text-sm font-bold">Recomendación práctica</p>
-                    <p className="text-xs text-on-surface-variant">
-                      Si tienes PDFs o módulos largos, usa el prompt del panel para que la IA convierta todo al formato exacto del CSV. Luego pega el resultado en Excel, guarda como CSV UTF-8 y sube aquí.
-                    </p>
-                  </div>
-                </div>
-
-                {/* FIX: errores de importación visibles en pantalla */}
-                {importError && (
-                  <div className="p-4 bg-error-container rounded-xl flex items-start gap-3 border border-error/30">
-                    <span className="material-symbols-outlined text-on-error-container text-lg flex-shrink-0">error</span>
-                    <div className="flex-1">
-                      <p className="text-sm text-on-error-container font-bold">Error al importar</p>
-                      <p className="text-sm text-on-error-container mt-0.5">{importError}</p>
-                    </div>
-                    <button type="button" onClick={() => setImportError(null)} className="text-on-error-container/70 hover:text-on-error-container">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                    </button>
-                  </div>
-                )}
-
-                {importOk && (
-                  <div className="p-4 bg-secondary-container/30 rounded-xl flex items-start gap-3 border border-secondary/20">
-                    <span className="material-symbols-outlined text-secondary text-lg flex-shrink-0">check_circle</span>
-                    <p className="text-sm text-secondary font-medium flex-1">{importOk}</p>
-                    <button type="button" onClick={() => setImportOk(null)} className="text-secondary/70 hover:text-secondary">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                    </button>
-                  </div>
-                )}
-              </Card>
+              <CsvImportSection
+                nivelActivo={nivelActivo} niveles={niveles} modoGuiado={modoGuiado}
+                csvRef={csvRef}
+                importando={importando} importError={importError} importOk={importOk}
+                onImportar={importarCSV}
+                onDescargarPlantilla={descargarPlantilla}
+                onCopiarPromptIA={copiarPromptIA}
+                onCopiarInstrucciones={copiarInstruccionesExcel}
+                setImportError={setImportError}
+                setImportOk={setImportOk}
+              />
             )}
           </div>
         </div>
       </form>
-
-      {/* ===== MODAL: NUEVA CATEGORÍA ===== */}
-      {showCatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowCatModal(false)}>
-          <div className="bg-surface rounded-xl p-6 w-96 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold mb-1 text-lg">Nueva categoría</h3>
-            <p className="text-xs text-on-surface-variant mb-4">La categoría se guardará y seleccionará automáticamente.</p>
-            <input type="text" value={nuevaCategoria}
-              onChange={e => setNuevaCategoria(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') agregarCategoria() }}
-              placeholder="ej: Contraloría, ICFES, Procuraduría..."
-              className={INPUT_CLS} autoFocus />
-            <div className="flex justify-end gap-2 mt-4">
-              <button type="button" onClick={() => setShowCatModal(false)}
-                className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-xl">
-                Cancelar
-              </button>
-              <button type="button" onClick={agregarCategoria} disabled={guardandoCat || !nuevaCategoria.trim()}
-                className="px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold disabled:opacity-40 flex items-center gap-2">
-                {guardandoCat && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                Agregar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== MODAL: NUEVA PROFESIÓN ===== */}
-      {showProfModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowProfModal(false)}>
-          <div className="bg-surface rounded-xl p-6 w-96 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold mb-1 text-lg">Nueva profesión</h3>
-            <p className="text-xs text-on-surface-variant mb-4">Se creará en la base y podrás asignarla a versiones.</p>
-            <input type="text" value={nuevaProfesion}
-              onChange={e => setNuevaProfesion(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') agregarProfesion() }}
-              placeholder="Ej: Abogado, Contador..."
-              className={INPUT_CLS} autoFocus />
-            <div className="flex justify-end gap-2 mt-4">
-              <button type="button" onClick={() => setShowProfModal(false)}
-                className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-xl">
-                Cancelar
-              </button>
-              <button type="button" onClick={agregarProfesion}
-                className="px-4 py-2 bg-primary text-on-primary rounded-full text-sm font-bold">
-                Agregar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

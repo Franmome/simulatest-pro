@@ -109,9 +109,8 @@ export default function DetallePrueba(){
   const [nivelSeleccionado,setNivelSeleccionado]=useState(null)
   const [modalModo,setModalModo]=useState(null)
   const [modalConfirm,setModalConfirm]=useState(false)
-  const [iniciando,setIniciando]=useState(null)
-  const [configPractica,setConfigPractica]=useState({orden:'aleatorio',cantidad:20,cantidad_custom:'',con_retro:true,timer_pregunta:90})
-  const [configExamen,setConfigExamen]=useState({cantidad:0,cantidad_custom:''})
+  const [configPractica,setConfigPractica]=useState({orden:'aleatorio',cantidad:20,cantidad_custom:'',tipo_cantidad:'preset',con_retro:true,timer_pregunta:90})
+  const [configExamen,setConfigExamen]=useState({cantidad:0,cantidad_custom:'',tipo_cantidad:'all'})
 
   const {data,loading,error,retry}=useFetch(async()=>{
     const {data:evalData,error:evalErr}=await supabase.from('evaluations').select('*, categories(id, name)').eq('id',id).maybeSingle()
@@ -149,8 +148,10 @@ export default function DetallePrueba(){
   const nivelActual=nivelSeleccionado??(niveles.length?niveles[0]:null)
   const pregsNivel=nivelActual?(pregsPorNivel[nivelActual.id]||0):0
   const intentoActual=nivelActual?intentosPorNivel[nivelActual.id]:null
-  const cantPractica=configPractica.cantidad_custom!==''?Math.min(parseInt(configPractica.cantidad_custom)||1,pregsNivel):Math.min(configPractica.cantidad,pregsNivel)
-  const cantExamen=configExamen.cantidad_custom!==''?Math.min(parseInt(configExamen.cantidad_custom)||1,pregsNivel):configExamen.cantidad
+  const cantPracticaDisplay=configPractica.tipo_cantidad==='all'?pregsNivel:configPractica.tipo_cantidad==='custom'?(parseInt(configPractica.cantidad_custom)>0?Math.min(parseInt(configPractica.cantidad_custom),pregsNivel):null):Math.min(configPractica.cantidad,pregsNivel)
+  const cantPractica=cantPracticaDisplay??Math.min(configPractica.cantidad,pregsNivel)
+  const cantExamenDisplay=configExamen.tipo_cantidad==='all'?pregsNivel:configExamen.tipo_cantidad==='custom'?(parseInt(configExamen.cantidad_custom)>0?Math.min(parseInt(configExamen.cantidad_custom),pregsNivel):null):(configExamen.cantidad||pregsNivel)
+  const cantExamen=cantExamenDisplay??pregsNivel
   const totalIntentos=Object.values(intentosPorNivel).length
   const nivCompletados=Object.values(intentosPorNivel).filter(a=>a.status==='completed').length
   const mejorScore=Object.values(intentosPorNivel).filter(a=>a.score!=null).reduce((max,a)=>Math.max(max,a.score),0)
@@ -160,12 +161,12 @@ export default function DetallePrueba(){
     if(!tienePlan){navigate('/planes');return}
     if(!nivelActual) return
     if(pregsNivel===0){alert('Este nivel aún no tiene preguntas.');return}
-    if(modo==='examen') setConfigExamen(c=>({...c,cantidad:pregsNivel,cantidad_custom:''}))
-    if(modo==='practica') setConfigPractica(c=>({...c,cantidad:Math.min(20,pregsNivel),cantidad_custom:''}))
+    if(modo==='examen') setConfigExamen(c=>({...c,cantidad:pregsNivel,cantidad_custom:'',tipo_cantidad:'all'}))
+    if(modo==='practica') setConfigPractica(c=>({...c,cantidad:Math.min(20,pregsNivel),cantidad_custom:'',tipo_cantidad:'preset'}))
     setModalModo(modo)
   }
   function confirmarInicio(){
-    setModalConfirm(false);setModalModo(null);setIniciando(modalModo)
+    setModalConfirm(false);setModalModo(null)
     const p=new URLSearchParams({modo:modalModo})
     if(modalModo==='practica'){
       p.set('orden',configPractica.orden)
@@ -322,7 +323,7 @@ export default function DetallePrueba(){
           {tienePlan?(
             <div className="space-y-3">
               <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">Selecciona tu modo</p>
-              <button onClick={()=>abrirModal('practica')} disabled={!!iniciando||pregsNivel===0}
+              <button onClick={()=>abrirModal('practica')} disabled={pregsNivel===0}
                 className="w-full flex items-center gap-4 p-5 rounded-2xl border-2 border-secondary/30 bg-secondary-container/10 hover:border-secondary hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50 text-left group">
                 <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-white text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>school</span>
@@ -330,10 +331,15 @@ export default function DetallePrueba(){
                 <div className="flex-1 min-w-0">
                   <p className="font-extrabold text-secondary">Modo Práctica</p>
                   <p className="text-xs text-on-surface-variant mt-0.5">Retroalimentación · Timer por pregunta · Configurable</p>
+                  {pregsNivel>0&&<div className="flex gap-1.5 mt-2 flex-wrap">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Hasta {pregsNivel} preguntas</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Retro incluida</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Modo flexible</span>
+                  </div>}
                 </div>
                 <span className="material-symbols-outlined text-secondary shrink-0">arrow_forward</span>
               </button>
-              <button onClick={()=>abrirModal('examen')} disabled={!!iniciando||pregsNivel===0}
+              <button onClick={()=>abrirModal('examen')} disabled={pregsNivel===0}
                 className="w-full flex items-center gap-4 p-5 rounded-2xl border-2 border-primary/30 bg-primary-fixed/10 hover:border-primary hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50 text-left group">
                 <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-white text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>timer</span>
@@ -341,10 +347,15 @@ export default function DetallePrueba(){
                 <div className="flex-1 min-w-0">
                   <p className="font-extrabold text-primary">Modo Examen</p>
                   <p className="text-xs text-on-surface-variant mt-0.5">Sin ayudas · Condiciones reales · Timer total</p>
+                  {pregsNivel>0&&<div className="flex gap-1.5 mt-2 flex-wrap">
+                    {nivelActual?.time_limit>0&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{formatTiempo(nivelActual.time_limit)}</span>}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Aprobación {nivelActual?.passing_score??70}%</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Sin ayudas</span>
+                  </div>}
                 </div>
                 <span className="material-symbols-outlined text-primary shrink-0">arrow_forward</span>
               </button>
-              <button onClick={irASala} disabled={!!iniciando}
+              <button onClick={irASala}
                 className="w-full flex items-center gap-4 p-5 rounded-2xl border-2 border-tertiary/30 bg-tertiary-container/10 hover:border-tertiary hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50 text-left group">
                 <div className="w-12 h-12 rounded-xl bg-tertiary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-white text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>groups</span>
@@ -384,13 +395,13 @@ export default function DetallePrueba(){
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">format_list_numbered</span>Preguntas</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {[10,20,30,50].filter(n=>n<=pregsNivel).map(n=>(
-                    <button key={n} onClick={()=>setConfigPractica(c=>({...c,cantidad:n,cantidad_custom:''}))}
-                      className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configPractica.cantidad===n&&configPractica.cantidad_custom===''?'border-secondary bg-secondary-container/30 text-secondary':'border-outline-variant/30 text-on-surface-variant'}`}>{n}</button>
+                    <button key={n} onClick={()=>setConfigPractica(c=>({...c,cantidad:n,cantidad_custom:'',tipo_cantidad:'preset'}))}
+                      className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configPractica.tipo_cantidad==='preset'&&configPractica.cantidad===n?'border-secondary bg-secondary-container/30 text-secondary':'border-outline-variant/30 text-on-surface-variant'}`}>{n}</button>
                   ))}
-                  <button onClick={()=>setConfigPractica(c=>({...c,cantidad_custom:String(pregsNivel)}))}
-                    className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configPractica.cantidad_custom===String(pregsNivel)?'border-secondary bg-secondary-container/30 text-secondary':'border-outline-variant/30 text-on-surface-variant'}`}>Todas ({pregsNivel})</button>
+                  <button onClick={()=>setConfigPractica(c=>({...c,tipo_cantidad:'all',cantidad_custom:''}))}
+                    className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configPractica.tipo_cantidad==='all'?'border-secondary bg-secondary-container/30 text-secondary':'border-outline-variant/30 text-on-surface-variant'}`}>Todas ({pregsNivel})</button>
                 </div>
-                <input type="number" min={1} max={pregsNivel} value={configPractica.cantidad_custom} onChange={e=>setConfigPractica(c=>({...c,cantidad_custom:e.target.value}))} placeholder={`Personalizado (máx. ${pregsNivel})`} className={inputCls}/>
+                <input type="number" min={1} max={pregsNivel} value={configPractica.cantidad_custom} onChange={e=>setConfigPractica(c=>({...c,cantidad_custom:e.target.value,tipo_cantidad:'custom'}))} placeholder={`Personalizado (máx. ${pregsNivel})`} className={`${inputCls} ${configPractica.tipo_cantidad==='custom'?'ring-2 ring-secondary':''}`}/>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">shuffle</span>Orden</label>
@@ -422,11 +433,11 @@ export default function DetallePrueba(){
             </div>
             <div className="bg-secondary-container/20 rounded-2xl p-4 mb-5 space-y-1.5 text-sm border border-secondary/10">
               <p className="font-bold text-xs uppercase tracking-wider text-secondary mb-2">Resumen</p>
-              <p className="flex justify-between"><span className="text-on-surface-variant">Preguntas</span><span className="font-bold">{cantPractica}</span></p>
+              <p className="flex justify-between"><span className="text-on-surface-variant">Preguntas</span><span className="font-bold">{cantPracticaDisplay??'—'}</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Orden</span><span className="font-bold capitalize">{configPractica.orden}</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Timer</span><span className="font-bold">{configPractica.timer_pregunta===0?'Sin límite':`${configPractica.timer_pregunta}s por pregunta`}</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Retro</span><span className={`font-bold ${configPractica.con_retro?'text-secondary':'text-error'}`}>{configPractica.con_retro?'✔ Incluida':'✖ Sin retro'}</span></p>
-              <p className="flex justify-between"><span className="text-on-surface-variant">Tiempo estimado</span><span className="font-bold">{configPractica.timer_pregunta===0?'Libre':`~${Math.ceil(cantPractica*configPractica.timer_pregunta/60)} min`}</span></p>
+              <p className="flex justify-between"><span className="text-on-surface-variant">Tiempo estimado</span><span className="font-bold">{configPractica.timer_pregunta===0?'Libre':cantPracticaDisplay!=null?`~${Math.ceil(cantPractica*configPractica.timer_pregunta/60)} min`:'—'}</span></p>
             </div>
             <div className="flex gap-3">
               <button onClick={()=>setModalModo(null)} className="flex-1 py-3 rounded-full border border-outline-variant font-bold text-sm">Cancelar</button>
@@ -451,18 +462,18 @@ export default function DetallePrueba(){
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">format_list_numbered</span>Preguntas</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {[50,100,150,200].filter(n=>n<=pregsNivel).map(n=>(
-                    <button key={n} onClick={()=>setConfigExamen(c=>({...c,cantidad:n,cantidad_custom:''}))}
-                      className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configExamen.cantidad===n&&configExamen.cantidad_custom===''?'border-primary bg-primary-fixed/30 text-primary':'border-outline-variant/30 text-on-surface-variant'}`}>{n}</button>
+                    <button key={n} onClick={()=>setConfigExamen(c=>({...c,cantidad:n,cantidad_custom:'',tipo_cantidad:'preset'}))}
+                      className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configExamen.tipo_cantidad==='preset'&&configExamen.cantidad===n?'border-primary bg-primary-fixed/30 text-primary':'border-outline-variant/30 text-on-surface-variant'}`}>{n}</button>
                   ))}
-                  <button onClick={()=>setConfigExamen(c=>({...c,cantidad_custom:String(pregsNivel)}))}
-                    className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configExamen.cantidad_custom===String(pregsNivel)?'border-primary bg-primary-fixed/30 text-primary':'border-outline-variant/30 text-on-surface-variant'}`}>Todas ({pregsNivel})</button>
+                  <button onClick={()=>setConfigExamen(c=>({...c,tipo_cantidad:'all',cantidad_custom:''}))}
+                    className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${configExamen.tipo_cantidad==='all'?'border-primary bg-primary-fixed/30 text-primary':'border-outline-variant/30 text-on-surface-variant'}`}>Completo ({pregsNivel})</button>
                 </div>
-                <input type="number" min={1} max={pregsNivel} value={configExamen.cantidad_custom} onChange={e=>setConfigExamen(c=>({...c,cantidad_custom:e.target.value}))} placeholder={`Personalizado (máx. ${pregsNivel})`} className={inputCls}/>
+                <input type="number" min={1} max={pregsNivel} value={configExamen.cantidad_custom} onChange={e=>setConfigExamen(c=>({...c,cantidad_custom:e.target.value,tipo_cantidad:'custom'}))} placeholder={`Personalizado (máx. ${pregsNivel})`} className={`${inputCls} ${configExamen.tipo_cantidad==='custom'?'ring-2 ring-primary':''}`}/>
               </div>
             </div>
             <div className="bg-primary-fixed/20 rounded-2xl p-4 mb-4 space-y-1.5 text-sm border border-primary/10">
               <p className="font-bold text-xs uppercase tracking-wider text-primary mb-2">Condiciones del examen</p>
-              <p className="flex justify-between"><span className="text-on-surface-variant">Preguntas</span><span className="font-bold">{cantExamen}</span></p>
+              <p className="flex justify-between"><span className="text-on-surface-variant">Preguntas</span><span className="font-bold">{cantExamenDisplay??'—'}</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Duración total</span><span className="font-bold">{formatTiempo(nivelActual?.time_limit)}</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Aprobación</span><span className="font-bold">{nivelActual?.passing_score??70}%</span></p>
               <p className="flex justify-between"><span className="text-on-surface-variant">Retroalimentación</span><span className="font-bold text-error">✖ No disponible</span></p>
@@ -484,17 +495,51 @@ export default function DetallePrueba(){
       {modalConfirm&&(
         <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 animate-fade-in text-center">
-            <div className={`w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center ${modalModo==='practica'?'bg-secondary':'bg-primary'}`}>
-              <span className="material-symbols-outlined text-white text-3xl" style={{fontVariationSettings:"'FILL' 1"}}>{modalModo==='practica'?'school':'timer'}</span>
+            <div className={`w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center ${modalModo==='practica'?'bg-secondary':'bg-primary'}`}>
+              <span className="material-symbols-outlined text-white text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>{modalModo==='practica'?'school':'timer'}</span>
             </div>
-            <h3 className="font-extrabold text-xl mb-2">¿Listo para empezar?</h3>
-            <p className="text-on-surface-variant text-sm mb-1 font-bold">{nivelActual?.name}</p>
-            <p className="text-on-surface-variant text-xs mb-6">
-              {modalModo==='practica'
-                ?`${cantPractica} preguntas · orden ${configPractica.orden} · ${configPractica.con_retro?'Con retro':'Sin retro'} · ${configPractica.timer_pregunta===0?'Sin límite':`${configPractica.timer_pregunta}s por pregunta`}`
-                :`${cantExamen} preguntas · ${formatTiempo(nivelActual?.time_limit)} · Sin ayudas`
-              }
-            </p>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-3 py-1 rounded-full mb-3 ${modalModo==='practica'?'bg-secondary-container text-secondary':'bg-primary-container text-primary'}`}>
+              {modalModo==='practica'?'Flexible':'Condiciones reales'}
+            </span>
+            <h3 className="font-extrabold text-xl mb-1">¿Listo para empezar?</h3>
+            <p className="text-on-surface-variant text-sm mb-4 font-bold">{nivelActual?.name}</p>
+            <div className={`rounded-2xl p-4 mb-5 text-left space-y-2.5 border ${modalModo==='practica'?'bg-secondary-container/15 border-secondary/20':'bg-primary-container/15 border-primary/20'}`}>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-on-surface-variant">Preguntas</span>
+                <span className="font-bold">{modalModo==='practica'?cantPractica:cantExamen}</span>
+              </div>
+              {modalModo==='practica'?(
+                <>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Orden</span>
+                    <span className="font-bold capitalize">{configPractica.orden}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Retro</span>
+                    <span className={`font-bold ${configPractica.con_retro?'text-secondary':'text-error'}`}>{configPractica.con_retro?'✔ Incluida':'✖ Sin retro'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Timer</span>
+                    <span className="font-bold">{configPractica.timer_pregunta===0?'Sin límite':`${configPractica.timer_pregunta}s / pregunta`}</span>
+                  </div>
+                </>
+              ):(
+                <>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Duración</span>
+                    <span className="font-bold">{formatTiempo(nivelActual?.time_limit)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Aprobación</span>
+                    <span className="font-bold">{nivelActual?.passing_score??70}%</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-on-surface-variant">Retroalimentación</span>
+                    <span className="font-bold text-error">✖ No disponible</span>
+                  </div>
+                </>
+              )}
+            </div>
             <div className="flex gap-3">
               <button onClick={()=>setModalConfirm(false)} className="flex-1 py-3 rounded-full border border-outline-variant font-bold text-sm">Volver</button>
               <button onClick={confirmarInicio} className={`flex-1 py-3 rounded-full font-bold text-sm text-white active:scale-95 transition-all flex items-center justify-center gap-2 ${modalModo==='practica'?'bg-secondary':'bg-primary'}`}>
