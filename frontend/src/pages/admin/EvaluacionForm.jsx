@@ -110,6 +110,8 @@ function EvaluacionFormContent() {
   const [guardadoStage, setGuardadoStage] = useState('')  // texto de la etapa actual
   const [errorBloque, setErrorBloque] = useState(null)    // error visible en el banner
   const [exitoMsg, setExitoMsg] = useState(null)          // 'publicado' | 'borrador'
+  const [savedEvalId, setSavedEvalId] = useState(null)    // id del draft guardado en background
+  const [savedPkgId, setSavedPkgId] = useState(null)      // id del paquete guardado en background
 
   // ── Navegación de tabs ────────────────────────────────────────────────────
   const [tab, setTab] = useState('general')
@@ -983,6 +985,23 @@ function EvaluacionFormContent() {
 
   useEffect(() => { calcularWarnings() }, [versiones, niveles, calcularWarnings])
 
+  // ── Auto-draft: guarda evaluación + paquete en background al tipear título ──
+  useEffect(() => {
+    if (form.title.length <= 3 || savedEvalId !== null || isEdit) return
+    const timer = setTimeout(async () => {
+      try {
+        const { evalId } = await saveEvaluation({ isEdit: false, id: null, form })
+        setSavedEvalId(evalId)
+        const { packageId: pkgId } = await savePackage({ packageId: null, form, versiones, modoVersiones })
+        setSavedPkgId(pkgId)
+      } catch (_) {
+        // error silencioso — es un guardado de borrador en background
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.title, savedEvalId, isEdit])
+
   // ==========================================================================
   // VALIDACIÓN ANTES DE GUARDAR
   // Lanza errores etiquetados con sección para que el banner navegue al tab correcto.
@@ -1081,6 +1100,7 @@ function EvaluacionFormContent() {
       setGuardadoStage('Guardando información del paquete...')
       dbg('Iniciando etapa 1: saveEvaluation')
       const { evalId } = await saveEvaluation({ isEdit, id, form })
+      setSavedEvalId(evalId)
       dbg('OK etapa 1', { evalId })
 
       // ETAPA 2: Guardar niveles y preguntas
@@ -1103,6 +1123,7 @@ function EvaluacionFormContent() {
         let packageId = await obtenerPackageId()
         const { packageId: pkgId } = await savePackage({ packageId, form, versiones, modoVersiones })
         packageId = pkgId
+        setSavedPkgId(packageId)
         dbg('OK etapa 3', { packageId })
 
         // ETAPA 4: Sincronizar versiones del paquete
@@ -1545,7 +1566,7 @@ function EvaluacionFormContent() {
             {/* Tab: Versiones y precios */}
             {tab === 'profesiones' && (
               <VersionsSection
-                id={id} versiones={versiones} niveles={niveles} profesiones={profesiones}
+                id={id} pkgId={savedPkgId} versiones={versiones} niveles={niveles} profesiones={profesiones}
                 modoVersiones={modoVersiones} setModoVersiones={setModoVersiones}
                 modoGuiado={modoGuiado} labels={labels}
                 showProfModal={showProfModal} setShowProfModal={setShowProfModal}
@@ -1597,7 +1618,7 @@ function EvaluacionFormContent() {
             {/* Tab: Material de estudio */}
             {tab === 'material' && (
               <MaterialSection
-                id={id} materiales={materiales} versiones={versiones}
+                id={id} pkgId={savedPkgId} materiales={materiales} versiones={versiones}
                 nuevoMat={nuevoMat} setNuevoMat={setNuevoMat}
                 matError={matError} setMatError={setMatError}
                 guardandoMat={guardandoMat}
