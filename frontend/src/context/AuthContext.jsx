@@ -188,6 +188,7 @@ export const AuthProvider = ({ children }) => {
         applySessionUser(session?.user ?? null)
       } catch (err) {
         console.error('[Auth] getSession error:', err)
+        console.log('[Auth] bootstrapSession falló:', err)
         if (isMountedRef.current) setUser(null)
       } finally {
         clearTimeout(safetyTimeout)
@@ -203,6 +204,7 @@ export const AuthProvider = ({ children }) => {
       if (!isMountedRef.current) return
 
       if (event === 'SIGNED_OUT') {
+        console.log('[Auth] SIGNED_OUT detectado - stack:', new Error().stack)
         roleCache.current = {}
         setUser(null)
         setLoading(false)

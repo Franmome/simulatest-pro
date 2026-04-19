@@ -811,12 +811,32 @@ export default function AdminPaquetes() {
                             <td className="px-6 py-5 text-right">
                               <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
-                                  onClick={() => {
-                                    const evalId = Array.isArray(pkg.evaluations_ids) ? pkg.evaluations_ids[0] : null
-                                    navigate(evalId
-                                      ? `/admin/evaluaciones/${evalId}/editar`
-                                      : `/admin/paquetes/${pkg.id}/editar`
-                                    )
+                                  onClick={async () => {
+                                    // Caso 1: evaluations_ids ya está seteado
+                                    const evalId = Array.isArray(pkg.evaluations_ids) && pkg.evaluations_ids.length > 0
+                                      ? pkg.evaluations_ids[0]
+                                      : null
+                                    if (evalId) { navigate(`/admin/evaluaciones/${evalId}/editar`); return }
+
+                                    // Caso 2: buscar evaluación via package_versions → evaluation_versions
+                                    const { data: vers } = await supabase
+                                      .from('package_versions')
+                                      .select('id')
+                                      .eq('package_id', pkg.id)
+                                    if (vers?.length) {
+                                      const versionIds = vers.map(v => v.id)
+                                      const { data: evalVers } = await supabase
+                                        .from('evaluation_versions')
+                                        .select('evaluation_id')
+                                        .in('package_version_id', versionIds)
+                                        .limit(1)
+                                      if (evalVers?.[0]?.evaluation_id) {
+                                        navigate(`/admin/evaluaciones/${evalVers[0].evaluation_id}/editar`)
+                                        return
+                                      }
+                                    }
+
+                                    alert('No se encontró la evaluación vinculada a este paquete.')
                                   }}
                                   className="p-2 text-on-surface-variant hover:text-primary transition-colors"
                                   title="Editar"

@@ -103,6 +103,43 @@ export async function savePackage({ packageId, evalId, form, versiones, modoVers
       )
     }
     dbg('OK: guardar paquete (update)', packageId)
+
+    // ✅ CAMBIO 1: Asegurar que evaluations_ids contenga evalId
+    if (evalId) {
+      const { data: pkgActual, error: fetchError } = await supabase
+        .from('packages')
+        .select('evaluations_ids')
+        .eq('id', packageId)
+        .single()
+
+      if (fetchError) {
+        throw tagError(
+          `Error obteniendo evaluations_ids del paquete: ${fetchError.message}. (Tabla: packages, operación: SELECT, id=${packageId})`,
+          'general',
+          fetchError
+        )
+      }
+
+      const currentIds = pkgActual?.evaluations_ids || []
+      const evalIdNum = parseInt(evalId, 10)
+      if (!currentIds.includes(evalIdNum)) {
+        const newIds = [...currentIds, evalIdNum]
+        const { error: updateEvalError } = await supabase
+          .from('packages')
+          .update({ evaluations_ids: newIds })
+          .eq('id', packageId)
+
+        if (updateEvalError) {
+          throw tagError(
+            `Error actualizando evaluations_ids del paquete: ${updateEvalError.message}. (Tabla: packages, operación: UPDATE, id=${packageId})`,
+            'general',
+            updateEvalError
+          )
+        }
+        dbg('OK: evaluations_ids actualizado', newIds)
+      }
+    }
+
     return { packageId }
   }
 
@@ -123,6 +160,15 @@ export async function savePackage({ packageId, evalId, form, versiones, modoVers
   }
 
   dbg('OK: guardar paquete (insert)', newPkg.id)
+
+  // Vincular evaluación al paquete via evaluations_ids
+  if (evalId) {
+    await supabase
+      .from('packages')
+      .update({ evaluations_ids: [parseInt(evalId, 10)] })
+      .eq('id', newPkg.id)
+  }
+
   return { packageId: newPkg.id }
 }
 
@@ -146,11 +192,39 @@ export async function syncPackageVersions({ packageId, versiones }) {
   const idsEnBD = new Set((versionesEnBD || []).map(v => v.id))
   const idsEnEstado = new Set(versiones.filter(v => v.id).map(v => v.id))
 
-  // Eliminar versiones que fueron borradas del estado local
+  // ✅ CAMBIO 2: Eliminar versiones que fueron borradas del estado local
+  // con limpieza previa en package_version_levels y manejo de errores.
   for (const v of (versionesEnBD || [])) {
     if (!idsEnEstado.has(v.id)) {
       dbg('Eliminando versión removida', v.id)
-      await supabase.from('package_versions').delete().eq('id', v.id)
+
+      // Primero eliminar relaciones en package_version_levels
+      const { error: delLevelsError } = await supabase
+        .from('package_version_levels')
+        .delete()
+        .eq('package_version_id', v.id)
+
+      if (delLevelsError) {
+        throw tagError(
+          `Error eliminando relaciones de niveles para versión ${v.id}: ${delLevelsError.message}. (Tabla: package_version_levels, operación: DELETE)`,
+          'profesiones',
+          delLevelsError
+        )
+      }
+
+      // Luego eliminar la versión en package_versions
+      const { error: delVersionError } = await supabase
+        .from('package_versions')
+        .delete()
+        .eq('id', v.id)
+
+      if (delVersionError) {
+        throw tagError(
+          `Error eliminando versión ${v.id}: ${delVersionError.message}. (Tabla: package_versions, operación: DELETE)`,
+          'profesiones',
+          delVersionError
+        )
+      }
     }
   }
 
@@ -290,18 +364,27 @@ export async function syncMaterialsWithVersions({ packageId, versionesActivasIds
     }
   }
 
-  // Eliminar vínculos a versiones que ya no están activas
+  // ✅ CAMBIO 3: Eliminar vínculos a versiones que ya no están activas
+  // con manejo de errores y lanzando tagError.
   const versionesActivasSet = new Set(versionesActivasIds.map(String))
   const eliminar = (relacionesActuales || []).filter(
     r => !versionesActivasSet.has(String(r.package_version_id))
   )
 
   for (const r of eliminar) {
-    await supabase
+    const { error: delError } = await supabase
       .from('study_material_versions')
       .delete()
       .eq('study_material_id', r.study_material_id)
       .eq('package_version_id', r.package_version_id)
+
+    if (delError) {
+      throw tagError(
+        `Error eliminando vínculo de material ${r.study_material_id} con versión ${r.package_version_id}: ${delError.message}. (Tabla: study_material_versions, operación: DELETE)`,
+        'material',
+        delError
+      )
+    }
   }
 
   // Insertar vínculos nuevos

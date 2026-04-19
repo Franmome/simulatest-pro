@@ -1,9 +1,9 @@
-// EvaluacionForm.jsx
+// frontend/src/pages/admin/EvaluacionForm.jsx
 // Página principal para crear y editar paquetes de evaluación.
 //
 // ESTRUCTURA:
 //   EvaluacionFormWrapper  → provee el sistema de toasts (contexto)
-//     └─ EvaluacionFormContent → toda la lógica y el render
+//     └─ EvaluacionFormContent → orquesta hooks + render
 //
 // TABS:
 //   general     → nombre, descripción, categoría, estado
@@ -28,7 +28,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../utils/supabase'
 
-// — Sistema Toast (contexto que envuelve todo)
+// — Sistema Toast
 import ToastProvider, { useToast } from './components/evaluacion-form/ToastProvider'
 
 // — Primitivos UI
@@ -44,15 +44,18 @@ import QuestionsSection from './components/evaluacion-form/QuestionsSection'
 import MaterialSection from './components/evaluacion-form/MaterialSection'
 import CsvImportSection from './components/evaluacion-form/CsvImportSection'
 
-// — Helpers y constantes
-import {
-  preguntaVacia,
-  parseCSVLine,
-  buildLabels,
-  withTimeout,
-  normalizeSupabaseError,
-} from './components/evaluacion-form/lib/helpers'
-import { LETRAS, CSV_COLUMNS, DEBUG_EVAL_FORM } from './components/evaluacion-form/lib/constants'
+// — Hooks de dominio
+import { useNivelesManager } from './components/evaluacion-form/hooks/useNivelesManager'
+import { useCsvImport } from './components/evaluacion-form/hooks/useCsvImport'
+import { useVersionesManager } from './components/evaluacion-form/hooks/useVersionesManager'
+import { useMaterialesManager } from './components/evaluacion-form/hooks/useMaterialesManager'
+import { useEvaluacionDraft } from './components/evaluacion-form/hooks/useEvaluacionDraft'
+
+// — Helpers, constantes y validación
+import { buildLabels, withTimeout } from './components/evaluacion-form/lib/helpers'
+import { LETRAS, DEBUG_EVAL_FORM } from './components/evaluacion-form/lib/constants'
+import { FORM_DEFAULTS } from './components/evaluacion-form/lib/defaults'
+import { validarAntesDeGuardar } from './components/evaluacion-form/lib/validation'
 
 // — Servicios de guardado
 import { saveEvaluation, saveAllLevels } from './components/evaluacion-form/services/evalService'
@@ -66,16 +69,12 @@ import {
   loadVersionesWithDetails,
 } from './components/evaluacion-form/services/packageService'
 
-// ── Helper de debug ─────────────────────────────────────────────────────────
-// Solo imprime si DEBUG_EVAL_FORM = true en lib/constants.js
 function dbg(msg, data) {
   if (DEBUG_EVAL_FORM) console.log(`[EvaluacionForm] ${msg}`, data ?? '')
 }
 
 // ============================================================================
 // WRAPPER PÚBLICO
-// Envuelve el contenido real con el proveedor de toasts para que todos los
-// componentes hijos puedan llamar useToast().
 // ============================================================================
 export default function EvaluacionFormWrapper() {
   return (
@@ -89,66 +88,21 @@ export default function EvaluacionFormWrapper() {
 // COMPONENTE PRINCIPAL
 // ============================================================================
 function EvaluacionFormContent() {
-  const { id } = useParams()          // id de la evaluación (undefined si es nueva)
+  const { id } = useParams()
   const navigate = useNavigate()
-  const csvRef = useRef(null)         // ref del input file de CSV para resetearlo
+  const csvRef = useRef(null)
   const addToast = useToast()
-  const isEdit = Boolean(id)          // true = editar, false = crear nuevo
+  const isEdit = Boolean(id)
 
   // ── Formulario general ────────────────────────────────────────────────────
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    category_id: '',
-    is_active: true,
-  })
+  const [form, setForm] = useState({ ...FORM_DEFAULTS })
   const [categorias, setCategorias] = useState([])
   const [profesiones, setProfesiones] = useState([])
 
-  // ── Estado del guardado ───────────────────────────────────────────────────
-  const [guardando, setGuardando] = useState(false)
-  const [guardadoStage, setGuardadoStage] = useState('')  // texto de la etapa actual
-  const [errorBloque, setErrorBloque] = useState(null)    // error visible en el banner
-  const [exitoMsg, setExitoMsg] = useState(null)          // 'publicado' | 'borrador'
-  const [savedEvalId, setSavedEvalId] = useState(null)    // id del draft guardado en background
-  const [savedPkgId, setSavedPkgId] = useState(null)      // id del paquete guardado en background
-  const savedPkgIdRef = useRef(null)                       // ref para acceso síncrono sin stale closure
-  const [guardandoBorrador, setGuardandoBorrador] = useState(false)
-  const [borradorGuardado, setBorradorGuardado] = useState(false)
-
-  // ── Navegación de tabs ────────────────────────────────────────────────────
+  // ── Navegación y modo ─────────────────────────────────────────────────────
   const [tab, setTab] = useState('general')
-  const [modoVersiones, setModoVersiones] = useState('avanzado') // 'simple' | 'avanzado'
-  const [modoGuiado, setModoGuiado] = useState(false)            // lenguaje amigable
-
-  // ── Niveles y preguntas ───────────────────────────────────────────────────
-  const [niveles, setNiveles] = useState([
-    { _id: 'n1', name: '', description: '', time_limit: 90, passing_score: 70, sort_order: 1 },
-  ])
-  const [nivelActivo, setNivelActivo] = useState('n1')     // _id del nivel seleccionado
-  const [preguntas, setPreguntas] = useState({ n1: [preguntaVacia()] }) // { nivelId: Pregunta[] }
-  const [pregExpandida, setPregExpandida] = useState(null) // _id de la pregunta abierta
-  const [moduloActivo, setModuloActivo] = useState(null)   // área temática activa como filtro
-
-  // ── Versiones del paquete ─────────────────────────────────────────────────
-  const [versiones, setVersiones] = useState([])
-
-  // ── Materiales de estudio ─────────────────────────────────────────────────
-  const [materiales, setMateriales] = useState([])
-  const [nuevoMat, setNuevoMat] = useState({
-    title: '',
-    type: 'pdf',
-    source_type: 'upload', // 'upload' | 'link'
-    file: null,
-    url: '',
-    folder: 'General',
-    description: '',
-    is_shared: true,
-    uploading: false,
-    uploadProgress: 0,
-  })
-  const [matError, setMatError] = useState(null)
-  const [guardandoMat, setGuardandoMat] = useState(false)
+  const [modoVersiones, setModoVersiones] = useState('avanzado')
+  const [modoGuiado, setModoGuiado] = useState(false)
 
   // ── Modales ───────────────────────────────────────────────────────────────
   const [showCatModal, setShowCatModal] = useState(false)
@@ -157,17 +111,85 @@ function EvaluacionFormContent() {
   const [showProfModal, setShowProfModal] = useState(false)
   const [nuevaProfesion, setNuevaProfesion] = useState('')
 
-  // ── CSV ───────────────────────────────────────────────────────────────────
-  const [importando, setImportando] = useState(false)
-  const [importError, setImportError] = useState(null)
-  const [importOk, setImportOk] = useState(null)
+  // ── Estado del guardado ───────────────────────────────────────────────────
+  const [guardando, setGuardando] = useState(false)
+  const [guardadoStage, setGuardadoStage] = useState('')
+  const [errorBloque, setErrorBloque] = useState(null)
+  const [exitoMsg, setExitoMsg] = useState(null)
 
-  // ── Warnings de consistencia ──────────────────────────────────────────────
-  // Se recalculan automáticamente cuando cambian versiones o niveles.
-  const [warnings, setWarnings] = useState([])
+  // ── IDs guardados (compartidos entre draft y submit) ──────────────────────
+  const [savedEvalId, setSavedEvalId] = useState(null)
+  const [savedPkgId, setSavedPkgId] = useState(null)
+  const savedPkgIdRef = useRef(null)
 
-  // ── Helper: obtener package_id de esta evaluación ─────────────────────────
+  // Setter combinado: mantiene estado + ref sincronizados
+  function setSavedPkg(pkgId) {
+    setSavedPkgId(pkgId)
+    savedPkgIdRef.current = pkgId
+  }
+
+  // ── Helper: resolver package_id desde evaluación ──────────────────────────
   const obtenerPackageId = useCallback(() => getPackageIdFromEvaluation(id), [id])
+
+  // ── Hooks de dominio ─────────────────────────────────────────────────────
+  const nivelesManager = useNivelesManager({ addToast })
+  const {
+    niveles, setNiveles, nivelActivo, setNivelActivo,
+    preguntas, setPreguntas, pregExpandida, setPregExpandida,
+    moduloActivo, setModuloActivo,
+    duplicarNivel, actualizarNivel, eliminarNivel,
+    agregarPregunta, actualizarPregunta, eliminarPregunta,
+    duplicarPreguntaMismoNivel, duplicarPreguntaANivel,
+  } = nivelesManager
+
+  const versionesManager = useVersionesManager({
+    id, isEdit, niveles, profesiones,
+    savedPkgId, savedPkgIdRef, setSavedPkg,
+    obtenerPackageId, addToast, setErrorBloque,
+  })
+  const {
+    versiones, setVersiones, warnings,
+    cargarVersiones, agregarVersion, duplicarVersion,
+    actualizarVersion, eliminarVersion,
+    handleProfesionDisplayChange, handleLevelDisplayChange,
+  } = versionesManager
+
+  const materialesManager = useMaterialesManager({
+    savedPkgId, savedPkgIdRef, setSavedPkg,
+    versiones, obtenerPackageId, addToast,
+  })
+  const {
+    materiales, nuevoMat, setNuevoMat,
+    matError, setMatError, guardandoMat,
+    cargarMateriales, agregarMaterial, eliminarMaterial,
+  } = materialesManager
+
+  const csvManager = useCsvImport({
+    nivelActivo, niveles, modoGuiado, setPreguntas, addToast, csvRef,
+  })
+  const {
+    importando, importError, setImportError,
+    importOk, setImportOk,
+    importarCSV, descargarPlantilla, copiarPromptIA, copiarInstruccionesExcel,
+  } = csvManager
+
+  const draftManager = useEvaluacionDraft({
+  form,
+  versiones,
+  modoVersiones,
+  savedEvalId,
+  savedPkgId,        // ✅ NUEVO: pasar savedPkgId
+  setSavedEvalId,
+  setSavedPkg,
+  setErrorBloque,
+})
+  const { guardandoBorrador, borradorGuardado, handleGuardarBorrador } = draftManager
+
+  // ── agregarNivel: wrapper que también cambia de tab ───────────────────────
+  function agregarNivel() {
+    nivelesManager.agregarNivel()
+    setTab('niveles')
+  }
 
   // ==========================================================================
   // CARGA INICIAL
@@ -183,19 +205,14 @@ function EvaluacionFormContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // Carga el catálogo de categorías disponibles en el select
   async function cargarCategorias() {
     const { data } = await supabase.from('categories').select('id, name').order('name')
     setCategorias(data || [])
   }
 
-  // Carga el catálogo de profesiones para los datalists de versiones
   async function cargarProfesiones() {
     const { data, error } = await supabase.from('professions').select('id, name').order('name')
-    if (error) {
-      addToast('error', 'Error al cargar profesiones: ' + error.message)
-      return
-    }
+    if (error) { addToast('error', 'Error al cargar profesiones: ' + error.message); return }
     setProfesiones(data || [])
   }
 
@@ -218,12 +235,10 @@ function EvaluacionFormContent() {
     if (lvError) { addToast('error', 'Error al cargar niveles: ' + lvError.message); return }
 
     if (lvs?.length) {
-      // _id = id numérico de BD para distinguir niveles existentes de nuevos
       const nivelesConId = lvs.map(l => ({ ...l, _id: l.id }))
       setNiveles(nivelesConId)
       setNivelActivo(nivelesConId[0]._id)
 
-      // Cargar preguntas de todos los niveles en paralelo
       const pregsPorNivel = {}
       await Promise.all(
         nivelesConId.map(async nv => {
@@ -236,95 +251,19 @@ function EvaluacionFormContent() {
           pregsPorNivel[nv._id] = qs?.map(q => ({
             ...q,
             _id: q.id,
-            // Normalizar opciones al orden fijo A-B-C-D
             options: LETRAS.map(letter => {
               const op = q.options?.find(o => o.letter === letter)
               return op ? { ...op } : { letter, text: '', is_correct: false }
             }),
-          })) || [preguntaVacia()]
+          })) || [{ _id: Math.random().toString(36).slice(2), text: '', explanation: '', difficulty: 'medio', area: '', options: LETRAS.map(letter => ({ letter, text: '', is_correct: false })) }]
         })
       )
       setPreguntas(pregsPorNivel)
     }
   }
 
-  // Carga las versiones con sus vínculos a niveles y profesiones
-  async function cargarVersiones() {
-    const packageId = await obtenerPackageId()
-    if (!packageId) { setVersiones([]); return }
-    setSavedPkgId(packageId); savedPkgIdRef.current = packageId
-
-    const { data: vers, error } = await supabase
-      .from('package_versions')
-      .select('*')
-      .eq('package_id', packageId)
-      .order('sort_order', { ascending: true })
-
-    if (error) { addToast('error', 'Error al cargar versiones: ' + error.message); return }
-    if (!vers?.length) { setVersiones([]); return }
-
-    const versionIds = vers.map(v => v.id)
-
-    // Cargar vínculos versión → nivel
-    const { data: pvLevels } = await supabase
-      .from('package_version_levels')
-      .select('package_version_id, level_id')
-      .in('package_version_id', versionIds)
-
-    const levelMap = {}
-    pvLevels?.forEach(row => { levelMap[row.package_version_id] = row.level_id })
-
-    // Cargar nombres de niveles para mostrar en las cards
-    const { data: lvs } = await supabase
-      .from('levels').select('id, name').eq('evaluation_id', parseInt(id, 10))
-    const levelNameMap = {}
-    lvs?.forEach(l => { levelNameMap[l.id] = l.name })
-
-    const versionesBase = vers.map(v => {
-      const lvId = levelMap[v.id] || null
-      return {
-        ...v,
-        level_id: lvId,
-        level_display: lvId ? (levelNameMap[lvId] || '') : '',
-        profession_display: '',
-      }
-    })
-    setVersiones(versionesBase)
-
-    // Enriquecer con nombres de profesiones en paralelo
-    const profIds = [...new Set(vers.map(v => v.profession_id).filter(Boolean))]
-    if (profIds.length) {
-      const { data: profs } = await supabase
-        .from('professions').select('id, name').in('id', profIds)
-      if (profs?.length) {
-        setVersiones(prev =>
-          prev.map(v => ({
-            ...v,
-            profession_display: profs.find(p => p.id === v.profession_id)?.name || '',
-          }))
-        )
-      }
-    }
-  }
-
-  // Carga los materiales de estudio del paquete
-  async function cargarMateriales() {
-    const packageId = await obtenerPackageId()
-    if (!packageId) { setMateriales([]); return }
-
-    const { data, error } = await supabase
-      .from('study_materials')
-      .select('*')
-      .eq('package_id', packageId)
-      .order('folder')
-      .order('sort_order')
-
-    if (error) { addToast('error', 'Error al cargar materiales: ' + error.message); return }
-    setMateriales(data || [])
-  }
-
   // ==========================================================================
-  // CATEGORÍAS — crear nueva categoría en el modal
+  // CATEGORÍAS
   // ==========================================================================
   async function agregarCategoria() {
     const nombre = nuevaCategoria.trim()
@@ -336,7 +275,6 @@ function EvaluacionFormContent() {
         .from('categories').insert({ name: nombre }).select().single()
       if (error) throw error
 
-      // Agregar al estado local y seleccionar automáticamente
       setCategorias(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
       setForm(f => ({ ...f, category_id: data.id }))
       setNuevaCategoria('')
@@ -350,7 +288,7 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // PROFESIONES — crear nueva profesión en el modal
+  // PROFESIONES
   // ==========================================================================
   async function agregarProfesion() {
     const nombre = nuevaProfesion.trim()
@@ -367,723 +305,6 @@ function EvaluacionFormContent() {
   }
 
   // ==========================================================================
-  // VERSIONES — CRUD optimista
-  // ==========================================================================
-
-  // Agrega una versión nueva directamente en BD y la añade al estado local
-  async function agregarVersion() {
-    const pkgId = savedPkgIdRef.current || savedPkgId || await obtenerPackageId()
-    if (!pkgId) {
-      addToast('warning', 'Primero guarda o publica el paquete para poder agregar versiones.')
-      return
-    }
-    if (!savedPkgId) { setSavedPkgId(pkgId); savedPkgIdRef.current = pkgId }
-
-    const { data, error } = await supabase
-      .from('package_versions')
-      .insert({
-        package_id: pkgId,
-        profession_id: null,
-        display_name: 'Nueva versión',
-        price: 0,
-        is_active: true,
-        sort_order: versiones.length,
-      })
-      .select()
-      .single()
-
-    if (error) { addToast('error', 'No se pudo agregar la versión: ' + error.message); return }
-    if (data) {
-      setVersiones(prev => [...prev, {
-        ...data, level_id: null, level_display: '', profession_display: '',
-      }])
-    }
-  }
-
-  // Duplica una versión existente (incluyendo su vínculo de nivel)
-  async function duplicarVersion(version) {
-    const packageId = await obtenerPackageId()
-    if (!packageId) return
-
-    const { data, error } = await supabase
-      .from('package_versions')
-      .insert({
-        package_id: packageId,
-        display_name: `${version.display_name} (copia)`,
-        price: version.price,
-        is_active: version.is_active,
-        profession_id: version.profession_id || null,
-        sort_order: versiones.length,
-      })
-      .select()
-      .single()
-
-    if (error) { addToast('error', 'No se pudo duplicar la versión: ' + error.message); return }
-
-    if (data) {
-      setVersiones(prev => [...prev, {
-        ...data,
-        level_id: version.level_id,
-        level_display: version.level_display || '',
-        profession_display: version.profession_display || '',
-      }])
-
-      // Duplicar también el vínculo con el nivel si existía
-      if (version.level_id) {
-        await supabase.from('package_version_levels').insert({
-          package_version_id: data.id,
-          level_id: version.level_id,
-        })
-      }
-      addToast('success', 'Versión duplicada')
-    }
-  }
-
-  // Actualiza un campo de una versión con revert optimista si la BD falla
-  async function actualizarVersion(versionId, campo, valor) {
-    // Guardar valor previo para poder revertir si la BD falla
-    const versionPrevia = versiones.find(v => v.id === versionId)
-    const valorPrevio = versionPrevia?.[campo]
-
-    // Actualización optimista: reflejar el cambio inmediatamente en UI
-    setVersiones(prev =>
-      prev.map(v => v.id === versionId ? { ...v, [campo]: valor } : v)
-    )
-
-    const { error } = await supabase
-      .from('package_versions')
-      .update({ [campo]: valor })
-      .eq('id', versionId)
-
-    if (error) {
-      // Revertir al valor anterior si la BD rechaza el cambio
-      setVersiones(prev =>
-        prev.map(v => v.id === versionId ? { ...v, [campo]: valorPrevio } : v)
-      )
-      const msg = `Error al guardar cambio en versión: ${error.message}`
-      addToast('error', msg)
-      setErrorBloque({ seccion: 'profesiones', message: msg })
-    }
-  }
-
-  // Maneja el cambio del campo de profesión (texto libre + resolución a ID)
-  function handleProfesionDisplayChange(versionId, texto) {
-    const match = profesiones.find(p => p.name.toLowerCase() === texto.toLowerCase())
-    setVersiones(prev =>
-      prev.map(v =>
-        v.id === versionId
-          ? { ...v, profession_display: texto, profession_id: match ? match.id : null }
-          : v
-      )
-    )
-
-    if (match) {
-      // Si coincide exactamente con una profesión existente, guardar el ID
-      supabase
-        .from('package_versions')
-        .update({ profession_id: match.id })
-        .eq('id', versionId)
-        .then(({ error }) => {
-          if (error) addToast('error', `Error al guardar profesión: ${error.message}`)
-        })
-    } else if (texto === '') {
-      // Si el campo se vacía, limpiar la profesión en BD
-      supabase
-        .from('package_versions')
-        .update({ profession_id: null })
-        .eq('id', versionId)
-        .then(({ error }) => {
-          if (error) addToast('error', `Error al limpiar profesión: ${error.message}`)
-        })
-    }
-  }
-
-  // Maneja el cambio del campo de nivel (texto libre + resolución a ID)
-  function handleLevelDisplayChange(versionId, texto) {
-    const match = niveles.find(n => n.name.toLowerCase() === texto.toLowerCase())
-    // Solo asignar level_id si el nivel ya existe en BD (id numérico)
-    const levelId = match ? (typeof match._id === 'number' ? match._id : null) : null
-    setVersiones(prev =>
-      prev.map(v =>
-        v.id === versionId ? { ...v, level_display: texto, level_id: levelId } : v
-      )
-    )
-  }
-
-  // Elimina una versión de BD y del estado local
-  async function eliminarVersion(versionId) {
-    if (!confirm('¿Eliminar esta versión?')) return
-
-    const { error: e1 } = await supabase
-      .from('package_version_levels').delete().eq('package_version_id', versionId)
-    if (e1) { addToast('error', 'Error al eliminar relaciones de nivel: ' + e1.message); return }
-
-    const { error: e2 } = await supabase
-      .from('package_versions').delete().eq('id', versionId)
-    if (e2) { addToast('error', 'Error al eliminar versión: ' + e2.message); return }
-
-    setVersiones(prev => prev.filter(v => v.id !== versionId))
-    addToast('info', 'Versión eliminada')
-  }
-
-  // ==========================================================================
-  // MATERIALES — CRUD
-  // ==========================================================================
-  async function agregarMaterial() {
-    setMatError(null)
-
-    // Validaciones de cliente antes de ir a la BD/storage
-    if (!nuevoMat.title.trim()) {
-      const m = 'El título es obligatorio'
-      setMatError(m); addToast('warning', m); return
-    }
-    if (nuevoMat.source_type === 'link' && !nuevoMat.url.trim()) {
-      const m = 'La URL es obligatoria'
-      setMatError(m); addToast('warning', m); return
-    }
-    if (nuevoMat.source_type === 'upload' && !nuevoMat.file) {
-      const m = 'Selecciona un archivo'
-      setMatError(m); addToast('warning', m); return
-    }
-
-    const packageId = savedPkgId || await obtenerPackageId()
-    if (!packageId) {
-      const m = 'Guarda el paquete primero para poder agregar materiales.'
-      setMatError(m); addToast('warning', m); return
-    }
-    if (!savedPkgId) { setSavedPkgId(packageId); savedPkgIdRef.current = packageId }
-
-    setGuardandoMat(true)
-    setNuevoMat(m => ({ ...m, uploading: true, uploadProgress: 0 }))
-
-    try {
-      let finalUrl = ''
-      let storagePath = ''
-      let fileSize = 0
-      let mimeType = ''
-      let tipoFinal = nuevoMat.type
-
-      if (nuevoMat.source_type === 'upload' && nuevoMat.file) {
-        const file = nuevoMat.file
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
-        storagePath = `study_materials/${packageId}/${fileName}`
-        fileSize = file.size
-        mimeType = file.type
-
-        // Detectar tipo automáticamente por mime
-        if (mimeType.includes('video')) tipoFinal = 'video'
-        else if (mimeType.includes('pdf')) tipoFinal = 'pdf'
-        else if (mimeType.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) tipoFinal = 'doc'
-
-        // ── Subir al bucket 'materials' ──────────────────────────────────
-        // La VERDAD es el resultado del upload real, no ninguna verificación previa.
-        // Si falla, mostramos el error real de Supabase Storage con contexto.
-        const { error: uploadError } = await supabase.storage
-          .from('materials')
-          .upload(storagePath, file, { cacheControl: '3600', upsert: false })
-
-        if (uploadError) {
-          // Detectar si el error es específicamente de bucket inexistente o RLS
-          const rawMsg = uploadError.message || String(uploadError)
-          const rawLower = rawMsg.toLowerCase()
-
-          let mensajeUi
-          if (rawLower.includes('bucket') || uploadError.statusCode === 404) {
-            mensajeUi =
-              `El bucket "materials" no está disponible en Supabase Storage. ` +
-              `Verifica que el bucket existe y tiene políticas de acceso configuradas. ` +
-              `Error original: ${rawMsg}`
-          } else if (rawLower.includes('rls') || rawLower.includes('row-level security') || uploadError.statusCode === 403) {
-            mensajeUi =
-              `Sin permisos para subir archivos al bucket "materials". ` +
-              `Revisa las políticas RLS de Storage en Supabase. ` +
-              `Error original: ${rawMsg}`
-          } else if (rawLower.includes('already exists') || uploadError.statusCode === 409) {
-            mensajeUi =
-              `Ya existe un archivo con ese nombre en el storage. ` +
-              `El sistema genera nombres únicos automáticamente; si este error persiste, recarga la página. ` +
-              `Error original: ${rawMsg}`
-          } else {
-            mensajeUi = `Error al subir el archivo: ${rawMsg}`
-          }
-
-          throw new Error(mensajeUi)
-        }
-
-        // Obtener URL pública del archivo recién subido
-        const { data: { publicUrl } } = supabase.storage.from('materials').getPublicUrl(storagePath)
-        finalUrl = publicUrl
-      } else {
-        // Fuente tipo enlace externo (no hay upload a storage)
-        finalUrl = nuevoMat.url
-        storagePath = null
-      }
-
-      // ── Insertar registro en study_materials ────────────────────────────
-      const payload = {
-        package_id: packageId,
-        title: nuevoMat.title,
-        type: tipoFinal,
-        source_type: nuevoMat.source_type,
-        url: finalUrl,
-        storage_path: storagePath,
-        mime_type: mimeType,
-        folder: nuevoMat.folder || 'General',
-        description: nuevoMat.description,
-        sort_order: materiales.length,
-        is_active: true,
-        is_shared: nuevoMat.is_shared,
-      }
-
-      const { data: material, error: insertError } = await supabase
-        .from('study_materials').insert(payload).select().single()
-
-      if (insertError) {
-        throw new Error(
-          `Error al guardar el material en la base de datos: ${insertError.message} ` +
-          `(Tabla: study_materials, operación: INSERT)`
-        )
-      }
-
-      // ── Vincular material con versiones activas ──────────────────────────
-      const versionesActivas = versiones.filter(v => v.is_active)
-      if (versionesActivas.length > 0) {
-        const relaciones = versionesActivas.map(v => ({
-          study_material_id: material.id,
-          package_version_id: v.id,
-        }))
-        const { error: relError } = await supabase
-          .from('study_material_versions').insert(relaciones)
-        if (relError) {
-          // No es fatal: el material ya se guardó; solo loguear
-          console.warn('[EvaluacionForm] Error al vincular material con versiones:', relError)
-          addToast('warning', 'Material guardado pero no se pudo vincular con todas las versiones.')
-        }
-      }
-
-      // Actualizar estado local y resetear el formulario de nuevo material
-      setMateriales(prev => [...prev, material])
-      setNuevoMat({
-        title: '', type: 'pdf', source_type: 'upload', file: null, url: '',
-        folder: 'General', description: '', is_shared: true,
-        uploading: false, uploadProgress: 0,
-      })
-      setMatError(null)
-      addToast('success', 'Material agregado correctamente')
-
-    } catch (err) {
-      const msg = err.message || 'Error desconocido al subir material'
-      setMatError(msg)
-      // No duplicar en toast si el banner ya lo muestra
-      addToast('error', msg)
-    } finally {
-      setGuardandoMat(false)
-      setNuevoMat(m => ({ ...m, uploading: false }))
-    }
-  }
-
-  // Elimina un material de storage (si aplica) y de la BD
-  async function eliminarMaterial(matId) {
-    const material = materiales.find(m => m.id === matId)
-
-    // Si tiene archivo en storage, intentar borrarlo (no es fatal si falla)
-    if (material?.storage_path) {
-      const { error } = await supabase.storage
-        .from('materials').remove([material.storage_path])
-      if (error) {
-        addToast('warning', 'No se pudo eliminar el archivo del storage: ' + error.message)
-      }
-    }
-
-    // Limpiar relaciones y luego el registro
-    await supabase.from('study_material_versions').delete().eq('study_material_id', matId)
-    await supabase.from('study_materials').delete().eq('id', matId)
-    setMateriales(prev => prev.filter(m => m.id !== matId))
-    addToast('info', 'Material eliminado')
-  }
-
-  // ==========================================================================
-  // NIVELES — CRUD en memoria (se persisten al guardar el formulario)
-  // ==========================================================================
-
-  // Agrega un nuevo nivel vacío y navega al tab de niveles
-  function agregarNivel() {
-    const _id = Math.random().toString(36).slice(2)
-    setNiveles(prev => [
-      ...prev,
-      { _id, name: '', description: '', time_limit: 90, passing_score: 70, sort_order: prev.length + 1 },
-    ])
-    setPreguntas(prev => ({ ...prev, [_id]: [preguntaVacia()] }))
-    setNivelActivo(_id)
-    setTab('niveles')
-  }
-
-  // Duplica un nivel con todas sus preguntas (con IDs locales nuevos)
-  function duplicarNivel(nivelOriginal) {
-    const _id = Math.random().toString(36).slice(2)
-    const copia = { ...nivelOriginal, _id, name: `${nivelOriginal.name} (copia)`, sort_order: niveles.length + 1 }
-    setNiveles(prev => [...prev, copia])
-    const pregsOriginales = preguntas[nivelOriginal._id] || []
-    setPreguntas(prev => ({
-      ...prev,
-      [_id]: pregsOriginales.map(p => ({ ...p, _id: Math.random().toString(36).slice(2) })),
-    }))
-    addToast('success', 'Nivel duplicado con sus preguntas')
-  }
-
-  function actualizarNivel(_id, datos) {
-    setNiveles(prev => prev.map(n => n._id === _id ? { ...n, ...datos } : n))
-  }
-
-  // No permite eliminar el único nivel restante
-  function eliminarNivel(_id) {
-    if (niveles.length === 1) return
-    setNiveles(prev => prev.filter(n => n._id !== _id))
-    setPreguntas(prev => { const copy = { ...prev }; delete copy[_id]; return copy })
-    const siguiente = niveles.find(n => n._id !== _id)?._id
-    if (siguiente) setNivelActivo(siguiente)
-  }
-
-  // ==========================================================================
-  // PREGUNTAS — CRUD en memoria
-  // ==========================================================================
-
-  // Agrega una pregunta vacía al nivel activo (con área asignada si hay módulo activo)
-  function agregarPregunta(moduloInicial = '') {
-    const nueva = { ...preguntaVacia(), area: moduloInicial }
-    setPreguntas(prev => ({
-      ...prev,
-      [nivelActivo]: [...(prev[nivelActivo] || []), nueva],
-    }))
-    setPregExpandida(nueva._id)
-  }
-
-  function actualizarPregunta(nId, pregId, datos) {
-    setPreguntas(prev => ({
-      ...prev,
-      [nId]: prev[nId].map(p => p._id === pregId ? { ...p, ...datos } : p),
-    }))
-  }
-
-  function eliminarPregunta(nId, pregId) {
-    setPreguntas(prev => ({
-      ...prev,
-      [nId]: prev[nId].filter(p => p._id !== pregId),
-    }))
-  }
-
-  // Duplica en el mismo nivel, insertándola justo después de la original
-  function duplicarPreguntaMismoNivel(nId, preg) {
-    const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
-    setPreguntas(prev => {
-      const arr = [...(prev[nId] || [])]
-      const idx = arr.findIndex(p => p._id === preg._id)
-      arr.splice(idx + 1, 0, copia)
-      return { ...prev, [nId]: arr }
-    })
-    addToast('success', 'Pregunta duplicada')
-  }
-
-  // Copia la pregunta al final del nivel destino
-  function duplicarPreguntaANivel(preg, destinoNivelId) {
-    const copia = { ...preg, _id: Math.random().toString(36).slice(2) }
-    setPreguntas(prev => ({
-      ...prev,
-      [destinoNivelId]: [...(prev[destinoNivelId] || []), copia],
-    }))
-    const nombreDestino = niveles.find(n => n._id === destinoNivelId)?.name || 'otro nivel'
-    addToast('success', `Pregunta duplicada al nivel "${nombreDestino}"`)
-  }
-
-  // ==========================================================================
-  // CSV — Importar preguntas desde archivo
-  // ==========================================================================
-  function importarCSV(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setImportando(true)
-    setImportError(null)
-    setImportOk(null)
-
-    const reader = new FileReader()
-    reader.onload = event => {
-      try {
-        // Normalizar saltos de línea y filtrar líneas vacías
-        const raw = String(event.target?.result || '')
-          .replace(/\r/g, '')
-          .split('\n')
-          .filter(Boolean)
-
-        if (raw.length < 2) {
-          throw new Error('El archivo CSV no tiene suficientes filas (mínimo encabezado + 1 pregunta).')
-        }
-
-        const header = parseCSVLine(raw[0]).map(h => h.toLowerCase())
-        const reqs = ['enunciado', 'a', 'b', 'c', 'd', 'correcta']
-        const missing = reqs.filter(r => !header.includes(r))
-        if (missing.length) {
-          throw new Error(
-            `Faltan columnas obligatorias: ${missing.join(', ')}. ` +
-            `Descarga la plantilla para ver el formato correcto.`
-          )
-        }
-
-        const nuevas = raw.slice(1).map((line, i) => {
-          const cols = parseCSVLine(line)
-          const get = key => cols[header.indexOf(key)] || ''
-          const correcta = get('correcta').toUpperCase()
-
-          if (!LETRAS.includes(correcta)) {
-            throw new Error(
-              `Fila ${i + 2}: el campo "correcta" debe ser A, B, C o D. ` +
-              `Valor encontrado: "${get('correcta')}"`
-            )
-          }
-
-          return {
-            _id: Math.random().toString(36).slice(2),
-            text: get('enunciado'),
-            explanation: get('explicacion'),
-            difficulty: get('dificultad') || 'medio',
-            area: get('area') || '',
-            options: LETRAS.map(letter => ({
-              letter,
-              text: get(letter.toLowerCase()),
-              is_correct: letter === correcta,
-            })),
-          }
-        })
-
-        // Agregar al nivel activo
-        setPreguntas(prev => ({
-          ...prev,
-          [nivelActivo]: [...(prev[nivelActivo] || []), ...nuevas],
-        }))
-
-        const nivelNombre = niveles.find(n => n._id === nivelActivo)?.name || 'nivel activo'
-        setImportOk(
-          `✅ ${nuevas.length} pregunta${nuevas.length !== 1 ? 's' : ''} importada${nuevas.length !== 1 ? 's' : ''} ` +
-          `correctamente al ${modoGuiado ? 'banco' : 'nivel'} "${nivelNombre}".`
-        )
-
-        // Resetear el input para permitir reimportar el mismo archivo
-        if (csvRef.current) csvRef.current.value = ''
-        addToast('success', `Importadas ${nuevas.length} preguntas`)
-
-      } catch (err) {
-        setImportError(err.message || 'No se pudo procesar el CSV.')
-        addToast('error', 'Error al importar CSV: ' + err.message)
-      } finally {
-        setImportando(false)
-      }
-    }
-
-    reader.readAsText(file, 'utf-8')
-  }
-
-  // Genera y descarga la plantilla CSV con 2 ejemplos de preguntas
-  function descargarPlantilla() {
-    const filas = [
-      CSV_COLUMNS.join(','),
-      'Derecho Fiscal,medio,"¿Cuál es el órgano de control fiscal en Colombia?","Procuraduría","Contraloría","Fiscalía","Defensoría",B,"La Contraloría ejerce vigilancia fiscal según el Art. 267."',
-      'Control Interno,facil,"¿Qué significa MIPG?","Modelo Integrado de Planeación y Gestión","Manual Interno de Procesos Generales","Mecanismo Institucional de Planeación General","Modelo Integral de Procesos de Gobierno",A,"MIPG significa Modelo Integrado de Planeación y Gestión."',
-    ]
-    const blob = new Blob([filas.join('\n')], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'plantilla_preguntas_simulatest.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // Copia el prompt estándar para pedirle a la IA que genere CSV
-  async function copiarPromptIA() {
-    const PROMPT =
-      `Convierte este material en preguntas para un archivo CSV con esta estructura exacta:\n` +
-      `area,dificultad,enunciado,A,B,C,D,correcta,explicacion\n\n` +
-      `Reglas:\n- "correcta" solo puede ser A, B, C o D\n- no cambies el orden de las columnas\n` +
-      `- no agregues columnas extra\n- cada fila debe representar una sola pregunta\n` +
-      `- "dificultad" debe ser: facil, medio o dificil\n` +
-      `- "explicacion" debe ser breve, clara y útil para retroalimentación\n` +
-      `- devuelve únicamente el CSV limpio, sin markdown, sin comentarios y sin explicación adicional`
-    try {
-      await navigator.clipboard.writeText(PROMPT)
-      setImportOk('✅ Prompt copiado.')
-      setTimeout(() => setImportOk(null), 2000)
-    } catch {
-      setImportError('No se pudo copiar el prompt.')
-    }
-  }
-
-  // Copia instrucciones para preparar el CSV en Excel/Sheets
-  async function copiarInstruccionesExcel() {
-    const texto =
-      `Instrucciones para preparar el archivo:\n` +
-      `1. Abrir Excel o Google Sheets\n` +
-      `2. Crear columnas: ${CSV_COLUMNS.join(',')}\n` +
-      `3. Una fila = una pregunta\n` +
-      `4. En "correcta" usar solo A, B, C o D\n` +
-      `5. Guardar como CSV UTF-8`
-    try {
-      await navigator.clipboard.writeText(texto)
-      setImportOk('✅ Instrucciones copiadas.')
-      setTimeout(() => setImportOk(null), 2000)
-    } catch {
-      setImportError('No se pudo copiar.')
-    }
-  }
-
-  // ==========================================================================
-  // WARNINGS DE CONSISTENCIA
-  // Se recalculan automáticamente al cambiar versiones o niveles.
-  // Advierten sobre posibles problemas antes del guardado (no bloquean).
-  // ==========================================================================
-  const calcularWarnings = useCallback(() => {
-    const warns = []
-    const versionesActivas = versiones.filter(v => v.is_active)
-
-    // Nombres duplicados entre versiones activas
-    const nombres = versionesActivas
-      .map(v => v.display_name?.trim().toLowerCase())
-      .filter(Boolean)
-    const duplicados = nombres.filter((n, i) => nombres.indexOf(n) !== i)
-    if (duplicados.length) {
-      warns.push(
-        `Hay versiones activas con el mismo nombre: "${duplicados[0]}". ` +
-        `Cada versión debe tener un nombre único.`
-      )
-    }
-
-    // Niveles existentes en BD que no están asignados a ninguna versión
-    const levelIdsUsados = new Set(versiones.map(v => v.level_id).filter(Boolean).map(String))
-    const nivelesConId = niveles.filter(n => typeof n._id === 'number')
-    const nivelesNoUsados = nivelesConId.filter(n => !levelIdsUsados.has(String(n._id)))
-    if (nivelesNoUsados.length) {
-      warns.push(
-        `${nivelesNoUsados.length} nivel(es) no están asignados a ninguna versión: ` +
-        `${nivelesNoUsados.map(n => n.name || 'sin nombre').join(', ')}.`
-      )
-    }
-
-    // Textos de nivel/profesión que no resuelven a un ID real
-    for (const v of versionesActivas) {
-      if (v.level_display && !v.level_id) {
-        warns.push(
-          `La versión "${v.display_name}" tiene nivel "${v.level_display}" ` +
-          `pero no coincide con ningún nivel real.`
-        )
-      }
-      if (v.profession_display && !v.profession_id) {
-        warns.push(
-          `La versión "${v.display_name}" tiene profesión "${v.profession_display}" ` +
-          `que no existe en la base.`
-        )
-      }
-    }
-
-    setWarnings(warns)
-    return warns
-  }, [versiones, niveles])
-
-  useEffect(() => { calcularWarnings() }, [versiones, niveles, calcularWarnings])
-
-  // ==========================================================================
-  // VALIDACIÓN ANTES DE GUARDAR
-  // Lanza errores etiquetados con sección para que el banner navegue al tab correcto.
-  // ==========================================================================
-  function validarAntesDeGuardar(isDraft = false) {
-    if (!form.title.trim()) {
-      throw Object.assign(
-        new Error('El nombre del paquete es obligatorio.'),
-        { seccion: 'general', mensajeHumano: 'El nombre del paquete no puede estar vacío.', accionSugerida: 'Escribe un nombre en la pestaña "Info del Paquete".' }
-      )
-    }
-    if (niveles.some(n => !n.name.trim())) {
-      throw Object.assign(
-        new Error('Todos los niveles deben tener nombre.'),
-        { seccion: 'niveles', mensajeHumano: 'Uno o más niveles no tienen nombre asignado.', accionSugerida: 'Ve a la pestaña "Niveles" y asigna un nombre a cada uno.' }
-      )
-    }
-
-    if (!isDraft) {
-      const versionesActivas = versiones.filter(v => v.is_active)
-      if (!versionesActivas.length) {
-        throw Object.assign(
-          new Error('Debes tener al menos una versión activa.'),
-          { seccion: 'profesiones', mensajeHumano: 'No hay versiones activas en el paquete.', accionSugerida: 'Ve a "Versiones y Precios" y activa al menos una versión.' }
-        )
-      }
-
-      for (const v of versionesActivas) {
-        if (!v.display_name?.trim()) {
-          throw Object.assign(
-            new Error('Todas las versiones activas deben tener nombre.'),
-            { seccion: 'profesiones', mensajeHumano: `Una versión activa no tiene nombre.`, accionSugerida: 'Asigna un nombre a todas las versiones activas.' }
-          )
-        }
-        if (!v.price || v.price <= 0) {
-          throw Object.assign(
-            new Error(`La versión "${v.display_name}" debe tener un precio válido.`),
-            { seccion: 'profesiones', mensajeHumano: `El precio de "${v.display_name}" es 0 o no válido.`, accionSugerida: 'Ingresa un precio mayor a 0 en la versión.' }
-          )
-        }
-        if (!v.level_id && !v.level_display) {
-          throw Object.assign(
-            new Error(`La versión "${v.display_name}" debe tener un banco de preguntas asignado.`),
-            { seccion: 'profesiones', mensajeHumano: `"${v.display_name}" no tiene nivel asignado.`, accionSugerida: 'Escribe el nombre del nivel y selecciónalo de la lista.' }
-          )
-        }
-        if (v.level_display && !v.level_id) {
-          throw Object.assign(
-            new Error(`La versión "${v.display_name}" tiene un banco que no coincide con ningún nivel real.`),
-            { seccion: 'profesiones', mensajeHumano: `El nivel "${v.level_display}" no existe o no fue seleccionado de la lista.`, accionSugerida: 'Selecciona el nivel desde la lista desplegable.' }
-          )
-        }
-        if (v.level_id !== null && typeof v.level_id !== 'number') {
-          throw Object.assign(
-            new Error(`La versión "${v.display_name}" tiene un banco que no ha sido guardado aún.`),
-            { seccion: 'niveles', mensajeHumano: 'El nivel aún no existe en la BD (es nuevo).', accionSugerida: 'Guarda los niveles primero antes de asignarlos a versiones.' }
-          )
-        }
-      }
-    }
-
-    for (const nv of niveles) {
-      const pregs = preguntas[nv._id] || []
-      if (pregs.length === 0 || pregs.every(p => !p.text?.trim())) {
-        throw Object.assign(
-          new Error(`El nivel "${nv.name || 'sin nombre'}" no tiene preguntas válidas.`),
-          { seccion: 'preguntas', mensajeHumano: `"${nv.name || 'sin nombre'}" no tiene preguntas con enunciado.`, accionSugerida: 'Agrega al menos una pregunta con enunciado a este nivel.' }
-        )
-      }
-    }
-  }
-
-  // ==========================================================================
-  // GUARDAR BORRADOR — guarda evaluación + paquete sin validación completa
-  // ==========================================================================
-  async function handleGuardarBorrador() {
-    setGuardandoBorrador(true)
-    setErrorBloque(null)
-    try {
-      if (!form.title?.trim()) throw new Error('El nombre del paquete es obligatorio')
-      const { evalId } = await saveEvaluation({ isEdit: false, id: null, form })
-      setSavedEvalId(evalId)
-      const { packageId: pkgId } = await savePackage({ packageId: null, evalId, form, versiones, modoVersiones })
-      setSavedPkgId(pkgId); savedPkgIdRef.current = pkgId
-      setGuardandoBorrador(false)
-      setBorradorGuardado(true)
-      setTimeout(() => setBorradorGuardado(false), 2000)
-    } catch (err) {
-      setGuardandoBorrador(false)
-      setErrorBloque(err.mensajeHumano || err.message || 'Error al guardar borrador')
-    }
-  }
-
-  // ==========================================================================
   // GUARDADO PRINCIPAL — orquestador por etapas con timeout defensivo
   // ==========================================================================
   async function handleSubmit(e) {
@@ -1096,9 +317,8 @@ function EvaluacionFormContent() {
     try {
       // ── Validar ────────────────────────────────────────────────────────────
       if (form.is_active) {
-        validarAntesDeGuardar()
+        validarAntesDeGuardar({ form, niveles, versiones, preguntas })
       } else {
-        // Para borradores solo exigimos el nombre
         if (!form.title.trim()) {
           throw Object.assign(
             new Error('El nombre del paquete es obligatorio incluso para borrador.'),
@@ -1114,9 +334,7 @@ function EvaluacionFormContent() {
       setSavedEvalId(evalId)
       dbg('OK etapa 1', { evalId })
 
-      // ETAPA 2: Guardar niveles y preguntas
-      // ⚠ PROTEGIDO CON TIMEOUT: esta etapa puede tener muchas inserts si hay
-      // muchas preguntas. Si supera 90 segundos, lanza error en lugar de quedarse colgado.
+      // ETAPA 2: Guardar niveles y preguntas (protegido con timeout)
       setGuardadoStage('Guardando niveles y preguntas...')
       dbg('Iniciando etapa 2: saveAllLevels')
       await withTimeout(
@@ -1128,33 +346,50 @@ function EvaluacionFormContent() {
 
       // Las etapas 3-8 solo aplican si se está publicando (no borrador)
       if (form.is_active) {
+        // ======================================================================
         // ETAPA 3: Guardar/actualizar el paquete
+        // ======================================================================
         setGuardadoStage('Configurando paquete...')
         dbg('Iniciando etapa 3: savePackage')
-        let packageId = await obtenerPackageId()
+
+        // 🔧 CAMBIO 1: Resolver packageId priorizando referencias en memoria
+        const packageIdInicial =
+          savedPkgIdRef.current ??
+          savedPkgId ??
+          await obtenerPackageId()
+
+        let packageId = packageIdInicial
+
         const { packageId: pkgId } = await savePackage({ packageId, evalId, form, versiones, modoVersiones })
         packageId = pkgId
-        setSavedPkgId(packageId); savedPkgIdRef.current = packageId
+        setSavedPkg(packageId)
         dbg('OK etapa 3', { packageId })
 
+        // ======================================================================
         // ETAPA 4: Sincronizar versiones del paquete
+        // ======================================================================
         setGuardadoStage('Sincronizando versiones...')
         dbg('Iniciando etapa 4: syncPackageVersions')
         const { versionesSincronizadas } = await syncPackageVersions({ packageId, versiones })
-        // Actualizar IDs locales de versiones recién creadas
-        setVersiones(prev =>
-          prev.map((v, i) =>
-            versionesSincronizadas[i] ? { ...v, id: versionesSincronizadas[i].id } : v
-          )
-        )
+
+        // 🔧 CAMBIO 2: Construir array local con IDs frescos (no depender del estado)
+        const versionesConIdsFrescos = versiones.map((v, i) => ({
+          ...v,
+          id: versionesSincronizadas[i]?.id ?? v.id,
+        }))
+
+        // Actualizar el estado con los IDs frescos
+        setVersiones(versionesConIdsFrescos)
         dbg('OK etapa 4', versionesSincronizadas.length)
 
+        // ======================================================================
         // ETAPA 5: Vincular evaluación ↔ versiones activas
+        // ======================================================================
         setGuardadoStage('Vinculando evaluación con versiones...')
-        dbg('Iniciando etapa 5: fetch versionesFrescas + syncEvaluationVersions')
+        dbg('Iniciando etapa 5: syncEvaluationVersions')
         const { data: versionesFrescas, error: fetchErr } = await supabase
           .from('package_versions')
-          .select('id, is_active')
+          .select('id, is_active, level_id')
           .eq('package_id', packageId)
 
         if (fetchErr) {
@@ -1172,7 +407,9 @@ function EvaluacionFormContent() {
         await syncEvaluationVersions({ evalId, versionesFrescas })
         dbg('OK etapa 5')
 
+        // ======================================================================
         // ETAPA 6: Sincronizar materiales con versiones activas
+        // ======================================================================
         setGuardadoStage('Sincronizando materiales...')
         dbg('Iniciando etapa 6: syncMaterialsWithVersions')
         const versionesActivasIds = versionesFrescas.filter(v => v.is_active).map(v => v.id)
@@ -1181,22 +418,44 @@ function EvaluacionFormContent() {
         }
         dbg('OK etapa 6')
 
+        // ======================================================================
         // ETAPA 7: Vincular niveles ↔ versiones (package_version_levels)
+        // ======================================================================
         setGuardadoStage('Vinculando niveles a versiones...')
-        dbg('Iniciando etapa 7: syncPackageVersionLevels')
+        dbg('Iniciando etapa 7: validación y syncPackageVersionLevels')
+
+        // ✅ Validación existente: versiones activas sin level_id (no se modifica)
+        const versionesActivasSinLevel = versionesFrescas.filter(v => v.is_active && !v.level_id)
+        if (versionesActivasSinLevel.length > 0) {
+          const idsSinLevel = versionesActivasSinLevel.map(v => v.id).join(', ')
+          throw Object.assign(
+            new Error(`Las siguientes versiones activas no tienen un nivel asignado: ${idsSinLevel}`),
+            {
+              seccion: 'profesiones',
+              mensajeHumano: 'Hay versiones activas que no tienen un nivel asociado.',
+              accionSugerida: 'Asigna un nivel a cada versión activa antes de publicar el paquete.',
+              technical: `Versiones sin level_id: ${idsSinLevel}`,
+            }
+          )
+        }
+
+        // 🔧 CAMBIO 2 (continuación): Construir levelMapEstado a partir del array local
         const levelMapEstado = {}
-        versiones.forEach(v => {
-          if (v.id && v.level_id) levelMapEstado[v.id] = v.level_id
+        versionesConIdsFrescos.forEach(v => {
+          if (v.id && v.level_id) {
+            levelMapEstado[v.id] = v.level_id
+          }
         })
+
+        // Ejecutar sincronización
         await syncPackageVersionLevels({ versionesFrescas, levelMapEstado })
         dbg('OK etapa 7')
 
+        // ======================================================================
         // ETAPA 8: Recargar versiones con detalles para actualizar UI
+        // ======================================================================
         const versionesActualizadas = await loadVersionesWithDetails({
-          packageId,
-          evalId,
-          nivelesToActuales: niveles,
-          profesiones,
+          packageId, evalId, nivelesToActuales: niveles, profesiones,
         })
         if (versionesActualizadas) setVersiones(versionesActualizadas)
         dbg('OK etapa 8: versiones recargadas', versionesActualizadas?.length)
@@ -1209,7 +468,6 @@ function EvaluacionFormContent() {
       setTimeout(() => navigate('/admin/evaluaciones'), 1500)
 
     } catch (err) {
-      // ── Error: mostrar banner + toast + navegar al tab correcto ────────────
       dbg('ERROR en handleSubmit', err)
 
       const mensaje = err.message || 'Error al guardar'
@@ -1221,10 +479,8 @@ function EvaluacionFormContent() {
         technical: err.technical || null,
       })
 
-      // Toast como apoyo rápido (más corto que el banner)
       addToast('error', mensaje.length > 80 ? mensaje.slice(0, 80) + '…' : mensaje)
 
-      // Navegar al tab donde ocurrió el error
       const tabMap = {
         general: 'general', niveles: 'niveles', preguntas: 'preguntas',
         profesiones: 'profesiones', material: 'material',
@@ -1233,7 +489,6 @@ function EvaluacionFormContent() {
       setGuardadoStage('')
 
     } finally {
-      // Siempre desbloquear el botón de guardar, sin importar qué pasó
       setGuardando(false)
     }
   }
@@ -1248,7 +503,6 @@ function EvaluacionFormContent() {
     : 0
   const labels = useMemo(() => buildLabels(modoGuiado), [modoGuiado])
 
-  // Todos los módulos/áreas usadas en alguna pregunta (para datalists)
   const todosLosModulos = useMemo(() => {
     const areas = Object.values(preguntas).flat().map(p => p.area?.trim()).filter(Boolean)
     return [...new Set(areas)]
@@ -1263,7 +517,6 @@ function EvaluacionFormContent() {
       {/* ── Header sticky ─────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 flex items-center justify-between px-8 h-16 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm">
         <div className="flex items-center gap-4">
-          {/* Botón volver */}
           <button
             type="button"
             onClick={() => navigate('/admin/evaluaciones')}
@@ -1279,7 +532,6 @@ function EvaluacionFormContent() {
             {isEdit ? 'Editar Paquete' : 'Nuevo Paquete'}
           </h1>
 
-          {/* Contadores de resumen en el header (solo desktop) */}
           <div className="hidden md:flex items-center gap-3 ml-4">
             <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
               {niveles.length} {modoGuiado ? 'banco' : 'nivel'}{niveles.length !== 1 ? 's' : ''}
@@ -1301,7 +553,6 @@ function EvaluacionFormContent() {
           </div>
         </div>
 
-        {/* Acciones del header */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -1333,7 +584,6 @@ function EvaluacionFormContent() {
             disabled={guardando || Boolean(exitoMsg)}
             className="flex items-center gap-2 bg-primary text-on-primary px-6 py-2 rounded-full font-bold text-sm shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-60"
           >
-            {/* Spinner mientras guarda */}
             {guardando && (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             )}
@@ -1351,7 +601,7 @@ function EvaluacionFormContent() {
         </div>
       </header>
 
-      {/* ── Banner de error (persistente, con detalles expandibles) ──────── */}
+      {/* ── Banner de error ───────────────────────────────────────────────── */}
       {errorBloque && (
         <div className="px-8 pt-4 max-w-7xl mx-auto">
           <ErrorBanner
@@ -1376,7 +626,7 @@ function EvaluacionFormContent() {
       <form id="eval-form" onSubmit={handleSubmit}>
         <div className="p-8 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-          {/* ==================== SIDEBAR (columna izquierda) ==================== */}
+          {/* ==================== SIDEBAR ==================== */}
           <div className="space-y-6">
 
             {/* Toggle modo guiado */}
@@ -1420,23 +670,19 @@ function EvaluacionFormContent() {
                       {t.icon}
                     </span>
                     {t.label}
-                    {/* Indicador de error en el tab */}
                     {tieneError && (
                       <span className="ml-auto w-2.5 h-2.5 rounded-full bg-error flex-shrink-0 animate-pulse" />
                     )}
-                    {/* Contador de preguntas */}
                     {!tieneError && t.key === 'preguntas' && totalPregs > 0 && (
                       <span className="ml-auto text-[10px] bg-primary text-on-primary px-2 py-0.5 rounded-full">
                         {totalPregs}
                       </span>
                     )}
-                    {/* Contador de materiales */}
                     {!tieneError && t.key === 'material' && materiales.length > 0 && (
                       <span className="ml-auto text-[10px] bg-secondary text-on-secondary px-2 py-0.5 rounded-full">
                         {materiales.length}
                       </span>
                     )}
-                    {/* Contador de versiones */}
                     {!tieneError && t.key === 'profesiones' && versiones.length > 0 && (
                       <span className="ml-auto text-[10px] bg-tertiary text-on-tertiary px-2 py-0.5 rounded-full">
                         {versiones.length}
@@ -1457,7 +703,7 @@ function EvaluacionFormContent() {
               modoGuiado={modoGuiado}
             />
 
-            {/* Selector de nivel/banco activo (visible solo en tabs de preguntas/importar) */}
+            {/* Selector de nivel activo (visible en preguntas/importar) */}
             {(tab === 'preguntas' || tab === 'importar') && niveles.length > 0 && (
               <Card className="p-4 border-2 border-primary/20">
                 <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3 flex items-center gap-1">
@@ -1489,7 +735,7 @@ function EvaluacionFormContent() {
               </Card>
             )}
 
-            {/* Filtro de módulos/áreas (visible en tab de preguntas si hay módulos) */}
+            {/* Filtro de módulos/áreas (solo en tab preguntas) */}
             {tab === 'preguntas' && (() => {
               const pregActivas = preguntas[nivelActivo] || []
               const modulosDelNivel = [...new Set(pregActivas.map(p => p.area?.trim()).filter(Boolean))]
@@ -1533,7 +779,7 @@ function EvaluacionFormContent() {
               )
             })()}
 
-            {/* Resumen rápido del paquete */}
+            {/* Resumen rápido */}
             <Card className="p-4">
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Resumen rápido</p>
               <div className="space-y-2 text-xs text-on-surface-variant">
@@ -1576,10 +822,9 @@ function EvaluacionFormContent() {
             )}
           </div>
 
-          {/* ==================== CONTENIDO PRINCIPAL (columna derecha) ==================== */}
+          {/* ==================== CONTENIDO PRINCIPAL ==================== */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Tab: Info general del paquete */}
             {tab === 'general' && (
               <>
                 <GeneralSection
@@ -1612,7 +857,6 @@ function EvaluacionFormContent() {
               </>
             )}
 
-            {/* Tab: Versiones y precios */}
             {tab === 'profesiones' && (
               <VersionsSection
                 id={id} pkgId={savedPkgId} versiones={versiones} niveles={niveles} profesiones={profesiones}
@@ -1630,7 +874,6 @@ function EvaluacionFormContent() {
               />
             )}
 
-            {/* Tab: Niveles/bancos de preguntas */}
             {tab === 'niveles' && (
               <LevelsSection
                 niveles={niveles} preguntas={preguntas}
@@ -1647,7 +890,6 @@ function EvaluacionFormContent() {
               />
             )}
 
-            {/* Tab: Preguntas del nivel activo */}
             {tab === 'preguntas' && (
               <QuestionsSection
                 niveles={niveles} nivelActivo={nivelActivo}
@@ -1664,7 +906,6 @@ function EvaluacionFormContent() {
               />
             )}
 
-            {/* Tab: Material de estudio */}
             {tab === 'material' && (
               <MaterialSection
                 id={id} pkgId={savedPkgId} materiales={materiales} versiones={versiones}
@@ -1676,7 +917,6 @@ function EvaluacionFormContent() {
               />
             )}
 
-            {/* Tab: Importar desde CSV */}
             {tab === 'importar' && (
               <CsvImportSection
                 nivelActivo={nivelActivo} niveles={niveles} modoGuiado={modoGuiado}
