@@ -112,6 +112,9 @@ function EvaluacionFormContent() {
   const [exitoMsg, setExitoMsg] = useState(null)          // 'publicado' | 'borrador'
   const [savedEvalId, setSavedEvalId] = useState(null)    // id del draft guardado en background
   const [savedPkgId, setSavedPkgId] = useState(null)      // id del paquete guardado en background
+  const savedPkgIdRef = useRef(null)                       // ref para acceso síncrono sin stale closure
+  const [guardandoBorrador, setGuardandoBorrador] = useState(false)
+  const [borradorGuardado, setBorradorGuardado] = useState(false)
 
   // ── Navegación de tabs ────────────────────────────────────────────────────
   const [tab, setTab] = useState('general')
@@ -249,6 +252,7 @@ function EvaluacionFormContent() {
   async function cargarVersiones() {
     const packageId = await obtenerPackageId()
     if (!packageId) { setVersiones([]); return }
+    setSavedPkgId(packageId); savedPkgIdRef.current = packageId
 
     const { data: vers, error } = await supabase
       .from('package_versions')
@@ -368,16 +372,17 @@ function EvaluacionFormContent() {
 
   // Agrega una versión nueva directamente en BD y la añade al estado local
   async function agregarVersion() {
-    const packageId = await obtenerPackageId()
-    if (!packageId) {
+    const pkgId = savedPkgIdRef.current || savedPkgId || await obtenerPackageId()
+    if (!pkgId) {
       addToast('warning', 'Primero guarda o publica el paquete para poder agregar versiones.')
       return
     }
+    if (!savedPkgId) { setSavedPkgId(pkgId); savedPkgIdRef.current = pkgId }
 
     const { data, error } = await supabase
       .from('package_versions')
       .insert({
-        package_id: packageId,
+        package_id: pkgId,
         profession_id: null,
         display_name: 'Nueva versión',
         price: 0,
@@ -541,11 +546,12 @@ function EvaluacionFormContent() {
       setMatError(m); addToast('warning', m); return
     }
 
-    const packageId = await obtenerPackageId()
+    const packageId = savedPkgId || await obtenerPackageId()
     if (!packageId) {
       const m = 'Guarda el paquete primero para poder agregar materiales.'
       setMatError(m); addToast('warning', m); return
     }
+    if (!savedPkgId) { setSavedPkgId(packageId); savedPkgIdRef.current = packageId }
 
     setGuardandoMat(true)
     setNuevoMat(m => ({ ...m, uploading: true, uploadProgress: 0 }))
@@ -623,7 +629,6 @@ function EvaluacionFormContent() {
         url: finalUrl,
         storage_path: storagePath,
         mime_type: mimeType,
-        file_size: fileSize,
         folder: nuevoMat.folder || 'General',
         description: nuevoMat.description,
         sort_order: materiales.length,
@@ -985,28 +990,11 @@ function EvaluacionFormContent() {
 
   useEffect(() => { calcularWarnings() }, [versiones, niveles, calcularWarnings])
 
-  // ── Auto-draft: guarda evaluación + paquete en background al tipear título ──
-  useEffect(() => {
-    if (form.title.length <= 3 || savedEvalId !== null || isEdit) return
-    const timer = setTimeout(async () => {
-      try {
-        const { evalId } = await saveEvaluation({ isEdit: false, id: null, form })
-        setSavedEvalId(evalId)
-        const { packageId: pkgId } = await savePackage({ packageId: null, form, versiones, modoVersiones })
-        setSavedPkgId(pkgId)
-      } catch (_) {
-        // error silencioso — es un guardado de borrador en background
-      }
-    }, 1500)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.title, savedEvalId, isEdit])
-
   // ==========================================================================
   // VALIDACIÓN ANTES DE GUARDAR
   // Lanza errores etiquetados con sección para que el banner navegue al tab correcto.
   // ==========================================================================
-  function validarAntesDeGuardar() {
+  function validarAntesDeGuardar(isDraft = false) {
     if (!form.title.trim()) {
       throw Object.assign(
         new Error('El nombre del paquete es obligatorio.'),
@@ -1020,44 +1008,46 @@ function EvaluacionFormContent() {
       )
     }
 
-    const versionesActivas = versiones.filter(v => v.is_active)
-    if (!versionesActivas.length) {
-      throw Object.assign(
-        new Error('Debes tener al menos una versión activa.'),
-        { seccion: 'profesiones', mensajeHumano: 'No hay versiones activas en el paquete.', accionSugerida: 'Ve a "Versiones y Precios" y activa al menos una versión.' }
-      )
-    }
+    if (!isDraft) {
+      const versionesActivas = versiones.filter(v => v.is_active)
+      if (!versionesActivas.length) {
+        throw Object.assign(
+          new Error('Debes tener al menos una versión activa.'),
+          { seccion: 'profesiones', mensajeHumano: 'No hay versiones activas en el paquete.', accionSugerida: 'Ve a "Versiones y Precios" y activa al menos una versión.' }
+        )
+      }
 
-    for (const v of versionesActivas) {
-      if (!v.display_name?.trim()) {
-        throw Object.assign(
-          new Error('Todas las versiones activas deben tener nombre.'),
-          { seccion: 'profesiones', mensajeHumano: `Una versión activa no tiene nombre.`, accionSugerida: 'Asigna un nombre a todas las versiones activas.' }
-        )
-      }
-      if (!v.price || v.price <= 0) {
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" debe tener un precio válido.`),
-          { seccion: 'profesiones', mensajeHumano: `El precio de "${v.display_name}" es 0 o no válido.`, accionSugerida: 'Ingresa un precio mayor a 0 en la versión.' }
-        )
-      }
-      if (!v.level_id && !v.level_display) {
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" debe tener un banco de preguntas asignado.`),
-          { seccion: 'profesiones', mensajeHumano: `"${v.display_name}" no tiene nivel asignado.`, accionSugerida: 'Escribe el nombre del nivel y selecciónalo de la lista.' }
-        )
-      }
-      if (v.level_display && !v.level_id) {
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" tiene un banco que no coincide con ningún nivel real.`),
-          { seccion: 'profesiones', mensajeHumano: `El nivel "${v.level_display}" no existe o no fue seleccionado de la lista.`, accionSugerida: 'Selecciona el nivel desde la lista desplegable.' }
-        )
-      }
-      if (v.level_id !== null && typeof v.level_id !== 'number') {
-        throw Object.assign(
-          new Error(`La versión "${v.display_name}" tiene un banco que no ha sido guardado aún.`),
-          { seccion: 'niveles', mensajeHumano: 'El nivel aún no existe en la BD (es nuevo).', accionSugerida: 'Guarda los niveles primero antes de asignarlos a versiones.' }
-        )
+      for (const v of versionesActivas) {
+        if (!v.display_name?.trim()) {
+          throw Object.assign(
+            new Error('Todas las versiones activas deben tener nombre.'),
+            { seccion: 'profesiones', mensajeHumano: `Una versión activa no tiene nombre.`, accionSugerida: 'Asigna un nombre a todas las versiones activas.' }
+          )
+        }
+        if (!v.price || v.price <= 0) {
+          throw Object.assign(
+            new Error(`La versión "${v.display_name}" debe tener un precio válido.`),
+            { seccion: 'profesiones', mensajeHumano: `El precio de "${v.display_name}" es 0 o no válido.`, accionSugerida: 'Ingresa un precio mayor a 0 en la versión.' }
+          )
+        }
+        if (!v.level_id && !v.level_display) {
+          throw Object.assign(
+            new Error(`La versión "${v.display_name}" debe tener un banco de preguntas asignado.`),
+            { seccion: 'profesiones', mensajeHumano: `"${v.display_name}" no tiene nivel asignado.`, accionSugerida: 'Escribe el nombre del nivel y selecciónalo de la lista.' }
+          )
+        }
+        if (v.level_display && !v.level_id) {
+          throw Object.assign(
+            new Error(`La versión "${v.display_name}" tiene un banco que no coincide con ningún nivel real.`),
+            { seccion: 'profesiones', mensajeHumano: `El nivel "${v.level_display}" no existe o no fue seleccionado de la lista.`, accionSugerida: 'Selecciona el nivel desde la lista desplegable.' }
+          )
+        }
+        if (v.level_id !== null && typeof v.level_id !== 'number') {
+          throw Object.assign(
+            new Error(`La versión "${v.display_name}" tiene un banco que no ha sido guardado aún.`),
+            { seccion: 'niveles', mensajeHumano: 'El nivel aún no existe en la BD (es nuevo).', accionSugerida: 'Guarda los niveles primero antes de asignarlos a versiones.' }
+          )
+        }
       }
     }
 
@@ -1069,6 +1059,27 @@ function EvaluacionFormContent() {
           { seccion: 'preguntas', mensajeHumano: `"${nv.name || 'sin nombre'}" no tiene preguntas con enunciado.`, accionSugerida: 'Agrega al menos una pregunta con enunciado a este nivel.' }
         )
       }
+    }
+  }
+
+  // ==========================================================================
+  // GUARDAR BORRADOR — guarda evaluación + paquete sin validación completa
+  // ==========================================================================
+  async function handleGuardarBorrador() {
+    setGuardandoBorrador(true)
+    setErrorBloque(null)
+    try {
+      if (!form.title?.trim()) throw new Error('El nombre del paquete es obligatorio')
+      const { evalId } = await saveEvaluation({ isEdit: false, id: null, form })
+      setSavedEvalId(evalId)
+      const { packageId: pkgId } = await savePackage({ packageId: null, evalId, form, versiones, modoVersiones })
+      setSavedPkgId(pkgId); savedPkgIdRef.current = pkgId
+      setGuardandoBorrador(false)
+      setBorradorGuardado(true)
+      setTimeout(() => setBorradorGuardado(false), 2000)
+    } catch (err) {
+      setGuardandoBorrador(false)
+      setErrorBloque(err.mensajeHumano || err.message || 'Error al guardar borrador')
     }
   }
 
@@ -1121,9 +1132,9 @@ function EvaluacionFormContent() {
         setGuardadoStage('Configurando paquete...')
         dbg('Iniciando etapa 3: savePackage')
         let packageId = await obtenerPackageId()
-        const { packageId: pkgId } = await savePackage({ packageId, form, versiones, modoVersiones })
+        const { packageId: pkgId } = await savePackage({ packageId, evalId, form, versiones, modoVersiones })
         packageId = pkgId
-        setSavedPkgId(packageId)
+        setSavedPkgId(packageId); savedPkgIdRef.current = packageId
         dbg('OK etapa 3', { packageId })
 
         // ETAPA 4: Sincronizar versiones del paquete
@@ -1299,6 +1310,23 @@ function EvaluacionFormContent() {
           >
             Cancelar
           </button>
+          {!isEdit && (
+            <button
+              type="button"
+              onClick={handleGuardarBorrador}
+              disabled={guardandoBorrador || borradorGuardado || savedEvalId !== null}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-bold border border-outline text-on-surface rounded-xl hover:bg-surface-container transition-colors disabled:opacity-60"
+            >
+              {guardandoBorrador && (
+                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              )}
+              {borradorGuardado
+                ? '✓ Borrador guardado'
+                : guardandoBorrador ? 'Guardando...'
+                : savedEvalId !== null ? '✓ Guardado'
+                : 'Guardar borrador'}
+            </button>
+          )}
           <button
             type="submit"
             form="eval-form"
@@ -1553,14 +1581,35 @@ function EvaluacionFormContent() {
 
             {/* Tab: Info general del paquete */}
             {tab === 'general' && (
-              <GeneralSection
-                form={form} setForm={setForm}
-                categorias={categorias}
-                showCatModal={showCatModal} setShowCatModal={setShowCatModal}
-                nuevaCategoria={nuevaCategoria} setNuevaCategoria={setNuevaCategoria}
-                guardandoCat={guardandoCat}
-                onAgregarCategoria={agregarCategoria}
-              />
+              <>
+                <GeneralSection
+                  form={form} setForm={setForm}
+                  categorias={categorias}
+                  showCatModal={showCatModal} setShowCatModal={setShowCatModal}
+                  nuevaCategoria={nuevaCategoria} setNuevaCategoria={setNuevaCategoria}
+                  guardandoCat={guardandoCat}
+                  onAgregarCategoria={agregarCategoria}
+                />
+                {!isEdit && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleGuardarBorrador}
+                      disabled={guardandoBorrador || borradorGuardado || savedEvalId !== null}
+                      className="flex items-center gap-2 bg-primary text-on-primary px-6 py-2 rounded-full font-bold text-sm shadow hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-60"
+                    >
+                      {guardandoBorrador && (
+                        <span className="w-3 h-3 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
+                      )}
+                      {borradorGuardado
+                        ? '✓ Borrador guardado'
+                        : guardandoBorrador ? 'Guardando...'
+                        : savedEvalId !== null ? '✓ Guardado'
+                        : 'Guardar borrador'}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Tab: Versiones y precios */}

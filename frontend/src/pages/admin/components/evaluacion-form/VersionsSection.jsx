@@ -4,7 +4,7 @@ import VersionCard from './VersionCard'
 import { INPUT_CLS } from './lib/constants'
 
 export default function VersionsSection({
-  id, versiones, niveles, profesiones,
+  id, pkgId, versiones, niveles, profesiones,
   modoVersiones, setModoVersiones,
   modoGuiado, labels,
   showProfModal, setShowProfModal,
@@ -25,7 +25,7 @@ export default function VersionsSection({
         <div>
           <h3 className="font-bold text-lg font-headline">{labels.versiones}</h3>
           <p className="text-xs text-on-surface-variant mt-1">
-            {!id ? 'Guarda el paquete primero para agregar versiones.' : 'Cada versión puede representar una profesión, cargo o acceso especial.'}
+            {!id && !pkgId ? 'Guarda el paquete primero para agregar versiones.' : 'Cada versión puede representar una profesión, cargo o acceso especial.'}
           </p>
         </div>
         {id && (

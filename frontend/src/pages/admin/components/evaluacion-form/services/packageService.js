@@ -42,7 +42,14 @@ export async function getPackageIdFromEvaluation(evalId) {
     .select('package_version_id')
     .eq('evaluation_id', parseInt(evalId, 10))
 
-  if (!evalVers?.length) return null
+  if (!evalVers?.length) {
+    const { data } = await supabase
+      .from('packages')
+      .select('id')
+      .contains('evaluations_ids', [parseInt(evalId, 10)])
+      .limit(1)
+    return data?.[0]?.id || null
+  }
 
   const versionIds = evalVers.map(ev => ev.package_version_id)
 
@@ -60,7 +67,7 @@ export async function getPackageIdFromEvaluation(evalId) {
 // Crea o actualiza el registro en `packages`.
 // El precio base se deriva del mínimo entre las versiones activas.
 // ============================================================================
-export async function savePackage({ packageId, form, versiones, modoVersiones }) {
+export async function savePackage({ packageId, evalId, form, versiones, modoVersiones }) {
   dbg('Iniciando etapa: guardar paquete', { packageId })
 
   const versionesActivas = versiones.filter(v => v.is_active)
@@ -71,8 +78,8 @@ export async function savePackage({ packageId, form, versiones, modoVersiones })
   const payload = {
     name: form.title,
     description: form.description,
-    base_price: precioBase,
-    package_type: 'normal',
+    price: precioBase,
+    type: 'one_time',
     duration_days: 365,
     is_active: true,
     pricing_mode: modoVersiones === 'simple' ? 'global' : 'per_profession',

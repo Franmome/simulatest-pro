@@ -4,7 +4,7 @@ import { INPUT_CLS } from './lib/constants'
 import { iconoMaterial } from './lib/helpers'
 
 export default function MaterialSection({
-  id, materiales, versiones,
+  id, pkgId, materiales, versiones,
   nuevoMat, setNuevoMat,
   matError, setMatError,
   guardandoMat,
@@ -18,7 +18,7 @@ export default function MaterialSection({
       <div>
         <h3 className="font-bold text-lg font-headline">Material de Estudio</h3>
         <p className="text-xs text-on-surface-variant mt-1">
-          {!id ? 'Guarda el paquete primero para agregar material.' : 'Sube archivos o agrega enlaces externos. El material se asigna a todas las versiones activas.'}
+          {!id && !pkgId ? 'Guarda el paquete primero para agregar material.' : 'Sube archivos o agrega enlaces externos. El material se asigna a todas las versiones activas.'}
         </p>
       </div>
 
@@ -32,7 +32,7 @@ export default function MaterialSection({
         </div>
       )}
 
-      {!id ? (
+      {!id && !pkgId ? (
         <div className="p-8 text-center text-on-surface-variant bg-surface-container rounded-xl">
           <span className="material-symbols-outlined text-3xl opacity-40 mb-2 block">lock</span>
           <p className="text-sm font-semibold">Guarda el paquete primero</p>
