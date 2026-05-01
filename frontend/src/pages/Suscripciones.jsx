@@ -115,7 +115,7 @@ function ModalPagoExitoso({ pkg, version, onClose, onVerSimulacros, onVerMisPaqu
           <div className="bg-surface-container-low p-4 rounded-xl mb-6">
             <p className="text-xs text-on-surface-variant">Total pagado</p>
             <p className="text-2xl font-extrabold text-primary">
-              {formatPrecio(version?.price || pkg.base_price || pkg.price)} COP
+              {formatPrecio(version?.price || pkg.price)} COP
             </p>
           </div>
           <div className="flex flex-col gap-3">
@@ -153,10 +153,9 @@ function ModalPaquete({ pkg, versiones, comprasUsuario, onClose, onComprar, proc
   const colorGrad = COLORES_CATEGORIA[catNombre] || 'from-primary to-primary-container'
 
   const versionesActivas = versiones.filter(v => v.is_active)
-  const versionesNoCombo = versionesActivas.filter(v => !v.is_combo)
-  const precioDesde = versionesNoCombo.length
-    ? Math.min(...versionesNoCombo.map(v => Number(v.price) || 0))
-    : Number(pkg.base_price || pkg.price) || 0
+  const precioDesde = versionesActivas.length
+    ? Math.min(...versionesActivas.map(v => Number(v.price) || 0))
+    : Number(pkg.price) || 0
 
   const comprasVersionIds = comprasUsuario.map(c => c.package_version_id)
 
@@ -255,7 +254,6 @@ function ModalPaquete({ pkg, versiones, comprasUsuario, onClose, onComprar, proc
                       key={version.id}
                       className={`p-4 rounded-xl border-2 transition-all relative
                         ${esRecomendada ? 'border-primary shadow-md bg-primary-container/5' : 'border-outline-variant/20 bg-surface-container-lowest'}
-                        ${version.is_combo ? 'border-tertiary/30 bg-tertiary-container/10' : ''}
                         ${yaComprado ? 'border-secondary/30 bg-secondary-container/10' : ''}`}
                     >
                       {esRecomendada && (
@@ -267,11 +265,6 @@ function ModalPaquete({ pkg, versiones, comprasUsuario, onClose, onComprar, proc
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-bold">{version.display_name || 'Versión sin nombre'}</p>
-                            {version.is_combo && (
-                              <span className="text-[9px] font-bold bg-tertiary text-on-tertiary px-1.5 py-0.5 rounded-full">
-                                COMBO
-                              </span>
-                            )}
                             {yaComprado && (
                               <span className="text-[9px] font-bold bg-secondary text-on-secondary px-1.5 py-0.5 rounded-full">
                                 ✓ ADQUIRIDO
@@ -288,9 +281,7 @@ function ModalPaquete({ pkg, versiones, comprasUsuario, onClose, onComprar, proc
                           className={`px-5 py-2 rounded-full text-sm font-bold transition-all
                             ${yaComprado
                               ? 'bg-secondary-container text-secondary cursor-default'
-                              : version.is_combo
-                                ? 'bg-tertiary text-on-tertiary hover:bg-tertiary/90'
-                                : 'bg-primary text-on-primary hover:bg-primary/90'}`}
+                              : 'bg-primary text-on-primary hover:bg-primary/90'}`}
                         >
                           {yaComprado ? 'Adquirido' : 'Seleccionar'}
                         </button>
@@ -366,14 +357,11 @@ function TarjetaPaquete({ pkg, comprasUsuario, onAbrirDetalle }) {
 
   const versiones = pkg.versiones || []
   const versionesActivas = versiones.filter(v => v.is_active)
-  const versionesNoCombo = versionesActivas.filter(v => !v.is_combo)
   const tieneVersion = versionesActivas.length > 0
 
   const precioDesde = tieneVersion
-    ? (versionesNoCombo.length > 0
-        ? Math.min(...versionesNoCombo.map(v => Number(v.price) || 0))
-        : 0)
-    : Number(pkg.base_price || pkg.price) || 0
+    ? Math.min(...versionesActivas.map(v => Number(v.price) || 0))
+    : Number(pkg.price) || 0
 
   const pkgComprado = comprasUsuario.some(c => c.package_id === pkg.id)
   const nivelesCount = pkg.evaluations?.reduce((acc, ev) => acc + (ev.levels?.length || 0), 0) || 0
@@ -505,7 +493,7 @@ export default function Suscripciones() {
     // 1. Obtener paquetes activos
     const { data: pkgs, error: pkgErr } = await supabase
       .from('packages')
-      .select('id, name, description, base_price, price, duration_days, type, is_active')
+      .select('id, name, description, price, duration_days, type, is_active')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
 
@@ -518,7 +506,7 @@ export default function Suscripciones() {
           // Obtener package_versions
           const { data: versiones, error: versionesError } = await supabase
             .from('package_versions')
-            .select('id, display_name, price, is_active, is_combo')
+            .select('id, display_name, price, is_active')
             .eq('package_id', pkg.id)
             .eq('is_active', true)
             .order('price', { ascending: true })
