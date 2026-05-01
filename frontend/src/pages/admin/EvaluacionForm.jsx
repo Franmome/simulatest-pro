@@ -185,6 +185,25 @@ function EvaluacionFormContent() {
 })
   const { guardandoBorrador, borradorGuardado, handleGuardarBorrador } = draftManager
 
+  // ── Aviso al salir con cambios sin guardar ────────────────────────────────
+  useEffect(() => {
+    if (!isEdit && form.title.trim()) {
+      const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+      window.addEventListener('beforeunload', handler)
+      return () => window.removeEventListener('beforeunload', handler)
+    }
+  }, [isEdit, form.title])
+
+  function handleVolver() {
+    if (!isEdit && form.title.trim()) {
+      if (window.confirm('¿Guardar borrador antes de salir?')) {
+        handleGuardarBorrador().then(() => navigate('/admin/evaluaciones'))
+        return
+      }
+    }
+    navigate('/admin/evaluaciones')
+  }
+
   // ── agregarNivel: wrapper que también cambia de tab ───────────────────────
   function agregarNivel() {
     nivelesManager.agregarNivel()
@@ -519,7 +538,7 @@ function EvaluacionFormContent() {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate('/admin/evaluaciones')}
+            onClick={handleVolver}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors text-sm font-medium"
           >
             <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -556,7 +575,7 @@ function EvaluacionFormContent() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/admin/evaluaciones')}
+            onClick={handleVolver}
             className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors"
           >
             Cancelar
@@ -565,7 +584,7 @@ function EvaluacionFormContent() {
             <button
               type="button"
               onClick={handleGuardarBorrador}
-              disabled={guardandoBorrador || borradorGuardado || savedEvalId !== null}
+              disabled={guardandoBorrador || borradorGuardado}
               className="flex items-center gap-2 px-4 py-2 text-sm font-bold border border-outline text-on-surface rounded-xl hover:bg-surface-container transition-colors disabled:opacity-60"
             >
               {guardandoBorrador && (
@@ -574,7 +593,7 @@ function EvaluacionFormContent() {
               {borradorGuardado
                 ? '✓ Borrador guardado'
                 : guardandoBorrador ? 'Guardando...'
-                : savedEvalId !== null ? '✓ Guardado'
+                : savedEvalId !== null ? 'Guardar cambios'
                 : 'Guardar borrador'}
             </button>
           )}
@@ -840,7 +859,7 @@ function EvaluacionFormContent() {
                     <button
                       type="button"
                       onClick={handleGuardarBorrador}
-                      disabled={guardandoBorrador || borradorGuardado || savedEvalId !== null}
+                      disabled={guardandoBorrador || borradorGuardado}
                       className="flex items-center gap-2 bg-primary text-on-primary px-6 py-2 rounded-full font-bold text-sm shadow hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-60"
                     >
                       {guardandoBorrador && (
@@ -849,7 +868,7 @@ function EvaluacionFormContent() {
                       {borradorGuardado
                         ? '✓ Borrador guardado'
                         : guardandoBorrador ? 'Guardando...'
-                        : savedEvalId !== null ? '✓ Guardado'
+                        : savedEvalId !== null ? 'Guardar cambios'
                         : 'Guardar borrador'}
                     </button>
                   </div>

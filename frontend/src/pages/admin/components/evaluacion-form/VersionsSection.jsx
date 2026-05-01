@@ -28,7 +28,7 @@ export default function VersionsSection({
             {!id && !pkgId ? 'Guarda el paquete primero para agregar versiones.' : 'Cada versión puede representar una profesión, cargo o acceso especial.'}
           </p>
         </div>
-        {id && (
+        {(id || pkgId) && (
           <button type="button" onClick={onAgregarVersion}
             className="flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2 rounded-full text-xs font-bold hover:bg-primary/90 transition-all">
             <span className="material-symbols-outlined text-sm">add</span>
@@ -65,7 +65,7 @@ export default function VersionsSection({
         'Escribe el nombre del nivel: si coincide exactamente, se asigna automáticamente. Si no, selecciónalo de la lista.',
       ]} />
 
-      {id && versiones.map((version, idx) => {
+      {(id || pkgId) && versiones.map((version, idx) => {
         if (esModoSimple && idx > 0) return null
         return (
           <VersionCard

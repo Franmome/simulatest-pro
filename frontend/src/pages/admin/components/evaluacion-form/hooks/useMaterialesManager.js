@@ -123,7 +123,6 @@ export function useMaterialesManager({
         source_type: nuevoMat.source_type,
         url: finalUrl,
         storage_path: storagePath,
-        mime_type: mimeType,
         folder: nuevoMat.folder || 'General',
         description: nuevoMat.description,
         sort_order: materiales.length,
