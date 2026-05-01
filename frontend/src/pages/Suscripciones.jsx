@@ -594,7 +594,7 @@ export default function Suscripciones() {
       comprasUsuario,
       categorias,
     }
-  }, [user?.id])
+  }, ['suscripciones', user?.id])
 
   const hero = data?.hero ?? HERO_DEFAULTS
   const paquetes = data?.paquetes ?? []

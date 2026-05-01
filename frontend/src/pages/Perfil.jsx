@@ -45,7 +45,7 @@ export default function Perfil() {
     }
 
     return { perfil, plan, stats, historial: intentos.slice(0, 5) }
-  }, [user?.id])
+  }, ['perfil', user?.id])
 
   const perfil   = data?.perfil   ?? null
   const plan     = data?.plan     ?? null

@@ -125,7 +125,7 @@ export default function Dashboard() {
       progreso: { pct, horasSemana, metaSemana: 20 },
       tienePlan: (planCount || 0) > 0,
     }
-  }, [user?.id])
+  }, ['dashboard', user?.id])
 
   const evaluaciones = data?.evaluaciones ?? []
   const intentos     = data?.intentos     ?? []

@@ -42,7 +42,7 @@ function TabMaterial({packageId,tienePlan}){
     const {data,error}=await supabase.from('study_materials').select('*').eq('package_id',packageId).eq('is_active',true).order('folder').order('sort_order')
     if(error) throw new Error(error.message)
     return data||[]
-  },[packageId])
+  },['detalle-material', packageId])
   const materiales=data||[]
   const carpetas=materiales.reduce((a,m)=>{if(!a[m.folder])a[m.folder]=[];a[m.folder].push(m);return a},{})
   if(!tienePlan) return(
@@ -136,7 +136,7 @@ export default function DetallePrueba(){
       if(compra){tienePlan=true;packageId=compra.package_id}
     }
     return {ev:evalData,niveles,pregsPorNivel,intentosPorNivel,totalPregs,tienePlan,packageId}
-  },[id,user?.id])
+  },['detalle-prueba', id, user?.id])
 
   const ev=data?.ev??null
   const niveles=data?.niveles??[]

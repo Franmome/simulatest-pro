@@ -247,7 +247,7 @@ export default function Estudio() {
       evaluaciones: evals             || [],
       intentos:     intentosRes.data  || [],
     }
-  }, [user?.id])
+  }, ['estudio', user?.id])
 
   const categorias   = data?.categorias   ?? []
   const evaluaciones = data?.evaluaciones ?? []

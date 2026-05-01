@@ -95,7 +95,7 @@ export default function Catalogo() {
     }))
 
     return { categorias: cats || [], evaluaciones: conPreguntas }
-  })
+  }, ['catalogo'])
 
   const categorias   = data?.categorias   ?? []
   const evaluaciones = data?.evaluaciones ?? []
