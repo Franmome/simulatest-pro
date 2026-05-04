@@ -89,6 +89,7 @@ export async function savePackage({ packageId, evalId, form, versiones, modoVers
     has_exam_mode: true,
     has_online_room: true,
     has_level_selector: versionesActivas.length > 1,
+    has_ai_chat: form.has_ai_chat ?? false,
   }
 
   if (packageId) {

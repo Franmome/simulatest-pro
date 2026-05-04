@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useFetch } from '../hooks/useFetch'
+import IAPraxia from '../components/IAPraxia'
 
 // ── Constantes visuales ───────────────────────────────────────────────────────
 
@@ -204,16 +205,22 @@ export default function DetallePrueba() {
       ;(intentosData || []).forEach(i => { if (!intentosPorNivel[i.level_id]) intentosPorNivel[i.level_id] = i })
     }
 
-    let tienePlan = false, packageId = null
+    let tienePlan = false, packageId = null, hasAiChat = false
     if (user?.id) {
       const { data: compra } = await supabase
         .from('purchases').select('package_id').eq('user_id', user.id)
         .eq('status', 'active').gte('end_date', new Date().toISOString())
         .order('end_date', { ascending: false }).limit(1).maybeSingle()
-      if (compra) { tienePlan = true; packageId = compra.package_id }
+      if (compra) {
+        tienePlan = true
+        packageId = compra.package_id
+        const { data: pkg } = await supabase
+          .from('packages').select('has_ai_chat').eq('id', packageId).maybeSingle()
+        hasAiChat = pkg?.has_ai_chat ?? false
+      }
     }
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -225,6 +232,7 @@ export default function DetallePrueba() {
   const totalPregs       = data?.totalPregs ?? 0
   const tienePlan        = data?.tienePlan ?? false
   const packageId        = data?.packageId ?? null
+  const hasAiChat        = data?.hasAiChat ?? false
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -597,36 +605,11 @@ export default function DetallePrueba() {
               <ModeCards />
             </div>
 
-            {/* IA Praxia — Próximamente */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-white/5 rounded-full -translate-y-10 translate-x-10 pointer-events-none" />
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-xl"
-                    style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                </div>
-                <div>
-                  <p className="font-extrabold text-sm">IA Praxia</p>
-                  <span className="text-[10px] font-bold bg-white/15 text-white/80 px-2 py-0.5 rounded-full">Próximamente</span>
-                </div>
-              </div>
-              <p className="text-white/70 text-xs leading-relaxed mb-3">
-                Tu asistente personal de estudio con inteligencia artificial. Analiza tus resultados y genera práctica adaptada a tus debilidades.
-              </p>
-              <ul className="space-y-1.5 text-xs text-white/60">
-                {[
-                  'Análisis de áreas débiles',
-                  'Preguntas generadas por IA',
-                  'Retroalimentación inteligente',
-                  'Plan de estudio personalizado',
-                ].map(item => (
-                  <li key={item} className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-xs text-white/40">radio_button_unchecked</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {/* IA Praxia */}
+            <IAPraxia
+              evaluacionNombre={ev?.title}
+              tienePlan={tienePlan && hasAiChat}
+            />
 
             {/* Estadísticas rápidas del nivel */}
             {nivelActual && (

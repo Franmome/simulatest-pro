@@ -8,6 +8,7 @@ export const FORM_DEFAULTS = {
   description: '',
   category_id: '',
   is_active: false,
+  has_ai_chat: false,
 }
 
 export const NUEVO_MAT_DEFAULTS = {

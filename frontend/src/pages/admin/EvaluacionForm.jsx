@@ -244,11 +244,21 @@ function EvaluacionFormContent() {
       .from('evaluations').select('*').eq('id', id).maybeSingle()
     if (error) { addToast('error', 'Error al cargar evaluación: ' + error.message); return }
     if (ev) {
+      // Cargar has_ai_chat desde el paquete vinculado
+      let hasAiChat = false
+      const pkgId = await getPackageIdFromEvaluation(id)
+      if (pkgId) {
+        setSavedPkg(pkgId)
+        const { data: pkg } = await supabase
+          .from('packages').select('has_ai_chat').eq('id', pkgId).maybeSingle()
+        hasAiChat = pkg?.has_ai_chat ?? false
+      }
       setForm({
         title: ev.title,
         description: ev.description || '',
         category_id: ev.category_id || '',
         is_active: ev.is_active,
+        has_ai_chat: hasAiChat,
       })
     }
 
