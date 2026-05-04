@@ -108,7 +108,7 @@ export async function generarBanco(req, res) {
       }
 
       // 3. Llamar a Gemini con el PDF
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
       const pdfPart = {
         inlineData: {
@@ -146,7 +146,7 @@ export async function generarBanco(req, res) {
       return res.status(400).json({ error: 'Debes subir un PDF o especificar un cargo.' })
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
     const prompt = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
     const result = await model.generateContent(prompt)
     const texto = result.response.text()
@@ -220,7 +220,7 @@ export async function generarSimulacroPersonal(req, res) {
 
     // 4. Generar con Gemini si no hay cache
     if (!preguntas) {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
       let promptTexto = SYSTEM_PROMPT
       if (cargo) promptTexto += `\n\nCARGO OBJETIVO (OPEC): ${cargo}`
@@ -291,7 +291,7 @@ export async function analizarSala(req, res) {
       return res.status(400).json({ error: 'Faltan datos de participantes.' })
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
 
     const prompt = `Analiza estos resultados de una sala de competencia de simulacros del estado colombiano y genera un análisis breve, concreto y motivador en español colombiano (máx. 200 palabras):
 
@@ -327,7 +327,7 @@ export async function chatIA(req, res) {
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
 
     const systemCtx = contexto_evaluacion
       ? `Eres Praxia, asistente de estudio para el examen "${contexto_evaluacion}". Ayuda al usuario a comprender los temas, resolver dudas y estudiar para la convocatoria. Responde en español, de forma clara y pedagógica.`
