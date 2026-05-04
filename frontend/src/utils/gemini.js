@@ -45,6 +45,15 @@ export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf, mode
   return json
 }
 
+// GET /api/ia/tokens — saldo de tokens del usuario
+export async function getTokenBalance() {
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/tokens`, { headers })
+  const json = await res.json()
+  if (!res.ok) return null
+  return json // { used, limit, remaining, pct }
+}
+
 // POST /api/ia/sala — análisis de resultados de sala (sin restricción de plan)
 export async function analizarSala({ participantes, total, modelo = 'gemini' }) {
   const headers = await authHeaders()

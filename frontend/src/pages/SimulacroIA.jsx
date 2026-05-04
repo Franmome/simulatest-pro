@@ -258,6 +258,21 @@ export default function SimulacroIA() {
   function enviar() {
     clearInterval(intervalRef.current)
     setEnviado(true)
+    guardarRespuestas()
+  }
+
+  async function guardarRespuestas() {
+    try {
+      const rows = preguntas.map((p, i) => ({
+        simulacro_id: parseInt(id),
+        user_id:      user.id,
+        pregunta_idx: i,
+        area:         p.area || 'General',
+        dificultad:   p.dificultad || 'medio',
+        es_correcta:  seleccion[i] === p.correcta,
+      }))
+      await supabase.from('user_simulacro_answers').insert(rows)
+    } catch { /* falla silenciosa — no interrumpe resultados */ }
   }
 
   function repetir() {

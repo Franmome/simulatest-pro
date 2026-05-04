@@ -2,7 +2,7 @@
 // Asistente de estudio con IA para DetallePrueba.
 
 import { useState, useRef, useEffect } from 'react'
-import { chatPraxia } from '../utils/gemini'
+import { chatPraxia, getTokenBalance } from '../utils/gemini'
 
 // ── Selector de modelo ────────────────────────────────────────────────────────
 
@@ -62,7 +62,8 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
   const [input,    setInput]    = useState('')
   const [cargando, setCargando] = useState(false)
   const [error,    setError]    = useState(null)
-  const [modelo,   setModelo]   = useState('gemini')
+  const [modelo,       setModelo]       = useState('gemini')
+  const [tokenBalance, setTokenBalance] = useState(null)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
 
@@ -70,6 +71,7 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
     if (abierto) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
       inputRef.current?.focus()
+      getTokenBalance().then(setTokenBalance).catch(() => {})
     }
   }, [abierto, historial])
 
@@ -168,12 +170,24 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
         </button>
       </div>
 
-      {/* Selector de modelo */}
-      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
-        <ModelSelector value={modelo} onChange={setModelo} />
-        <span className="text-[10px] text-slate-400">
-          {modelo === 'gemini' ? 'Google AI' : 'DeepSeek AI'}
-        </span>
+      {/* Selector de modelo + tokens */}
+      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <ModelSelector value={modelo} onChange={setModelo} />
+          {tokenBalance && (
+            <span className="text-[10px] text-slate-400 font-mono">
+              {Math.round(tokenBalance.remaining / 1000)}k tkns
+            </span>
+          )}
+        </div>
+        {tokenBalance && (
+          <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${tokenBalance.pct > 80 ? 'bg-error' : tokenBalance.pct > 50 ? 'bg-amber-400' : 'bg-secondary'}`}
+              style={{ width: `${tokenBalance.pct}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Mensajes */}
