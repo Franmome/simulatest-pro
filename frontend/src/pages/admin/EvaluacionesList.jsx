@@ -69,8 +69,7 @@ export default function EvaluacionesList() {
         is_active,
         created_at,
         categories(name),
-        levels(id),
-        professions(id)
+        levels(id)
       `,
         { count: 'exact' }
       )
@@ -81,7 +80,14 @@ export default function EvaluacionesList() {
     if (filtroEstado === 'activas') query = query.eq('is_active', true)
     if (filtroEstado === 'borradores') query = query.eq('is_active', false)
 
-    const { data, count } = await query
+    const { data, count, error: queryError } = await query
+    if (queryError) {
+      console.error('[EvaluacionesList] Error cargando evaluaciones:', queryError.message)
+      setEvaluaciones([])
+      setTotal(0)
+      setCargando(false)
+      return
+    }
     setTotal(count || 0)
 
     if (!data?.length) {
@@ -90,37 +96,29 @@ export default function EvaluacionesList() {
       return
     }
 
-    const conPreguntas = await Promise.all(
-      data.map(async ev => {
-        const levelIds = ev.levels?.map(l => l.id) || []
-        let totalPregs = 0
-        let totalMateriales = 0
-
-        if (levelIds.length) {
-          const { count: c } = await supabase
-            .from('questions')
-            .select('*', { count: 'exact', head: true })
-            .in('level_id', levelIds)
-
-          totalPregs = c || 0
-        }
-
-        const { count: mats } = await supabase
-          .from('study_materials')
-          .select('*', { count: 'exact', head: true })
-          .eq('package_id', ev.id)
-
-        totalMateriales = mats || 0
-
-        return {
-          ...ev,
-          totalPreguntas: totalPregs,
-          totalNiveles: levelIds.length,
-          totalProfesiones: ev.professions?.length || 0,
-          totalMateriales,
-        }
+    const levelIds = data.flatMap(ev => ev.levels?.map(l => l.id) || [])
+    let pregsPorLevel = {}
+    if (levelIds.length) {
+      const { data: qCounts } = await supabase
+        .from('questions')
+        .select('level_id')
+        .in('level_id', levelIds)
+      ;(qCounts || []).forEach(q => {
+        pregsPorLevel[q.level_id] = (pregsPorLevel[q.level_id] || 0) + 1
       })
-    )
+    }
+
+    const conPreguntas = data.map(ev => {
+      const evLevelIds = ev.levels?.map(l => l.id) || []
+      const totalPregs = evLevelIds.reduce((sum, lid) => sum + (pregsPorLevel[lid] || 0), 0)
+      return {
+        ...ev,
+        totalPreguntas: totalPregs,
+        totalNiveles: evLevelIds.length,
+        totalProfesiones: 0,
+        totalMateriales: 0,
+      }
+    })
 
     setEvaluaciones(conPreguntas)
     setCargando(false)

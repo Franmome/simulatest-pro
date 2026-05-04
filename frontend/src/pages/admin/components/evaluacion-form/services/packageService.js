@@ -81,7 +81,7 @@ export async function savePackage({ packageId, evalId, form, versiones, modoVers
     price: precioBase,
     type: 'one_time',
     duration_days: 365,
-    is_active: true,
+    is_active: form.is_active ?? true,
     pricing_mode: modoVersiones === 'simple' ? 'global' : 'per_profession',
     content_mode: 'shared',
     has_study_material: true,

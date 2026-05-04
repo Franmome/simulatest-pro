@@ -100,12 +100,14 @@ export default function VersionCard({
           list={`niveles-list-${version.id}`}
         />
         <datalist id={`niveles-list-${version.id}`}>
-          {niveles.map(n => <option key={n._id} value={n.name} />)}
+          {niveles.filter(n => typeof n._id === 'number').map(n => <option key={n._id} value={n.name} />)}
         </datalist>
         {levelSinResolver && (
           <p className="text-[10px] text-error flex items-center gap-1">
             <span className="material-symbols-outlined text-xs">error</span>
-            "{version.level_display}" no coincide con ningún nivel. Selecciónalo de la lista o crea el nivel primero.
+            {niveles.some(n => n.name?.toLowerCase() === version.level_display?.toLowerCase())
+              ? `El nivel "${version.level_display}" existe pero aún no está guardado en BD. Guarda el borrador primero.`
+              : `"${version.level_display}" no coincide con ningún nivel. Selecciónalo de la lista.`}
           </p>
         )}
         {version.level_id && !levelSinResolver && (
