@@ -419,9 +419,9 @@ function EvaluacionFormContent() {
         // ======================================================================
         setGuardadoStage('Vinculando evaluación con versiones...')
         dbg('Iniciando etapa 5: syncEvaluationVersions')
-        const { data: versionesFrescas, error: fetchErr } = await supabase
+        const { data: versionesFrescasBD, error: fetchErr } = await supabase
           .from('package_versions')
-          .select('id, is_active, level_id')
+          .select('id, is_active')
           .eq('package_id', packageId)
 
         if (fetchErr) {
@@ -435,6 +435,12 @@ function EvaluacionFormContent() {
             }
           )
         }
+
+        // Enriquecer con level_id del estado local (viene de package_version_levels)
+        const versionesFrescas = (versionesFrescasBD || []).map(v => {
+          const local = versionesConIdsFrescos.find(lv => lv.id === v.id)
+          return { ...v, level_id: local?.level_id ?? null }
+        })
 
         await syncEvaluationVersions({ evalId, versionesFrescas })
         dbg('OK etapa 5')
