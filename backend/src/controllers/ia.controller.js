@@ -1,6 +1,6 @@
 // ia.controller.js
-// Generación de banco de preguntas con Gemini 1.5 Flash.
-// Flujo: validar acceso → extraer PDF → generar preguntas → cachear resultado.
+// Generación de banco de preguntas y simulacros personales con Gemini 1.5 Flash.
+// Flujo: validar acceso → RAG cache (OPEC/cargo) → Gemini → guardar → devolver ID.
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@supabase/supabase-js'
@@ -158,6 +158,125 @@ export async function generarBanco(req, res) {
   } catch (err) {
     console.error('[IA] Error generarBanco:', err)
     return res.status(500).json({ error: err.message || 'Error generando banco de preguntas.' })
+  }
+}
+
+// ── Simulacro personal ───────────────────────────────────────────────────────
+// POST /api/ia/simulacro
+// Genera y persiste un banco de preguntas personal para el usuario.
+// Flujo: rate limit → RAG cache por (evaluacion_id, cargo) → Gemini → user_simulacros
+
+export async function generarSimulacroPersonal(req, res) {
+  try {
+    const userId = req.user.id
+    const { evaluacion_id, cargo } = req.body
+    const file = req.file
+
+    // 1. Validar acceso
+    const { data: compra } = await supabase
+      .from('purchases')
+      .select('id, packages(has_ai_chat)')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    if (!compra?.packages?.has_ai_chat) {
+      return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
+    }
+
+    // 2. Rate limit: máx 3 generaciones por día por usuario
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+    const { count } = await supabase
+      .from('user_simulacros')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', hoy.toISOString())
+
+    if ((count ?? 0) >= 3) {
+      return res.status(429).json({
+        error: 'Límite diario alcanzado. Puedes generar hasta 3 simulacros por día.',
+        restante_manana: true,
+      })
+    }
+
+    // 3. RAG cache: buscar banco existente para este cargo + evaluación
+    let preguntas = null
+    const cargoKey = cargo?.trim().toLowerCase() || ''
+
+    if (evaluacion_id && cargoKey) {
+      const hashCargo = `cargo:${evaluacion_id}:${cargoKey}`
+      const { data: cached } = await supabase
+        .from('bancos_preguntas')
+        .select('preguntas, created_at')
+        .eq('pdf_hash', hashCargo)
+        .eq('evaluacion_id', parseInt(evaluacion_id, 10))
+        .maybeSingle()
+
+      if (cached && esHashReciente(cached.created_at)) {
+        preguntas = cached.preguntas
+        console.log('[IA] Cache hit para OPEC:', cargo)
+      }
+    }
+
+    // 4. Generar con Gemini si no hay cache
+    if (!preguntas) {
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
+      let promptTexto = SYSTEM_PROMPT
+      if (cargo) promptTexto += `\n\nCARGO OBJETIVO (OPEC): ${cargo}`
+
+      const parts = [promptTexto]
+
+      if (file) {
+        parts.push({
+          inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' },
+        })
+        parts.push('Analiza este material y genera el banco de preguntas siguiendo las instrucciones anteriores.')
+      } else {
+        parts[0] += '\n\nGenera preguntas típicas para este cargo en el sector público colombiano basándote en competencias funcionales y comportamentales estándar del CNSC.'
+      }
+
+      const result = await model.generateContent(parts)
+      const texto = result.response.text()
+      const arr = JSON.parse(limpiarJSON(texto))
+      preguntas = validarPreguntas(arr)
+
+      // Guardar en cache RAG
+      if (evaluacion_id && cargoKey) {
+        const hashCargo = `cargo:${evaluacion_id}:${cargoKey}`
+        await supabase.from('bancos_preguntas').upsert({
+          pdf_hash: hashCargo,
+          evaluacion_id: parseInt(evaluacion_id, 10),
+          cargo: cargo.trim(),
+          preguntas,
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'pdf_hash,evaluacion_id' })
+      }
+    }
+
+    // 5. Persistir simulacro personal del usuario
+    const { data: sim, error: simErr } = await supabase
+      .from('user_simulacros')
+      .insert({
+        user_id: userId,
+        evaluacion_id: evaluacion_id ? parseInt(evaluacion_id, 10) : null,
+        cargo: cargo?.trim() || null,
+        preguntas,
+      })
+      .select('id')
+      .single()
+
+    if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)
+
+    return res.json({
+      simulacro_id: sim.id,
+      total: preguntas.length,
+      desde_cache: preguntas !== null && !file,
+    })
+
+  } catch (err) {
+    console.error('[IA] Error generarSimulacroPersonal:', err)
+    return res.status(500).json({ error: err.message || 'Error generando el simulacro.' })
   }
 }
 

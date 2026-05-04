@@ -28,6 +28,25 @@ export async function chatPraxia({ mensaje, contexto_evaluacion, historial = [] 
   return json.respuesta
 }
 
+// POST /api/ia/simulacro — genera y guarda simulacro personal por OPEC
+// → { simulacro_id, total, desde_cache }
+export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf }) {
+  const headers = await authHeaders()
+  const fd = new FormData()
+  if (pdf) fd.append('pdf', pdf)
+  if (evaluacion_id) fd.append('evaluacion_id', String(evaluacion_id))
+  if (cargo) fd.append('cargo', cargo)
+
+  const res = await fetch(`${BASE}/api/ia/simulacro`, {
+    method: 'POST',
+    headers,
+    body: fd,
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Error generando el simulacro.')
+  return json
+}
+
 // POST /api/ia/generar (multipart con PDF opcional)
 // FormData: { pdf?: File, evaluacion_id, nivel_id, cargo }
 // → { preguntas: [...], cached: boolean }

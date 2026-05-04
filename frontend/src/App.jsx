@@ -15,6 +15,7 @@ import PagoResultado from './pages/PagoResultado'
 // Páginas privadas
 import Dashboard from './pages/Dashboard'
 import Simulacro from './pages/Simulacro'
+import SimulacroIA from './pages/SimulacroIA'
 import Resultados from './pages/Resultados'
 import ResultadoFinal from './pages/ResultadoFinal'
 import Suscripciones from './pages/Suscripciones'
@@ -57,7 +58,8 @@ export default function App() {
           {/* 🔒 Rutas privadas para usuarios autenticados */}
           <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
             <Route path="/dashboard"       element={<Dashboard />} />
-            <Route path="/simulacro/:id"   element={<Simulacro />} />
+            <Route path="/simulacro/:id"      element={<Simulacro />} />
+            <Route path="/simulacro-ia/:id"   element={<SimulacroIA />} />
             <Route path="/resultados"      element={<Resultados />} />
             <Route path="/resultado-final" element={<ResultadoFinal />} />
             <Route path="/planes"          element={<Suscripciones />} />

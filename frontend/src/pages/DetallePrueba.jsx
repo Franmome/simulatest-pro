@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useFetch } from '../hooks/useFetch'
 import IAPraxia from '../components/IAPraxia'
+import { generarSimulacroPersonal } from '../utils/gemini'
 
 // ── Constantes visuales ───────────────────────────────────────────────────────
 
@@ -173,6 +174,32 @@ export default function DetallePrueba() {
   const [configExamen, setConfigExamen] = useState({
     cantidad: 0, cantidad_custom: '', tipo_cantidad: 'all',
   })
+
+  // ── IA Simulacro ────────────────────────────────────────────────────────────
+  const [modalIA,      setModalIA]      = useState(false)
+  const [cargo,        setCargo]        = useState('')
+  const [pdfIA,        setPdfIA]        = useState(null)
+  const [generandoIA,  setGenerandoIA]  = useState(false)
+  const [errorIA,      setErrorIA]      = useState(null)
+
+  async function lanzarSimulacroIA() {
+    if (!cargo.trim()) { setErrorIA('Escribe el nombre del OPEC o cargo.'); return }
+    setGenerandoIA(true)
+    setErrorIA(null)
+    try {
+      const { simulacro_id } = await generarSimulacroPersonal({
+        evaluacion_id: id,
+        cargo: cargo.trim(),
+        pdf: pdfIA || undefined,
+      })
+      setModalIA(false)
+      navigate(`/simulacro-ia/${simulacro_id}`)
+    } catch (e) {
+      setErrorIA(e.message)
+    } finally {
+      setGenerandoIA(false)
+    }
+  }
 
   // ── Carga de datos ──────────────────────────────────────────────────────────
 
@@ -382,6 +409,24 @@ export default function DetallePrueba() {
               <span className="material-symbols-outlined text-sm">warning</span>
               Este nivel aún no tiene preguntas
             </p>
+          )}
+
+          {/* Simulacro IA */}
+          {hasAiChat && (
+            <button onClick={() => { if (!user) { navigate('/login'); return } setModalIA(true) }}
+              className="w-full group text-left p-4 rounded-2xl border-2 border-slate-700/20 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 active:scale-[0.99] transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-white text-xl"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                </div>
+                <div className="flex-1">
+                  <p className="font-extrabold text-white text-sm">Simulacro personalizado IA</p>
+                  <p className="text-white/60 text-xs">Generado para tu OPEC · Praxia IA</p>
+                </div>
+                <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
+              </div>
+            </button>
           )}
         </>
       ) : (
@@ -900,6 +945,102 @@ export default function DetallePrueba() {
                 ¡Empezar!
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Simulacro IA ──────────────────────────────────────────────── */}
+      {modalIA && (
+        <div className="fixed inset-0 z-[120] bg-black/70 flex items-end md:items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => { if (!generandoIA) setModalIA(false) }}>
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 animate-fade-in shadow-2xl" onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-white text-2xl"
+                  style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-xl">Simulacro IA</h3>
+                <p className="text-xs text-on-surface-variant">Generado por Praxia · máx. 3 por día</p>
+              </div>
+            </div>
+
+            {/* Campo cargo */}
+            <div className="mb-4">
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                Nombre del OPEC / Cargo
+              </label>
+              <input
+                type="text"
+                value={cargo}
+                onChange={e => { setCargo(e.target.value); setErrorIA(null) }}
+                onKeyDown={e => e.key === 'Enter' && lanzarSimulacroIA()}
+                placeholder="ej: Profesional Universitario Grado 11 DIAN"
+                disabled={generandoIA}
+                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+                autoFocus
+              />
+              <p className="text-[10px] text-on-surface-variant mt-1.5">
+                Escribe el cargo exacto de la convocatoria para mejores resultados.
+              </p>
+            </div>
+
+            {/* PDF opcional */}
+            <div className="mb-5">
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                Material de estudio (opcional)
+              </label>
+              <label className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors
+                ${pdfIA ? 'border-primary/40 bg-primary/5' : 'border-slate-200 hover:border-slate-300 bg-slate-50'} ${generandoIA ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <span className="material-symbols-outlined text-xl text-on-surface-variant"
+                  style={{ fontVariationSettings: pdfIA ? "'FILL' 1" : "'FILL' 0" }}>
+                  {pdfIA ? 'picture_as_pdf' : 'upload_file'}
+                </span>
+                <span className="text-sm text-on-surface-variant truncate flex-1">
+                  {pdfIA ? pdfIA.name : 'Subir PDF (temario, normas, convocatoria…)'}
+                </span>
+                {pdfIA && (
+                  <button type="button" onClick={e => { e.preventDefault(); setPdfIA(null) }}
+                    className="text-error text-xs font-bold shrink-0">
+                    Quitar
+                  </button>
+                )}
+                <input type="file" accept=".pdf" className="hidden" disabled={generandoIA}
+                  onChange={e => setPdfIA(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+
+            {/* Error */}
+            {errorIA && (
+              <div className="flex items-center gap-2 text-error text-xs bg-error-container/30 px-3 py-2 rounded-xl mb-4">
+                <span className="material-symbols-outlined text-sm">error</span>
+                {errorIA}
+              </div>
+            )}
+
+            {/* Botones */}
+            <div className="flex gap-3">
+              <button onClick={() => setModalIA(false)} disabled={generandoIA}
+                className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all disabled:opacity-40">
+                Cancelar
+              </button>
+              <button onClick={lanzarSimulacroIA} disabled={generandoIA || !cargo.trim()}
+                className="flex-1 py-3 rounded-full bg-slate-900 text-white font-bold text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                {generandoIA ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generando…</>
+                ) : (
+                  <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>Generar</>
+                )}
+              </button>
+            </div>
+
+            {generandoIA && (
+              <p className="text-center text-xs text-on-surface-variant mt-3 animate-pulse">
+                Praxia está generando tu simulacro personalizado…
+              </p>
+            )}
           </div>
         </div>
       )}
