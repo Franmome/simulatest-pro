@@ -47,6 +47,21 @@ export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf }) {
   return json
 }
 
+// POST /api/ia/sala — análisis de resultados de sala (sin restricción de plan)
+// Body: { participantes: [{display_name, correct, wrong}], total }
+// → { analisis: string }
+export async function analizarSala({ participantes, total }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/sala`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ participantes, total }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Error generando análisis.')
+  return json.analisis
+}
+
 // POST /api/ia/generar (multipart con PDF opcional)
 // FormData: { pdf?: File, evaluacion_id, nivel_id, cargo }
 // → { preguntas: [...], cached: boolean }

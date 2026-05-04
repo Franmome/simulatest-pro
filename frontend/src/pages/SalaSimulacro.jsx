@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
-import { chatPraxia } from '../utils/gemini'
+import { analizarSala } from '../utils/gemini'
 
 function formatTimer(s) {
   const m = Math.floor(s / 60)
@@ -238,28 +238,10 @@ export default function SalaSimulacro() {
     try {
       const ordenados = [...participantes].sort((a, b) => b.score - a.score)
       const total = preguntasRef.current.length
-
-      const mensaje = `Analiza los resultados de esta sala de competencia de simulacros del estado colombiano.
-
-Participantes:
-${ordenados.map((p, i) => `${i+1}. ${p.display_name}: ${p.correct} aciertos, ${p.wrong} errores de ${total} preguntas (${Math.round(p.correct/total*100)}%)`).join('\n')}
-
-Genera un análisis breve y motivador que incluya:
-1. Quién tuvo mejor desempeño y por qué
-2. Puntos de mejora para cada participante
-3. Recomendaciones de estudio específicas
-4. Un mensaje motivacional final
-
-Sé concreto, amigable y en español colombiano. Máximo 200 palabras.`
-
-      const respuesta = await chatPraxia({
-        mensaje,
-        contexto_evaluacion: `Sala de competencia ${roomId}`,
-        historial: [],
-      })
+      const respuesta = await analizarSala({ participantes: ordenados, total })
       setAnalisisIA(respuesta)
-    } catch {
-      setAnalisisIA('Error al generar el análisis. Intenta de nuevo.')
+    } catch (err) {
+      setAnalisisIA(`Error al generar el análisis: ${err.message}`)
     } finally {
       setLoadingIA(false)
     }
@@ -568,7 +550,7 @@ Sé concreto, amigable y en español colombiano. Máximo 200 palabras.`
           </div>
 
           <div className="flex flex-col gap-3 mb-4">
-            {pregData.options?.sort((a, b) => (a.letter || '').localeCompare(b.letter || '')).map(op => {
+            {pregData.options?.filter(op => op.text?.trim()).sort((a, b) => (a.letter || '').localeCompare(b.letter || '')).map(op => {
               const seleccionada = seleccion === op.id
               return (
                 <button key={op.id} onClick={() => seleccionarOpcion(op)} disabled={respondida}

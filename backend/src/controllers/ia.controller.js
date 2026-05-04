@@ -280,6 +280,34 @@ export async function generarSimulacroPersonal(req, res) {
   }
 }
 
+// ── Análisis de sala (sin restricción de plan — feature de plataforma) ────────
+// POST /api/ia/sala
+// Body: { participantes: [{display_name, correct, wrong}], total: number }
+
+export async function analizarSala(req, res) {
+  try {
+    const { participantes, total } = req.body
+    if (!Array.isArray(participantes) || !participantes.length || !total) {
+      return res.status(400).json({ error: 'Faltan datos de participantes.' })
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
+    const prompt = `Analiza estos resultados de una sala de competencia de simulacros del estado colombiano y genera un análisis breve, concreto y motivador en español colombiano (máx. 200 palabras):
+
+Participantes:
+${participantes.map((p, i) => `${i + 1}. ${p.display_name}: ${p.correct} aciertos, ${p.wrong} errores de ${total} preguntas (${Math.round((p.correct / total) * 100)}%)`).join('\n')}
+
+Incluye: quién destacó y por qué, puntos de mejora por participante, recomendaciones de estudio específicas y un mensaje motivacional final.`
+
+    const result = await model.generateContent(prompt)
+    return res.json({ analisis: result.response.text() })
+  } catch (err) {
+    console.error('[IA] Error analizarSala:', err)
+    return res.status(500).json({ error: err.message || 'Error generando análisis.' })
+  }
+}
+
 // ── Chat contextual ───────────────────────────────────────────────────────────
 
 export async function chatIA(req, res) {
