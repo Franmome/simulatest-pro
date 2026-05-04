@@ -1,6 +1,6 @@
 // gemini.js
-// Cliente del backend IA (Gemini) para el frontend.
-// Todas las llamadas requieren el JWT de Supabase en el header.
+// Cliente del backend IA (Gemini / DeepSeek) para el frontend.
+// modelo: 'gemini' | 'deepseek' — se pasa al backend que decide el proveedor.
 
 import { supabase } from './supabase'
 
@@ -14,28 +14,26 @@ async function authHeaders() {
 }
 
 // POST /api/ia/chat
-// { mensaje, contexto_evaluacion, historial }
-// → { respuesta }
-export async function chatPraxia({ mensaje, contexto_evaluacion, historial = [] }) {
+export async function chatPraxia({ mensaje, contexto_evaluacion, historial = [], modelo = 'gemini' }) {
   const headers = await authHeaders()
   const res = await fetch(`${BASE}/api/ia/chat`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mensaje, contexto_evaluacion, historial }),
+    body: JSON.stringify({ mensaje, contexto_evaluacion, historial, modelo }),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Error en el asistente IA.')
   return json.respuesta
 }
 
-// POST /api/ia/simulacro — genera y guarda simulacro personal por OPEC
-// → { simulacro_id, total, desde_cache }
-export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf }) {
+// POST /api/ia/simulacro — genera simulacro personal por OPEC
+export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf, modelo = 'gemini' }) {
   const headers = await authHeaders()
   const fd = new FormData()
   if (pdf) fd.append('pdf', pdf)
   if (evaluacion_id) fd.append('evaluacion_id', String(evaluacion_id))
   if (cargo) fd.append('cargo', cargo)
+  fd.append('modelo', modelo)
 
   const res = await fetch(`${BASE}/api/ia/simulacro`, {
     method: 'POST',
@@ -48,14 +46,12 @@ export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf }) {
 }
 
 // POST /api/ia/sala — análisis de resultados de sala (sin restricción de plan)
-// Body: { participantes: [{display_name, correct, wrong}], total }
-// → { analisis: string }
-export async function analizarSala({ participantes, total }) {
+export async function analizarSala({ participantes, total, modelo = 'gemini' }) {
   const headers = await authHeaders()
   const res = await fetch(`${BASE}/api/ia/sala`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ participantes, total }),
+    body: JSON.stringify({ participantes, total, modelo }),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Error generando análisis.')
@@ -63,19 +59,18 @@ export async function analizarSala({ participantes, total }) {
 }
 
 // POST /api/ia/generar (multipart con PDF opcional)
-// FormData: { pdf?: File, evaluacion_id, nivel_id, cargo }
-// → { preguntas: [...], cached: boolean }
-export async function generarBancoDesdeIA({ pdf, evaluacion_id, nivel_id, cargo }) {
+export async function generarBancoDesdeIA({ pdf, evaluacion_id, nivel_id, cargo, modelo = 'gemini' }) {
   const headers = await authHeaders()
   const fd = new FormData()
   if (pdf) fd.append('pdf', pdf)
   if (evaluacion_id) fd.append('evaluacion_id', evaluacion_id)
   if (nivel_id) fd.append('nivel_id', nivel_id)
   if (cargo) fd.append('cargo', cargo)
+  fd.append('modelo', modelo)
 
   const res = await fetch(`${BASE}/api/ia/generar`, {
     method: 'POST',
-    headers, // NO Content-Type aquí — multer lo infiere del boundary
+    headers,
     body: fd,
   })
   const json = await res.json()

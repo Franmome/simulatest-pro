@@ -1,13 +1,18 @@
 // ia.controller.js
-// Generación de banco de preguntas y simulacros personales con Gemini 1.5 Flash.
-// Flujo: validar acceso → RAG cache (OPEC/cargo) → Gemini → guardar → devolver ID.
+// Dual-provider AI: Gemini (Google) + DeepSeek.
+// Todos los errores de API se convierten a mensajes amigables — nunca se exponen al usuario final.
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const genAI    = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const deepseek = new OpenAI({
+  baseURL: 'https://api.deepseek.com',
+  apiKey:  process.env.DEEPSEEK_API_KEY || '',
+})
 
 // ── Sistema de prompts ────────────────────────────────────────────────────────
 
@@ -44,7 +49,7 @@ Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
   }
 ]`
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers generales ─────────────────────────────────────────────────────────
 
 function hashBuffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex')
@@ -57,13 +62,12 @@ function esHashReciente(fechaISO) {
 }
 
 function limpiarJSON(texto) {
-  // Elimina bloques markdown ```json ... ``` si Gemini los incluye
   return texto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
 }
 
 function validarPreguntas(arr) {
   if (!Array.isArray(arr) || arr.length === 0)
-    throw new Error('Gemini devolvió un array vacío o inválido.')
+    throw new Error('El modelo devolvió un array vacío o inválido.')
   for (const [i, p] of arr.entries()) {
     if (!p.enunciado?.trim()) throw new Error(`Pregunta ${i + 1}: enunciado vacío.`)
     if (!['A', 'B', 'C'].includes(p.correcta?.toUpperCase?.()))
@@ -72,15 +76,92 @@ function validarPreguntas(arr) {
   return arr.map(p => ({ ...p, correcta: p.correcta.toUpperCase() }))
 }
 
-// ── Endpoint principal ────────────────────────────────────────────────────────
+// Convierte errores técnicos de API en mensajes amigables
+function formatError(err) {
+  const msg = (err.message || '').toLowerCase()
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('too many') || msg.includes('rate limit'))
+    return 'El servicio de IA está temporalmente saturado. Intenta en unos minutos.'
+  if (msg.includes('404') || msg.includes('not found'))
+    return 'Modelo de IA no disponible temporalmente. Intenta con el otro modelo.'
+  if (msg.includes('401') || msg.includes('403') || msg.includes('api key') || msg.includes('authentication'))
+    return 'Error de autenticación con el servicio de IA. Contacta soporte.'
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('econnrefused') || msg.includes('enotfound'))
+    return 'No se pudo conectar con el servicio de IA. Verifica tu conexión.'
+  if (msg.includes('json') || msg.includes('parse') || msg.includes('invalid'))
+    return 'El modelo de IA devolvió un formato inesperado. Intenta de nuevo.'
+  return 'El servicio de IA no pudo generar la respuesta. Intenta de nuevo o cambia de modelo.'
+}
+
+// ── Gemini helpers ────────────────────────────────────────────────────────────
+
+async function geminiGenerar(parts) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
+  return result.response.text()
+}
+
+async function geminiTexto(prompt) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
+  const result = await model.generateContent(prompt)
+  return result.response.text()
+}
+
+async function geminiChat(systemCtx, historial, mensaje) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
+  const chat = model.startChat({
+    history: historial.map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    })),
+    systemInstruction: systemCtx,
+  })
+  const result = await chat.sendMessage(mensaje)
+  return result.response.text()
+}
+
+// ── DeepSeek helpers ──────────────────────────────────────────────────────────
+
+async function deepseekGenerar(prompt) {
+  const response = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7,
+  })
+  return response.choices[0].message.content
+}
+
+async function deepseekTexto(prompt) {
+  const response = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.6,
+  })
+  return response.choices[0].message.content
+}
+
+async function deepseekChat(systemCtx, historial, mensaje) {
+  const response = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [
+      { role: 'system', content: systemCtx },
+      ...historial.map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+      })),
+      { role: 'user', content: mensaje },
+    ],
+  })
+  return response.choices[0].message.content
+}
+
+// ── Endpoint: Generar banco de preguntas ──────────────────────────────────────
 
 export async function generarBanco(req, res) {
   try {
     const userId = req.user.id
-    const { evaluacion_id, nivel_id, cargo } = req.body
-    const file = req.file // buffer del PDF subido por multer
+    const { evaluacion_id, nivel_id, cargo, modelo = 'gemini' } = req.body
+    const file = req.file
 
-    // 1. Validar que el usuario tiene un paquete activo con has_ai_chat = true
     const { data: compra } = await supabase
       .from('purchases')
       .select('id, packages(has_ai_chat)')
@@ -92,10 +173,9 @@ export async function generarBanco(req, res) {
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
     }
 
-    // 2. Verificar caché por hash del PDF
+    // Cache por hash de PDF
     if (file) {
       const hash = hashBuffer(file.buffer)
-
       const { data: cached } = await supabase
         .from('bancos_preguntas')
         .select('preguntas, created_at')
@@ -107,72 +187,45 @@ export async function generarBanco(req, res) {
         return res.json({ preguntas: cached.preguntas, cached: true })
       }
 
-      // 3. Llamar a Gemini con el PDF
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+      // PDF solo lo puede procesar Gemini (DeepSeek no soporta inline PDF)
+      const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
+      const prompt = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
+      const texto = await geminiGenerar([prompt, pdfPart])
+      const preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
 
-      const pdfPart = {
-        inlineData: {
-          data: file.buffer.toString('base64'),
-          mimeType: 'application/pdf',
-        },
-      }
-
-      const prompt = cargo
-        ? `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
-        : `${SYSTEM_PROMPT}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
-
-      const result = await model.generateContent([prompt, pdfPart])
-      const texto = result.response.text()
-      const arr = JSON.parse(limpiarJSON(texto))
-      const preguntas = validarPreguntas(arr)
-
-      // 4. Guardar en caché
-      const { error: cacheErr } = await supabase.from('bancos_preguntas').upsert({
-        pdf_hash: hash,
-        evaluacion_id: evaluacion_id || null,
-        nivel_id: nivel_id || null,
-        cargo: cargo || null,
-        preguntas,
-        created_at: new Date().toISOString(),
+      await supabase.from('bancos_preguntas').upsert({
+        pdf_hash: hash, evaluacion_id: evaluacion_id || null,
+        nivel_id: nivel_id || null, cargo: cargo || null,
+        preguntas, created_at: new Date().toISOString(),
       }, { onConflict: 'pdf_hash,evaluacion_id' })
-
-      if (cacheErr) console.error('[IA] Error guardando caché:', cacheErr.message)
 
       return res.json({ preguntas, cached: false })
     }
 
-    // 5. Sin PDF: generación por texto/cargo únicamente
     if (!cargo) {
       return res.status(400).json({ error: 'Debes subir un PDF o especificar un cargo.' })
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
     const prompt = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
-    const result = await model.generateContent(prompt)
-    const texto = result.response.text()
-    const arr = JSON.parse(limpiarJSON(texto))
-    const preguntas = validarPreguntas(arr)
+    const texto = modelo === 'deepseek' ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
+    const preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
 
     return res.json({ preguntas, cached: false })
 
   } catch (err) {
     console.error('[IA] Error generarBanco:', err)
-    return res.status(500).json({ error: err.message || 'Error generando banco de preguntas.' })
+    return res.status(500).json({ error: formatError(err) })
   }
 }
 
-// ── Simulacro personal ───────────────────────────────────────────────────────
-// POST /api/ia/simulacro
-// Genera y persiste un banco de preguntas personal para el usuario.
-// Flujo: rate limit → RAG cache por (evaluacion_id, cargo) → Gemini → user_simulacros
+// ── Endpoint: Simulacro personal ──────────────────────────────────────────────
 
 export async function generarSimulacroPersonal(req, res) {
   try {
     const userId = req.user.id
-    const { evaluacion_id, cargo } = req.body
+    const { evaluacion_id, cargo, modelo = 'gemini' } = req.body
     const file = req.file
 
-    // 1. Validar acceso
     const { data: compra } = await supabase
       .from('purchases')
       .select('id, packages(has_ai_chat)')
@@ -184,7 +237,7 @@ export async function generarSimulacroPersonal(req, res) {
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
     }
 
-    // 2. Rate limit: máx 3 generaciones por día por usuario
+    // Rate limit: máx 3/día por usuario
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
     const { count } = await supabase
       .from('user_simulacros')
@@ -199,7 +252,7 @@ export async function generarSimulacroPersonal(req, res) {
       })
     }
 
-    // 3. RAG cache: buscar banco existente para este cargo + evaluación
+    // RAG cache por cargo + evaluación
     let preguntas = null
     const cargoKey = cargo?.trim().toLowerCase() || ''
 
@@ -214,84 +267,57 @@ export async function generarSimulacroPersonal(req, res) {
 
       if (cached && esHashReciente(cached.created_at)) {
         preguntas = cached.preguntas
-        console.log('[IA] Cache hit para OPEC:', cargo)
+        console.log('[IA] Cache hit OPEC:', cargo)
       }
     }
 
-    // 4. Generar con Gemini si no hay cache
     if (!preguntas) {
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-
-      let promptTexto = SYSTEM_PROMPT
-      if (cargo) promptTexto += `\n\nCARGO OBJETIVO (OPEC): ${cargo}`
-
-      const parts = [promptTexto]
+      let texto
 
       if (file) {
-        parts.push({
-          inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' },
-        })
-        parts.push('Analiza este material y genera el banco de preguntas siguiendo las instrucciones anteriores.')
+        // PDF: siempre Gemini
+        const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
+        const prompt = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
+        texto = await geminiGenerar([prompt, pdfPart])
       } else {
-        parts[0] += '\n\nGenera preguntas típicas para este cargo en el sector público colombiano basándote en competencias funcionales y comportamentales estándar del CNSC.'
+        const prompt = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera preguntas típicas para este cargo en el sector público colombiano basándote en competencias funcionales y comportamentales estándar del CNSC.`
+        texto = modelo === 'deepseek' ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
       }
 
-      const result = await model.generateContent(parts)
-      const texto = result.response.text()
-      const arr = JSON.parse(limpiarJSON(texto))
-      preguntas = validarPreguntas(arr)
+      preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
 
-      // Guardar en cache RAG
       if (evaluacion_id && cargoKey) {
         const hashCargo = `cargo:${evaluacion_id}:${cargoKey}`
         await supabase.from('bancos_preguntas').upsert({
-          pdf_hash: hashCargo,
-          evaluacion_id: parseInt(evaluacion_id, 10),
-          cargo: cargo.trim(),
-          preguntas,
-          created_at: new Date().toISOString(),
+          pdf_hash: hashCargo, evaluacion_id: parseInt(evaluacion_id, 10),
+          cargo: cargo.trim(), preguntas, created_at: new Date().toISOString(),
         }, { onConflict: 'pdf_hash,evaluacion_id' })
       }
     }
 
-    // 5. Persistir simulacro personal del usuario
     const { data: sim, error: simErr } = await supabase
       .from('user_simulacros')
-      .insert({
-        user_id: userId,
-        evaluacion_id: evaluacion_id ? parseInt(evaluacion_id, 10) : null,
-        cargo: cargo?.trim() || null,
-        preguntas,
-      })
-      .select('id')
-      .single()
+      .insert({ user_id: userId, evaluacion_id: evaluacion_id ? parseInt(evaluacion_id, 10) : null, cargo: cargo?.trim() || null, preguntas })
+      .select('id').single()
 
     if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)
 
-    return res.json({
-      simulacro_id: sim.id,
-      total: preguntas.length,
-      desde_cache: preguntas !== null && !file,
-    })
+    return res.json({ simulacro_id: sim.id, total: preguntas.length, desde_cache: !!(evaluacion_id && cargoKey) })
 
   } catch (err) {
     console.error('[IA] Error generarSimulacroPersonal:', err)
-    return res.status(500).json({ error: err.message || 'Error generando el simulacro.' })
+    return res.status(500).json({ error: formatError(err) })
   }
 }
 
-// ── Análisis de sala (sin restricción de plan — feature de plataforma) ────────
-// POST /api/ia/sala
-// Body: { participantes: [{display_name, correct, wrong}], total: number }
+// ── Endpoint: Análisis de sala ────────────────────────────────────────────────
 
 export async function analizarSala(req, res) {
   try {
-    const { participantes, total } = req.body
+    const { participantes, total, modelo = 'gemini' } = req.body
     if (!Array.isArray(participantes) || !participantes.length || !total) {
       return res.status(400).json({ error: 'Faltan datos de participantes.' })
     }
-
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
 
     const prompt = `Analiza estos resultados de una sala de competencia de simulacros del estado colombiano y genera un análisis breve, concreto y motivador en español colombiano (máx. 200 palabras):
 
@@ -300,22 +326,24 @@ ${participantes.map((p, i) => `${i + 1}. ${p.display_name}: ${p.correct} acierto
 
 Incluye: quién destacó y por qué, puntos de mejora por participante, recomendaciones de estudio específicas y un mensaje motivacional final.`
 
-    const result = await model.generateContent(prompt)
-    return res.json({ analisis: result.response.text() })
+    const analisis = modelo === 'deepseek'
+      ? await deepseekTexto(prompt)
+      : await geminiTexto(prompt)
+
+    return res.json({ analisis })
   } catch (err) {
     console.error('[IA] Error analizarSala:', err)
-    return res.status(500).json({ error: err.message || 'Error generando análisis.' })
+    return res.status(500).json({ error: formatError(err) })
   }
 }
 
-// ── Chat contextual ───────────────────────────────────────────────────────────
+// ── Endpoint: Chat contextual ─────────────────────────────────────────────────
 
 export async function chatIA(req, res) {
   try {
     const userId = req.user.id
-    const { mensaje, contexto_evaluacion, historial = [] } = req.body
+    const { mensaje, contexto_evaluacion, historial = [], modelo = 'gemini' } = req.body
 
-    // Validar acceso
     const { data: compra } = await supabase
       .from('purchases')
       .select('id, packages(has_ai_chat)')
@@ -327,28 +355,18 @@ export async function chatIA(req, res) {
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
-
     const systemCtx = contexto_evaluacion
       ? `Eres Praxia, asistente de estudio para el examen "${contexto_evaluacion}". Ayuda al usuario a comprender los temas, resolver dudas y estudiar para la convocatoria. Responde en español, de forma clara y pedagógica.`
       : `Eres Praxia, asistente de estudio para concursos públicos colombianos. Responde en español, de forma clara y pedagógica.`
 
-    // Construir historial de chat
-    const chat = model.startChat({
-      history: historial.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }],
-      })),
-      systemInstruction: systemCtx,
-    })
-
-    const result = await chat.sendMessage(mensaje)
-    const respuesta = result.response.text()
+    const respuesta = modelo === 'deepseek'
+      ? await deepseekChat(systemCtx, historial, mensaje)
+      : await geminiChat(systemCtx, historial, mensaje)
 
     return res.json({ respuesta })
 
   } catch (err) {
     console.error('[IA] Error chatIA:', err)
-    return res.status(500).json({ error: err.message || 'Error en el asistente.' })
+    return res.status(500).json({ error: formatError(err) })
   }
 }

@@ -1,9 +1,35 @@
 // IAPraxia.jsx
 // Asistente de estudio con IA para DetallePrueba.
-// Gated: solo se muestra si el paquete tiene has_ai_chat = true.
 
 import { useState, useRef, useEffect } from 'react'
 import { chatPraxia } from '../utils/gemini'
+
+// ── Selector de modelo ────────────────────────────────────────────────────────
+
+export function ModelSelector({ value, onChange, size = 'sm' }) {
+  const modelos = [
+    { id: 'gemini',   label: 'Gemini',   badge: 'G', color: 'text-blue-600 bg-blue-50 border-blue-200'  },
+    { id: 'deepseek', label: 'DeepSeek', badge: 'D', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+  ]
+  return (
+    <div className="flex gap-1.5 items-center">
+      <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wide mr-0.5">Modelo</span>
+      {modelos.map(m => (
+        <button key={m.id} onClick={() => onChange(m.id)}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all
+            ${value === m.id
+              ? `${m.color} shadow-sm`
+              : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/40 bg-transparent'}`}>
+          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-black
+            ${value === m.id ? 'bg-current/20' : 'bg-surface-container'}`}>
+            {m.badge}
+          </span>
+          {m.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 // ── Burbuja de mensaje ────────────────────────────────────────────────────────
 
@@ -31,13 +57,14 @@ function Burbuja({ msg }) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function IAPraxia({ evaluacionNombre, tienePlan }) {
-  const [abierto, setAbierto] = useState(false)
+  const [abierto,  setAbierto]  = useState(false)
   const [historial, setHistorial] = useState([])
-  const [input, setInput] = useState('')
+  const [input,    setInput]    = useState('')
   const [cargando, setCargando] = useState(false)
-  const [error, setError] = useState(null)
+  const [error,    setError]    = useState(null)
+  const [modelo,   setModelo]   = useState('gemini')
   const bottomRef = useRef(null)
-  const inputRef = useRef(null)
+  const inputRef  = useRef(null)
 
   useEffect(() => {
     if (abierto) {
@@ -60,11 +87,12 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
       const respuesta = await chatPraxia({
         mensaje: texto,
         contexto_evaluacion: evaluacionNombre,
-        historial: historial.slice(-10), // últimos 10 mensajes como contexto
+        historial: historial.slice(-10),
+        modelo,
       })
       setHistorial(prev => [...prev, { role: 'assistant', content: respuesta }])
     } catch (e) {
-      setError(e.message || 'Error al conectar con Praxia.')
+      setError(e.message || 'No se pudo conectar con Praxia.')
     } finally {
       setCargando(false)
     }
@@ -74,7 +102,6 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
   }
 
-  // Si no tiene plan, mostrar teaser
   if (!tienePlan) {
     return (
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white relative overflow-hidden">
@@ -96,7 +123,6 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
     )
   }
 
-  // Chat cerrado → botón de apertura
   if (!abierto) {
     return (
       <button
@@ -124,23 +150,30 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
     )
   }
 
-  // Chat abierto
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col" style={{ height: '420px' }}>
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-800 to-slate-900 rounded-t-2xl">
-        <div className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col" style={{ height: '440px' }}>
+      {/* Header con selector de modelo */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-r from-slate-800 to-slate-900 rounded-t-2xl">
+        <div className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
           <span className="material-symbols-outlined text-white text-sm"
             style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-white text-sm">Praxia IA</p>
+          <p className="font-extrabold text-white text-sm leading-tight">Praxia IA</p>
           <p className="text-white/50 text-[10px] truncate">{evaluacionNombre}</p>
         </div>
         <button onClick={() => setAbierto(false)}
-          className="text-white/50 hover:text-white transition-colors">
+          className="text-white/50 hover:text-white transition-colors ml-1">
           <span className="material-symbols-outlined text-lg">close</span>
         </button>
+      </div>
+
+      {/* Selector de modelo */}
+      <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+        <ModelSelector value={modelo} onChange={setModelo} />
+        <span className="text-[10px] text-slate-400">
+          {modelo === 'gemini' ? 'Google AI' : 'DeepSeek AI'}
+        </span>
       </div>
 
       {/* Mensajes */}
@@ -156,11 +189,7 @@ export default function IAPraxia({ evaluacionNombre, tienePlan }) {
               Pregúntame sobre temas del examen, pídeme un resumen o aclara tus dudas.
             </p>
             <div className="flex flex-wrap gap-1.5 justify-center mt-1">
-              {[
-                '¿Qué es el MIPG?',
-                'Explícame la Contraloría',
-                '¿Qué estudiar primero?',
-              ].map(s => (
+              {['¿Qué es el MIPG?', 'Explícame la Contraloría', '¿Qué estudiar primero?'].map(s => (
                 <button key={s} onClick={() => { setInput(s); inputRef.current?.focus() }}
                   className="text-[10px] bg-primary/10 text-primary font-bold px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors">
                   {s}

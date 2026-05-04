@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { analizarSala } from '../utils/gemini'
+import { ModelSelector } from '../components/IAPraxia'
 
 function formatTimer(s) {
   const m = Math.floor(s / 60)
@@ -35,6 +36,7 @@ export default function SalaSimulacro() {
   const [toast,           setToast]           = useState(null)
   const [analisisIA,      setAnalisisIA]      = useState(null)
   const [loadingIA,       setLoadingIA]       = useState(false)
+  const [modeloAnalisis,  setModeloAnalisis]  = useState('gemini')
 
   const chatRef        = useRef(null)
   const toastTimerRef  = useRef(null)
@@ -238,7 +240,7 @@ export default function SalaSimulacro() {
     try {
       const ordenados = [...participantes].sort((a, b) => b.score - a.score)
       const total = preguntasRef.current.length
-      const respuesta = await analizarSala({ participantes: ordenados, total })
+      const respuesta = await analizarSala({ participantes: ordenados, total, modelo: modeloAnalisis })
       setAnalisisIA(respuesta)
     } catch (err) {
       setAnalisisIA(`Error al generar el análisis: ${err.message}`)
@@ -354,11 +356,16 @@ export default function SalaSimulacro() {
             </div>
 
             {!analisisIA && !loadingIA && (
-              <button onClick={generarAnalisisIA}
-                className="w-full py-3 bg-tertiary text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
-                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                Generar análisis con IA
-              </button>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-xl">
+                  <ModelSelector value={modeloAnalisis} onChange={setModeloAnalisis} />
+                </div>
+                <button onClick={generarAnalisisIA}
+                  className="w-full py-3 bg-tertiary text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                  Generar análisis con IA
+                </button>
+              </div>
             )}
 
             {loadingIA && (
