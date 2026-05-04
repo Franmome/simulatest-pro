@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import pdfParse from 'pdf-parse'
 import { checkTokenBalance, recordTokenUsage, getActivePurchase } from '../utils/tokenTracker.js'
 import { buildUserContext } from '../utils/contextBuilder.js'
 
@@ -37,6 +38,13 @@ Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function hashBuffer(b) { return crypto.createHash('sha256').update(b).digest('hex') }
+
+async function extractPdfText(buffer) {
+  try {
+    const data = await pdfParse(buffer)
+    return data.text?.trim() || ''
+  } catch { return '' }
+}
 
 function esHashReciente(f) {
   if (!f) return false
@@ -190,9 +198,17 @@ export async function generarBanco(req, res) {
       if (cached && esHashReciente(cached.created_at))
         return res.json({ preguntas: cached.preguntas, cached: true })
 
-      const pdfPart  = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-      const prompt   = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
-      const { texto, tokensIn, tokensOut } = await geminiGenerar([prompt, pdfPart])
+      let result
+      if (modelo === 'deepseek') {
+        const pdfText = await extractPdfText(file.buffer)
+        const prompt  = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
+        result = await deepseekGenerar(prompt)
+      } else {
+        const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
+        const prompt  = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
+        result = await geminiGenerar([prompt, pdfPart])
+      }
+      const { texto, tokensIn, tokensOut } = result
       const preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
 
       await Promise.all([
@@ -200,7 +216,7 @@ export async function generarBanco(req, res) {
           { pdf_hash: hash, evaluacion_id: evaluacion_id || null, nivel_id: nivel_id || null, cargo: cargo || null, preguntas, created_at: new Date().toISOString() },
           { onConflict: 'pdf_hash,evaluacion_id' }
         ),
-        recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'banco', modelo: 'gemini' }),
+        recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'banco', modelo }),
       ])
       return res.json({ preguntas, cached: false })
     }
@@ -267,9 +283,15 @@ export async function generarSimulacroPersonal(req, res) {
     if (!preguntas) {
       let result
       if (file) {
-        const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-        const prompt  = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
-        result = await geminiGenerar([prompt, pdfPart])
+        if (modelo === 'deepseek') {
+          const pdfText = await extractPdfText(file.buffer)
+          const prompt  = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
+          result = await deepseekGenerar(prompt)
+        } else {
+          const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
+          const prompt  = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
+          result = await geminiGenerar([prompt, pdfPart])
+        }
       } else {
         const prompt = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
         result = modelo === 'deepseek' ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
@@ -294,7 +316,7 @@ export async function generarSimulacroPersonal(req, res) {
     if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)
 
     if (tokensIn + tokensOut > 0)
-      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'simulacro', modelo: file ? 'gemini' : modelo })
+      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'simulacro', modelo })
 
     return res.json({ simulacro_id: sim.id, total: preguntas.length, desde_cache: tokensIn === 0 })
 
@@ -358,8 +380,8 @@ export async function chatIA(req, res) {
 
     const systemCtx = [
       contexto_evaluacion
-        ? `Eres Praxia, asistente de estudio para el examen "${contexto_evaluacion}". Ayuda al usuario con temas, dudas y estrategias de estudio. Responde en español, de forma clara y pedagógica.`
-        : `Eres Praxia, asistente de estudio para concursos públicos colombianos. Responde en español, de forma clara y pedagógica.`,
+        ? `Eres Praxia, la asistente de estudio personal del usuario para el examen "${contexto_evaluacion}". Tienes un tono cálido, cercano y motivador — como una tutora o compañera de estudio que de verdad quiere que el usuario salga adelante. Si es la primera vez que alguien te habla (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale en qué lo puedes ayudar hoy. En las demás respuestas, sé natural y directa sin necesidad de presentarte de nuevo. Nunca respondas de forma fría o robótica. Usa lenguaje natural en español colombiano, con energía positiva. Ayuda con temas del examen, explica conceptos difíciles con ejemplos, da estrategias de estudio y motiva cuando el usuario se sienta frustrado.`
+        : `Eres Praxia, la asistente de estudio personal del usuario para concursos públicos colombianos. Tienes un tono cálido, cercano y motivador — como una tutora que de verdad quiere que el usuario tenga éxito. Si es la primera vez que te hablan (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale cómo lo puedes ayudar. En las demás respuestas sé natural y directa. Usa lenguaje natural en español colombiano.`,
       userCtx || '',
     ].join('\n\n')
 

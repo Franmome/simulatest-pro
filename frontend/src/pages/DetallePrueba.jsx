@@ -191,7 +191,7 @@ export default function DetallePrueba() {
       const { simulacro_id } = await generarSimulacroPersonal({
         evaluacion_id: id,
         cargo: cargo.trim(),
-        pdf: modeloIA === 'deepseek' ? undefined : (pdfIA || undefined),
+        pdf: pdfIA || undefined,
         modelo: modeloIA,
       })
       setModalIA(false)
@@ -990,39 +990,34 @@ export default function DetallePrueba() {
             </div>
 
             {/* Selector modelo */}
-            <div className="mb-4 flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <ModelSelector value={modeloIA} onChange={v => { setModeloIA(v); if (v === 'deepseek') setPdfIA(null) }} />
-              {modeloIA === 'deepseek' && (
-                <span className="text-[10px] text-amber-600 font-bold">PDF no disponible</span>
-              )}
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <ModelSelector value={modeloIA} onChange={setModeloIA} />
             </div>
 
-            {/* PDF opcional — oculto si DeepSeek */}
-            {modeloIA !== 'deepseek' && (
-              <div className="mb-5">
-                <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
-                  Material de estudio (opcional)
-                </label>
-                <label className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors
-                  ${pdfIA ? 'border-primary/40 bg-primary/5' : 'border-slate-200 hover:border-slate-300 bg-slate-50'} ${generandoIA ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <span className="material-symbols-outlined text-xl text-on-surface-variant"
-                    style={{ fontVariationSettings: pdfIA ? "'FILL' 1" : "'FILL' 0" }}>
-                    {pdfIA ? 'picture_as_pdf' : 'upload_file'}
-                  </span>
-                  <span className="text-sm text-on-surface-variant truncate flex-1">
-                    {pdfIA ? pdfIA.name : 'Subir PDF (temario, normas, convocatoria…)'}
-                  </span>
-                  {pdfIA && (
-                    <button type="button" onClick={e => { e.preventDefault(); setPdfIA(null) }}
-                      className="text-error text-xs font-bold shrink-0">
-                      Quitar
-                    </button>
-                  )}
-                  <input type="file" accept=".pdf" className="hidden" disabled={generandoIA}
-                    onChange={e => setPdfIA(e.target.files?.[0] || null)} />
-                </label>
-              </div>
-            )}
+            {/* PDF opcional */}
+            <div className="mb-5">
+              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                Material de estudio (opcional)
+              </label>
+              <label className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors
+                ${pdfIA ? 'border-primary/40 bg-primary/5' : 'border-slate-200 hover:border-slate-300 bg-slate-50'} ${generandoIA ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <span className="material-symbols-outlined text-xl text-on-surface-variant"
+                  style={{ fontVariationSettings: pdfIA ? "'FILL' 1" : "'FILL' 0" }}>
+                  {pdfIA ? 'picture_as_pdf' : 'upload_file'}
+                </span>
+                <span className="text-sm text-on-surface-variant truncate flex-1">
+                  {pdfIA ? pdfIA.name : 'Subir PDF (temario, normas, convocatoria…)'}
+                </span>
+                {pdfIA && (
+                  <button type="button" onClick={e => { e.preventDefault(); setPdfIA(null) }}
+                    className="text-error text-xs font-bold shrink-0">
+                    Quitar
+                  </button>
+                )}
+                <input type="file" accept=".pdf" className="hidden" disabled={generandoIA}
+                  onChange={e => setPdfIA(e.target.files?.[0] || null)} />
+              </label>
+            </div>
 
             {/* Error */}
             {errorIA && (
