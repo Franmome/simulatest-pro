@@ -7,7 +7,7 @@ export const FORM_DEFAULTS = {
   title: '',
   description: '',
   category_id: '',
-  is_active: true,
+  is_active: false,
 }
 
 export const NUEVO_MAT_DEFAULTS = {
