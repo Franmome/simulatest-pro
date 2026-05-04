@@ -8,7 +8,7 @@
 // [PackageService] en la consola del navegador con el estado de cada etapa.
 // Poner en `false` antes de hacer deploy a producción.
 // ============================================================================
-export const DEBUG_EVAL_FORM = true
+export const DEBUG_EVAL_FORM = false
 
 // ============================================================================
 // CLASE CSS REUTILIZABLE PARA INPUTS
@@ -45,17 +45,35 @@ export const CSV_COLUMNS = [
 // PROMPT PARA IA
 // Texto listo para pegar en ChatGPT/Gemini/Claude y convertir material en CSV.
 // ============================================================================
-export const PROMPT_IA_CSV = `Convierte este material en preguntas para un archivo CSV con esta estructura exacta:
-area,dificultad,enunciado,A,B,C,D,correcta,explicacion
+export const PROMPT_IA_CSV = `Convierte el siguiente material en preguntas de opción múltiple para un examen de concurso colombiano.
 
-Reglas:
-- "correcta" solo puede ser A, B, C o D
-- no cambies el orden de las columnas
-- no agregues columnas extra
-- cada fila debe representar una sola pregunta
-- "dificultad" debe ser: facil, medio o dificil
-- "explicacion" debe ser breve, clara y útil para retroalimentación
-- devuelve únicamente el CSV limpio, sin markdown, sin comentarios y sin explicación adicional`
+Devuelve ÚNICAMENTE un arreglo JSON válido con esta estructura exacta (sin markdown, sin texto adicional):
+
+[
+  {
+    "area": "Nombre del área o módulo temático",
+    "dificultad": "facil | medio | dificil",
+    "enunciado": "Enunciado completo de la pregunta",
+    "A": "Texto de la opción A",
+    "B": "Texto de la opción B",
+    "C": "Texto de la opción C",
+    "D": "Texto de la opción D (opcional, puede omitirse)",
+    "correcta": "A | B | C | D",
+    "explicacion": "Explicación pedagógica breve de por qué es correcta la respuesta y base legal/conceptual si aplica."
+  }
+]
+
+Reglas obligatorias:
+- "correcta" solo puede ser A, B, C o D (mayúscula)
+- "dificultad" debe ser exactamente: facil, medio o dificil
+- Si la pregunta tiene solo 3 opciones válidas omite D o deja D vacío
+- El enunciado no debe revelar la respuesta
+- Cada "explicacion" debe citar norma, artículo o principio cuando sea posible
+- Genera entre 10 y 30 preguntas por solicitud salvo que se indique lo contrario
+- Devuelve solo el JSON, sin comentarios, sin bloques de código markdown
+
+Material a convertir:
+[PEGA AQUÍ TU MATERIAL — PDF, TEXTO, NORMA, TEMARIO, ETC.]`
 
 // ============================================================================
 // MAPA DE ETIQUETAS POR SECCIÓN

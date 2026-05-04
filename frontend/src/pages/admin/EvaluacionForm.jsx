@@ -170,7 +170,10 @@ function EvaluacionFormContent() {
   const {
     importando, importError, setImportError,
     importOk, setImportOk,
-    importarCSV, descargarPlantilla, copiarPromptIA, copiarInstruccionesExcel,
+    preview,
+    procesarArchivo, confirmarImport, cancelarPreview,
+    descargarPlantillaCSV, descargarPlantillaJSON,
+    copiarPromptIA, copiarInstruccionesExcel,
   } = csvManager
 
   const draftManager = useEvaluacionDraft({
@@ -941,8 +944,12 @@ function EvaluacionFormContent() {
                 nivelActivo={nivelActivo} niveles={niveles} modoGuiado={modoGuiado}
                 csvRef={csvRef}
                 importando={importando} importError={importError} importOk={importOk}
-                onImportar={importarCSV}
-                onDescargarPlantilla={descargarPlantilla}
+                preview={preview}
+                onProcesarArchivo={procesarArchivo}
+                onConfirmarImport={confirmarImport}
+                onCancelarPreview={cancelarPreview}
+                onDescargarCSV={descargarPlantillaCSV}
+                onDescargarJSON={descargarPlantillaJSON}
                 onCopiarPromptIA={copiarPromptIA}
                 onCopiarInstrucciones={copiarInstruccionesExcel}
                 setImportError={setImportError}
