@@ -1,3 +1,7 @@
+// Suscripciones.jsx
+// Página de planes y precios — rediseño premium (Amazon / ML style).
+// Flujo: catálogo → detalle paquete → selección versión → checkout → Wompi
+
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
@@ -5,6 +9,8 @@ import { useAuth } from '../context/AuthContext'
 import { useFetch } from '../hooks/useFetch'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+// ── Constantes ────────────────────────────────────────────────────────────────
 
 const HERO_DEFAULTS = {
   hero_titulo: 'Prepárate con los mejores simulacros.',
@@ -14,430 +20,150 @@ const HERO_DEFAULTS = {
   testimonio_autor: '— María G., Puntaje 472',
 }
 
-const ICONOS_CATEGORIA = {
-  CNSC: 'gavel',
-  ICFES: 'school',
-  'Saber Pro': 'history_edu',
-  Procuraduría: 'balance',
-  Contraloría: 'account_balance',
-  Defensoría: 'shield',
-  DIAN: 'receipt_long',
-  TyT: 'engineering',
+const ICONOS_CAT = {
+  CNSC: 'gavel', ICFES: 'school', 'Saber Pro': 'history_edu',
+  Procuraduría: 'balance', Contraloría: 'account_balance',
+  Defensoría: 'shield', DIAN: 'receipt_long', TyT: 'engineering',
+}
+const COLORES_CAT = {
+  CNSC: ['#1a56db', '#e8f0fe'], ICFES: ['#0694a2', '#d5f5f6'],
+  'Saber Pro': ['#057a55', '#def7ec'], Procuraduría: ['#1e3a8a', '#dbeafe'],
+  Contraloría: ['#1a56db', '#e8f0fe'], Defensoría: ['#64748b', '#f1f5f9'],
+  DIAN: ['#b45309', '#fef3c7'], TyT: ['#6d28d9', '#ede9fe'],
 }
 
-const COLORES_CATEGORIA = {
-  CNSC: 'from-primary to-primary-container',
-  ICFES: 'from-tertiary to-tertiary-container',
-  'Saber Pro': 'from-secondary to-[#217128]',
-  Procuraduría: 'from-[#003d9b] to-[#1b6d24]',
-  Contraloría: 'from-primary to-[#0052cc]',
-  Defensoría: 'from-slate-400 to-slate-500',
-  DIAN: 'from-[#b45309] to-[#92400e]',
-  TyT: 'from-[#6d28d9] to-[#4c1d95]',
-}
+const BENEFICIOS_PKG = [
+  { icon: 'quiz', text: 'Banco de preguntas actualizado' },
+  { icon: 'school', text: 'Modo práctica con retroalimentación' },
+  { icon: 'timer', text: 'Modo examen con temporizador real' },
+  { icon: 'groups', text: 'Sala en línea competitiva' },
+  { icon: 'menu_book', text: 'Material de estudio descargable' },
+  { icon: 'auto_awesome', text: 'Asistente Praxia IA (si aplica)' },
+]
 
-function formatPrecio(p) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmt(p) {
   if (!p && p !== 0) return '—'
   return `$${Number(p).toLocaleString('es-CO')}`
 }
 
-function SkeletonPaquete() {
+function getCat(pkg) {
+  return pkg.evaluations?.[0]?.categories?.name ?? 'General'
+}
+
+function getColor(cat) {
+  return COLORES_CAT[cat] || ['#1a56db', '#e8f0fe']
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function Skeleton() {
   return (
-    <div className="card overflow-hidden animate-pulse">
-      <div className="h-2 bg-surface-container-high" />
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-pulse">
+      <div className="h-1.5 bg-slate-200" />
       <div className="p-6 space-y-4">
-        <div className="flex gap-3 items-start">
-          <div className="w-12 h-12 rounded-2xl bg-surface-container-high flex-shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="h-5 bg-surface-container-high rounded w-3/4" />
-            <div className="h-3 bg-surface-container-high rounded w-full" />
+        <div className="flex gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 shrink-0" />
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="h-4 bg-slate-100 rounded w-3/4" />
+            <div className="h-3 bg-slate-100 rounded w-full" />
+            <div className="h-3 bg-slate-100 rounded w-2/3" />
           </div>
         </div>
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-12 bg-surface-container-high rounded-xl" />
-          ))}
-        </div>
+        <div className="h-10 bg-slate-100 rounded-xl" />
+        <div className="h-12 bg-slate-200 rounded-full" />
       </div>
     </div>
   )
 }
 
-// Modal de aviso de inicio de sesión
-function ModalLoginPrompt({ onClose, onLogin }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-surface rounded-3xl w-full max-w-md p-6 shadow-2xl">
-        <div className="text-center">
-          <span className="material-symbols-outlined text-5xl text-primary mb-3">account_circle</span>
-          <h3 className="text-xl font-bold mb-2">Inicia sesión para continuar</h3>
-          <p className="text-on-surface-variant mb-6">
-            Necesitas una cuenta para adquirir paquetes y acceder a los simulacros.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 py-2 px-4 rounded-full font-medium border border-outline-variant hover:bg-surface-container-high transition"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onLogin}
-              className="flex-1 py-2 px-4 rounded-full font-medium bg-primary text-on-primary hover:bg-primary/90 transition"
-            >
-              Iniciar sesión
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ── Tarjeta de paquete ────────────────────────────────────────────────────────
 
-// Modal de pago exitoso
-function ModalPagoExitoso({ pkg, version, onClose, onVerSimulacros, onVerMisPaquetes }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-surface rounded-3xl w-full max-w-md p-6 shadow-2xl">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-secondary-container flex items-center justify-center">
-            <span className="material-symbols-outlined text-4xl text-secondary">check_circle</span>
-          </div>
-          <h3 className="text-2xl font-bold mb-2">¡Compra exitosa!</h3>
-          <p className="text-on-surface-variant mb-2">
-            Has adquirido <strong>{pkg.name}</strong>
-          </p>
-          {version && (
-            <p className="text-sm text-on-surface-variant mb-4">
-              Versión: {version.display_name || 'Sin nombre'}
-            </p>
-          )}
-          <div className="bg-surface-container-low p-4 rounded-xl mb-6">
-            <p className="text-xs text-on-surface-variant">Total pagado</p>
-            <p className="text-2xl font-extrabold text-primary">
-              {formatPrecio(version?.price || pkg.price)} COP
-            </p>
-          </div>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={onVerSimulacros}
-              className="w-full py-3 rounded-full font-bold text-sm bg-primary text-on-primary hover:bg-primary/90 transition"
-            >
-              Ir a simulacros
-            </button>
-            <button
-              onClick={onVerMisPaquetes}
-              className="w-full py-3 rounded-full font-medium text-sm border border-outline-variant hover:bg-surface-container-high transition"
-            >
-              Ver mis paquetes
-            </button>
-            <button
-              onClick={onClose}
-              className="text-xs text-on-surface-variant hover:text-primary mt-2"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Componente Modal para detalle y checkout
-function ModalPaquete({ pkg, versiones, comprasUsuario, onClose, onComprar, procesando }) {
-  const [paso, setPaso] = useState('detalle') // 'detalle' | 'checkout'
-  const [versionSeleccionada, setVersionSeleccionada] = useState(null)
-
-  const catNombre = pkg.evaluations?.[0]?.categories?.name ?? 'General'
-  const colorGrad = COLORES_CATEGORIA[catNombre] || 'from-primary to-primary-container'
-
-  const versionesActivas = versiones.filter(v => v.is_active)
-  const precioDesde = versionesActivas.length
-    ? Math.min(...versionesActivas.map(v => Number(v.price) || 0))
-    : Number(pkg.price) || 0
-
-  const comprasVersionIds = comprasUsuario.map(c => c.package_version_id)
-
-  // Determinar versión recomendada (la del medio si hay al menos 3, o la primera)
-  const versionRecomendada = versionesActivas.length >= 3
-    ? versionesActivas[Math.floor(versionesActivas.length / 2)]
-    : versionesActivas[0]
-
-  const handleSeleccionarVersion = (version) => {
-    setVersionSeleccionada(version)
-    setPaso('checkout')
-  }
-
-  const handleComprar = () => {
-    if (!versionSeleccionada) return
-    onComprar(pkg, versionSeleccionada)
-  }
-
-  const handleCerrar = () => {
-    setPaso('detalle')
-    setVersionSeleccionada(null)
-    onClose()
-  }
-
-  // Beneficios del paquete (pueden venir de metadata o ser fijos)
-  const beneficios = [
-    'Acceso completo al simulacro',
-    'Material de estudio descargable',
-    'Modo práctica ilimitado',
-    'Modo examen con temporizador',
-    'Sala en línea simulada',
-  ]
+function TarjetaPaquete({ pkg, comprasUsuario, onVer }) {
+  const navigate    = useNavigate()
+  const cat         = getCat(pkg)
+  const [primary]   = getColor(cat)
+  const icono       = ICONOS_CAT[cat] || 'quiz'
+  const versiones   = (pkg.versiones || []).filter(v => v.is_active)
+  const precioDesde = versiones.length ? Math.min(...versiones.map(v => Number(v.price) || 0)) : Number(pkg.price) || 0
+  const yaActivo    = comprasUsuario.some(c => c.package_id === pkg.id)
+  const niveles     = pkg.evaluations?.reduce((a, e) => a + (e.levels?.length || 0), 0) || 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden flex flex-col">
+      {/* Barra color */}
+      <div className="h-1" style={{ backgroundColor: primary }} />
+
+      <div className="p-5 flex flex-col flex-1 gap-4">
         {/* Header */}
-        <div className={`h-1.5 bg-gradient-to-r ${colorGrad}`} />
-        <div className="p-6">
-          <div className="flex justify-between items-start mb-4">
-            <h2 className="text-2xl font-extrabold">{pkg.name}</h2>
-            <button onClick={handleCerrar} className="p-2 hover:bg-surface-container-high rounded-full">
-              <span className="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          {paso === 'detalle' && (
-            <>
-              <p className="text-on-surface-variant mb-6">{pkg.description}</p>
-
-              {/* Beneficios / características */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">layers</span>
-                  <span>{pkg.evaluations?.[0]?.levels?.length || 0} niveles</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">quiz</span>
-                  <span>{versionesActivas.length} versiones disponibles</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">menu_book</span>
-                  <span>Material incluido</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">sell</span>
-                  <span>Desde {formatPrecio(precioDesde)} COP</span>
-                </div>
-              </div>
-
-              {/* Sección "Este paquete incluye" */}
-              <div className="mb-6 p-4 bg-primary-container/10 rounded-2xl border border-primary/20">
-                <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">checklist</span>
-                  Este paquete incluye
-                </h3>
-                <ul className="space-y-2">
-                  {beneficios.map((beneficio, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-sm">
-                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                      <span>{beneficio}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Versiones disponibles */}
-              <h3 className="font-bold text-lg mb-3">Versiones disponibles</h3>
-              <div className="space-y-3">
-                {versionesActivas.map(version => {
-                  const yaComprado = comprasVersionIds.includes(version.id)
-                  const esRecomendada = versionRecomendada?.id === version.id
-
-                  return (
-                    <div
-                      key={version.id}
-                      className={`p-4 rounded-xl border-2 transition-all relative
-                        ${esRecomendada ? 'border-primary shadow-md bg-primary-container/5' : 'border-outline-variant/20 bg-surface-container-lowest'}
-                        ${yaComprado ? 'border-secondary/30 bg-secondary-container/10' : ''}`}
-                    >
-                      {esRecomendada && (
-                        <div className="absolute -top-3 left-4 bg-primary text-on-primary text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
-                          🔥 Más popular
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold">{version.display_name || 'Versión sin nombre'}</p>
-                            {yaComprado && (
-                              <span className="text-[9px] font-bold bg-secondary text-on-secondary px-1.5 py-0.5 rounded-full">
-                                ✓ ADQUIRIDO
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xl font-extrabold text-primary mt-1">
-                            {formatPrecio(version.price)} COP
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleSeleccionarVersion(version)}
-                          disabled={yaComprado}
-                          className={`px-5 py-2 rounded-full text-sm font-bold transition-all
-                            ${yaComprado
-                              ? 'bg-secondary-container text-secondary cursor-default'
-                              : 'bg-primary text-on-primary hover:bg-primary/90'}`}
-                        >
-                          {yaComprado ? 'Adquirido' : 'Seleccionar'}
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {paso === 'checkout' && versionSeleccionada && (
-            <>
-              <button
-                onClick={() => setPaso('detalle')}
-                className="flex items-center gap-1 text-sm font-medium text-on-surface-variant mb-6 hover:text-primary"
-              >
-                <span className="material-symbols-outlined text-lg">arrow_back</span>
-                Volver a versiones
-              </button>
-
-              <div className="bg-surface-container-low p-6 rounded-2xl mb-6">
-                <h3 className="font-bold text-lg mb-4">Resumen de compra</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Paquete:</span>
-                    <span className="font-medium">{pkg.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Versión:</span>
-                    <span className="font-medium">{versionSeleccionada.display_name || 'Sin nombre'}</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-outline-variant mt-2">
-                    <span className="font-bold">Total:</span>
-                    <span className="text-xl font-extrabold text-primary">
-                      {formatPrecio(versionSeleccionada.price)} COP
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleComprar}
-                disabled={!!procesando}
-                className="w-full py-3 rounded-full font-bold text-sm transition-all bg-primary text-on-primary hover:bg-primary/90 active:scale-95 disabled:opacity-60"
-              >
-                {procesando ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Procesando...
-                  </span>
-                ) : (
-                  'Pagar con Wompi'
-                )}
-              </button>
-              <p className="text-xs text-center text-on-surface-variant mt-3">
-                Serás redirigido a la pasarela de pago segura.
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TarjetaPaquete({ pkg, comprasUsuario, onAbrirDetalle }) {
-  const navigate = useNavigate()
-
-  const catNombre = pkg.evaluations?.[0]?.categories?.name ?? 'General'
-  const icono = ICONOS_CATEGORIA[catNombre] || 'quiz'
-  const colorGrad = COLORES_CATEGORIA[catNombre] || 'from-primary to-primary-container'
-
-  const versiones = pkg.versiones || []
-  const versionesActivas = versiones.filter(v => v.is_active)
-  const tieneVersion = versionesActivas.length > 0
-
-  const precioDesde = tieneVersion
-    ? Math.min(...versionesActivas.map(v => Number(v.price) || 0))
-    : Number(pkg.price) || 0
-
-  const pkgComprado = comprasUsuario.some(c => c.package_id === pkg.id)
-  const nivelesCount = pkg.evaluations?.reduce((acc, ev) => acc + (ev.levels?.length || 0), 0) || 0
-
-  return (
-    <div className="card overflow-hidden hover:shadow-xl transition-all duration-300">
-      <div className={`h-1.5 bg-gradient-to-r ${colorGrad}`} />
-
-      <div className="p-6">
-        <div className="flex items-start gap-4 mb-5">
-          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-b ${colorGrad} flex items-center justify-center flex-shrink-0 shadow-md`}>
-            <span
-              className="material-symbols-outlined text-white text-2xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: primary + '18' }}>
+            <span className="material-symbols-outlined text-2xl" style={{ color: primary, fontVariationSettings: "'FILL' 1" }}>
               {icono}
             </span>
           </div>
-
           <div className="flex-1 min-w-0">
-            <h3 className="font-extrabold text-lg leading-tight">{pkg.name}</h3>
-            <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">{pkg.description}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-extrabold text-base leading-tight">{pkg.name}</h3>
+              {yaActivo && (
+                <span className="text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  Activo
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{pkg.description}</p>
           </div>
-
-          {pkgComprado && (
-            <span className="flex items-center gap-1 bg-secondary-container text-secondary text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0">
-              <span
-                className="material-symbols-outlined text-sm"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                verified
-              </span>
-              Activo
-            </span>
-          )}
         </div>
 
-        <div className="flex gap-4 text-xs text-on-surface-variant mb-5">
-          {nivelesCount > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">layers</span>
-              {nivelesCount} nivel{nivelesCount !== 1 ? 'es' : ''}
+        {/* Tags */}
+        <div className="flex flex-wrap gap-1.5">
+          {niveles > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+              <span className="material-symbols-outlined text-xs">layers</span>
+              {niveles} nivel{niveles !== 1 ? 'es' : ''}
             </span>
           )}
-
-          {versionesActivas.length > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm">people</span>
-              {versionesActivas.length} versión{versionesActivas.length !== 1 ? 'es' : ''}
+          {versiones.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+              <span className="material-symbols-outlined text-xs">sell</span>
+              {versiones.length} versión{versiones.length !== 1 ? 'es' : ''}
             </span>
           )}
-
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-sm">menu_book</span>
-            Material incluido
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+            <span className="material-symbols-outlined text-xs">menu_book</span>
+            Material
           </span>
+          {pkg.has_ai_chat && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              <span className="material-symbols-outlined text-xs">auto_awesome</span>
+              IA Praxia
+            </span>
+          )}
         </div>
 
-        <div className="mb-4">
-          <p className="text-xs text-on-surface-variant">{tieneVersion ? 'Desde' : 'Precio'}</p>
-          <p className="text-3xl font-extrabold text-primary">{formatPrecio(precioDesde)}</p>
-          <p className="text-xs text-on-surface-variant">COP</p>
+        {/* Precio */}
+        <div className="flex items-end justify-between mt-auto pt-3 border-t border-slate-100">
+          <div>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">
+              {versiones.length > 1 ? 'Desde' : 'Precio'}
+            </p>
+            <p className="text-2xl font-extrabold leading-none" style={{ color: primary }}>
+              {fmt(precioDesde)}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">COP · pago único</p>
+          </div>
+          <button onClick={() => onVer(pkg)}
+            className="px-5 py-2.5 rounded-full text-sm font-extrabold text-white transition-all active:scale-95 hover:opacity-90"
+            style={{ backgroundColor: primary }}>
+            Ver planes
+          </button>
         </div>
-
-        <button
-          onClick={() => onAbrirDetalle(pkg)}
-          className="w-full py-3 rounded-full font-bold text-sm transition-all bg-primary text-on-primary hover:bg-primary/90 active:scale-95"
-        >
-          Ver detalles y adquirir
-        </button>
 
         {pkg.evaluations?.[0]?.id && (
-          <button
-            onClick={() => navigate(`/prueba/${pkg.evaluations[0].id}`)}
-            className="w-full mt-2 py-2 rounded-full text-xs font-bold text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all"
-          >
+          <button onClick={() => navigate(`/prueba/${pkg.evaluations[0].id}`)}
+            className="text-xs font-semibold text-slate-400 hover:text-slate-700 text-center transition-colors -mt-1">
             Ver contenido del paquete →
           </button>
         )}
@@ -446,253 +172,530 @@ function TarjetaPaquete({ pkg, comprasUsuario, onAbrirDetalle }) {
   )
 }
 
+// ── Panel detalle + checkout ──────────────────────────────────────────────────
+
+function PanelDetalle({ pkg, versiones, comprasUsuario, onClose, onComprar, procesando }) {
+  const navigate = useNavigate()
+  const cat      = getCat(pkg)
+  const [primary, lightBg] = getColor(cat)
+  const icono    = ICONOS_CAT[cat] || 'quiz'
+
+  // Pasos: 'planes' → 'checkout'
+  const [paso,              setPaso]              = useState('planes')
+  const [versionElegida,    setVersionElegida]    = useState(null)
+
+  // Facturación
+  const [factElec,   setFactElec]   = useState(false)
+  const [nit,        setNit]        = useState('')
+  const [razon,      setRazon]      = useState('')
+  const [emailFact,  setEmailFact]  = useState('')
+  const [dirFact,    setDirFact]    = useState('')
+
+  const versionesActivas = versiones.filter(v => v.is_active)
+  const comprasVersionIds = comprasUsuario.map(c => c.package_version_id)
+
+  // Marca la versión del medio como recomendada
+  const idxRec = versionesActivas.length >= 3 ? Math.floor(versionesActivas.length / 2) : 0
+  const versionRec = versionesActivas[idxRec]
+
+  function elegir(v) {
+    setVersionElegida(v)
+    setPaso('checkout')
+    window.scrollTo(0, 0)
+  }
+
+  function confirmarCompra() {
+    onComprar(pkg, versionElegida, factElec ? { nit, razon, email: emailFact, dir: dirFact } : null)
+  }
+
+  function cerrar() {
+    setPaso('planes')
+    setVersionElegida(null)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      onClick={e => e.target === e.currentTarget && cerrar()}>
+      <div className="bg-white w-full md:max-w-3xl md:rounded-3xl max-h-[95vh] md:max-h-[88vh] overflow-y-auto shadow-2xl flex flex-col rounded-t-3xl">
+
+        {/* Barra de color + header */}
+        <div className="sticky top-0 z-10 bg-white rounded-t-3xl border-b border-slate-100">
+          <div className="h-1 rounded-t-3xl" style={{ backgroundColor: primary }} />
+          <div className="flex items-center gap-3 px-5 py-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: lightBg }}>
+              <span className="material-symbols-outlined text-xl"
+                style={{ color: primary, fontVariationSettings: "'FILL' 1" }}>{icono}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-extrabold text-lg leading-tight truncate">{pkg.name}</h2>
+              {paso === 'checkout' && versionElegida && (
+                <p className="text-xs text-slate-500">{versionElegida.display_name} · {fmt(versionElegida.price)} COP</p>
+              )}
+            </div>
+            <button onClick={cerrar}
+              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors shrink-0">
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
+
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 px-5 pb-3 text-xs font-semibold text-slate-400">
+            <button onClick={() => setPaso('planes')}
+              className={paso === 'planes' ? 'text-slate-700 font-bold' : 'hover:text-slate-600 transition-colors'}>
+              Seleccionar plan
+            </button>
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+            <span className={paso === 'checkout' ? 'text-slate-700 font-bold' : ''}>Finalizar compra</span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── PASO 1: PLANES ── */}
+          {paso === 'planes' && (
+            <div className="p-5 space-y-6">
+
+              {/* Descripción */}
+              <p className="text-sm text-slate-600 leading-relaxed">{pkg.description}</p>
+
+              {/* Lo que incluye */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                  <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">Este paquete incluye</p>
+                </div>
+                <div className="grid grid-cols-2 gap-0 divide-y divide-x divide-slate-100">
+                  {BENEFICIOS_PKG.filter(b => !(b.icon === 'auto_awesome' && !pkg.has_ai_chat)).map(b => (
+                    <div key={b.icon} className="flex items-center gap-2.5 px-4 py-3">
+                      <span className="material-symbols-outlined text-base shrink-0" style={{ color: primary, fontVariationSettings: "'FILL' 1" }}>{b.icon}</span>
+                      <span className="text-xs font-medium text-slate-700 leading-tight">{b.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Versiones / Tiers */}
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500 mb-3">
+                  {versionesActivas.length > 1 ? 'Selecciona tu versión' : 'Plan disponible'}
+                </p>
+                <div className="space-y-3">
+                  {versionesActivas.map((v, i) => {
+                    const yaComprado = comprasVersionIds.includes(v.id)
+                    const esRec      = v.id === versionRec?.id && versionesActivas.length > 1
+                    return (
+                      <div key={v.id} className={`relative rounded-2xl border-2 transition-all
+                        ${esRec ? 'border-2 shadow-md' : 'border-slate-200'}
+                        ${yaComprado ? 'opacity-75' : 'hover:shadow-sm'}`}
+                        style={esRec ? { borderColor: primary } : {}}>
+
+                        {esRec && (
+                          <div className="absolute -top-3.5 left-4">
+                            <span className="text-[10px] font-extrabold text-white px-3 py-1 rounded-full shadow-sm"
+                              style={{ backgroundColor: primary }}>
+                              ★ Más popular
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="p-4 flex items-center gap-4">
+                          {/* Número */}
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0"
+                            style={{ backgroundColor: lightBg, color: primary }}>
+                            {i + 1}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-extrabold text-sm">{v.display_name || 'Versión'}</p>
+                            <p className="text-xl font-extrabold leading-tight mt-0.5" style={{ color: primary }}>
+                              {fmt(v.price)} <span className="text-xs font-semibold text-slate-400">COP</span>
+                            </p>
+                          </div>
+
+                          {/* CTA */}
+                          {yaComprado ? (
+                            <span className="flex items-center gap-1 text-xs font-extrabold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">
+                              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                              Adquirido
+                            </span>
+                          ) : (
+                            <button onClick={() => elegir(v)}
+                              className="px-5 py-2.5 rounded-full text-sm font-extrabold text-white transition-all active:scale-95 hover:opacity-90 shrink-0"
+                              style={{ backgroundColor: primary }}>
+                              Comprar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Trust badges */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { icon: 'lock', label: 'Pago seguro', sub: 'SSL cifrado' },
+                  { icon: 'verified_user', label: 'Datos protegidos', sub: 'Wompi certificado' },
+                  { icon: 'support_agent', label: 'Soporte', sub: 'Respuesta en 24h' },
+                ].map(b => (
+                  <div key={b.label} className="flex flex-col items-center text-center gap-1 p-3 bg-slate-50 rounded-xl">
+                    <span className="material-symbols-outlined text-xl text-slate-500">{b.icon}</span>
+                    <p className="text-[10px] font-extrabold text-slate-700">{b.label}</p>
+                    <p className="text-[9px] text-slate-400">{b.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ver contenido */}
+              {pkg.evaluations?.[0]?.id && (
+                <button onClick={() => { cerrar(); navigate(`/prueba/${pkg.evaluations[0].id}`) }}
+                  className="w-full py-3 rounded-full border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all">
+                  Ver contenido completo del paquete →
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── PASO 2: CHECKOUT ── */}
+          {paso === 'checkout' && versionElegida && (
+            <div className="p-5 space-y-5">
+
+              <button onClick={() => setPaso('planes')}
+                className="flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                <span className="material-symbols-outlined text-lg">arrow_back</span>
+                Cambiar versión
+              </button>
+
+              {/* Resumen de compra */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100" style={{ backgroundColor: lightBg }}>
+                  <p className="text-xs font-extrabold uppercase tracking-widest" style={{ color: primary }}>Resumen de tu compra</p>
+                </div>
+                <div className="p-4 space-y-3 text-sm">
+                  <div className="flex justify-between items-start">
+                    <span className="text-slate-500">Paquete</span>
+                    <span className="font-bold text-right max-w-[60%]">{pkg.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Versión</span>
+                    <span className="font-bold">{versionElegida.display_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Acceso</span>
+                    <span className="font-bold">365 días</span>
+                  </div>
+                  <div className="h-px bg-slate-100" />
+                  <div className="flex justify-between items-center">
+                    <span className="font-extrabold text-base">Total a pagar</span>
+                    <span className="text-2xl font-extrabold" style={{ color: primary }}>
+                      {fmt(versionElegida.price)} <span className="text-sm font-semibold text-slate-400">COP</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Facturación electrónica */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <button onClick={() => setFactElec(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-amber-600 text-lg"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>receipt_long</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-sm">¿Necesitas factura electrónica?</p>
+                      <p className="text-xs text-slate-400">Para personas jurídicas o declaración de renta</p>
+                    </div>
+                  </div>
+                  <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${factElec ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${factElec ? 'right-0.5' : 'left-0.5'}`} />
+                  </div>
+                </button>
+
+                {factElec && (
+                  <div className="px-4 pb-4 pt-0 border-t border-slate-100 space-y-3">
+                    <p className="text-xs text-slate-400 pt-3">Datos para la factura electrónica DIAN</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">NIT / CC</label>
+                        <input value={nit} onChange={e => setNit(e.target.value)}
+                          placeholder="900.123.456-7"
+                          className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Razón social</label>
+                        <input value={razon} onChange={e => setRazon(e.target.value)}
+                          placeholder="Mi Empresa S.A.S."
+                          className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Email para la factura</label>
+                      <input type="email" value={emailFact} onChange={e => setEmailFact(e.target.value)}
+                        placeholder="contabilidad@empresa.com"
+                        className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Dirección</label>
+                      <input value={dirFact} onChange={e => setDirFact(e.target.value)}
+                        placeholder="Cra. 7 #45-23, Bogotá"
+                        className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all" />
+                    </div>
+                    <p className="text-[10px] text-slate-400 flex items-start gap-1">
+                      <span className="material-symbols-outlined text-sm shrink-0">info</span>
+                      Recibirás la factura en máx. 24h hábiles al email indicado.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Método de pago */}
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                  <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">Método de pago</p>
+                </div>
+                <div className="p-4 space-y-2">
+                  {/* Wompi — activo */}
+                  <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-blue-500 bg-blue-50">
+                    <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-white text-lg"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>credit_card</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-blue-900">Wompi</p>
+                      <p className="text-[10px] text-blue-600">Tarjeta crédito/débito · PSE · Nequi · Daviplata</p>
+                    </div>
+                    <span className="w-4 h-4 rounded-full border-2 border-blue-500 flex items-center justify-center">
+                      <span className="w-2 h-2 rounded-full bg-blue-600" />
+                    </span>
+                  </div>
+
+                  {/* Próximamente */}
+                  {[
+                    { label: 'Efecty / Baloto', sub: 'Pago en efectivo — Próximamente', icon: 'payments' },
+                    { label: 'Transferencia bancaria', sub: 'Próximamente', icon: 'account_balance' },
+                  ].map(m => (
+                    <div key={m.label} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 opacity-50 cursor-not-allowed">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-slate-400 text-lg">{m.icon}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-500">{m.label}</p>
+                        <p className="text-[10px] text-slate-400">{m.sub}</p>
+                      </div>
+                      <span className="text-[9px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">Pronto</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CTA final */}
+              <button onClick={confirmarCompra} disabled={!!procesando}
+                className="w-full py-4 rounded-2xl font-extrabold text-base text-white transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg"
+                style={{ backgroundColor: primary }}>
+                {procesando ? (
+                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />Procesando…</>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-xl"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>lock</span>
+                    Pagar {fmt(versionElegida.price)} COP con Wompi
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center justify-center gap-4 text-[10px] text-slate-400 font-semibold">
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">lock</span>
+                  Pago cifrado SSL
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">verified_user</span>
+                  Wompi certificado
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">receipt</span>
+                  {factElec ? 'Factura electrónica' : 'Soporte de pago'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal login ───────────────────────────────────────────────────────────────
+
+function ModalLogin({ onClose, onLogin }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-primary text-3xl"
+            style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
+        </div>
+        <h3 className="text-xl font-extrabold mb-2">Inicia sesión para continuar</h3>
+        <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+          Necesitas una cuenta para adquirir paquetes y acceder a los simulacros.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-3 rounded-full font-bold text-sm border border-slate-200 hover:bg-slate-50 transition-all">
+            Cancelar
+          </button>
+          <button onClick={onLogin}
+            className="flex-1 py-3 rounded-full font-bold text-sm bg-primary text-white hover:bg-primary/90 transition-all active:scale-95">
+            Iniciar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal éxito ───────────────────────────────────────────────────────────────
+
+function ModalExito({ pkg, version, onVerSimulacros, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl text-center">
+        <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
+          <span className="material-symbols-outlined text-emerald-600 text-4xl"
+            style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+        </div>
+        <h3 className="text-2xl font-extrabold mb-1">¡Compra exitosa!</h3>
+        <p className="text-slate-500 text-sm mb-1">Has adquirido</p>
+        <p className="font-extrabold text-base mb-1">{pkg.name}</p>
+        {version && <p className="text-sm text-slate-400 mb-5">Versión: {version.display_name}</p>}
+        <div className="bg-slate-50 rounded-2xl p-4 mb-6">
+          <p className="text-xs text-slate-400">Total pagado</p>
+          <p className="text-3xl font-extrabold text-primary">{fmt(version?.price || pkg.price)} COP</p>
+        </div>
+        <div className="space-y-2">
+          <button onClick={onVerSimulacros}
+            className="w-full py-3 rounded-full font-extrabold text-sm bg-primary text-white hover:bg-primary/90 transition-all active:scale-95">
+            Ir a mis simulacros →
+          </button>
+          <button onClick={onClose}
+            className="w-full py-2.5 rounded-full font-bold text-sm text-slate-400 hover:text-slate-600 transition-colors">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
+
 export default function Suscripciones() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [procesando, setProcesando] = useState(null)
-  const [filtroCategoria, setFiltroCategoria] = useState('Todos')
-  const [modalPaquete, setModalPaquete] = useState(null) // { pkg, versiones }
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
-  const [pagoExitoso, setPagoExitoso] = useState(null) // { pkg, version }
 
+  const [filtro,        setFiltro]        = useState('Todos')
+  const [panelPkg,      setPanelPkg]      = useState(null)
+  const [showLogin,     setShowLogin]     = useState(false)
+  const [pagoExitoso,   setPagoExitoso]   = useState(null)
+  const [procesando,    setProcesando]    = useState(null)
+
+  // Cargar widget Wompi
   useEffect(() => {
-    const existingScript = document.querySelector('script[src="https://checkout.wompi.co/widget.js"]')
-    if (existingScript) return
-
-    const script = document.createElement('script')
-    script.src = 'https://checkout.wompi.co/widget.js'
-    script.async = true
-    document.body.appendChild(script)
-
-    return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
-      }
-    }
+    if (document.querySelector('script[src="https://checkout.wompi.co/widget.js"]')) return
+    const s = document.createElement('script')
+    s.src = 'https://checkout.wompi.co/widget.js'
+    s.async = true
+    document.body.appendChild(s)
+    return () => { if (s.parentNode) s.parentNode.removeChild(s) }
   }, [])
 
   const { data, loading, error, retry } = useFetch(async () => {
     let hero = { ...HERO_DEFAULTS }
-
-    // Cargar contenido de página
     try {
-      const { data: contenido, error: contenidoError } = await supabase
-        .from('page_content')
-        .select('field_key, value')
-        .eq('page_key', 'suscripciones')
+      const { data: content } = await supabase.from('page_content').select('field_key, value').eq('page_key', 'suscripciones')
+      content?.forEach(({ field_key, value }) => { hero[field_key] = value })
+    } catch {}
 
-      if (!contenidoError && contenido?.length) {
-        contenido.forEach(({ field_key, value }) => {
-          hero[field_key] = value
-        })
-      }
-    } catch (err) {
-      console.warn('[Suscripciones] page_content error:', err)
-    }
-
-    // 1. Obtener paquetes activos
     const { data: pkgs, error: pkgErr } = await supabase
       .from('packages')
-      .select('id, name, description, price, duration_days, type, is_active')
+      .select('id, name, description, price, duration_days, has_ai_chat, is_active')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
+    if (pkgErr) throw new Error(pkgErr.message)
 
-    if (pkgErr) throw new Error(pkgErr.message || 'No se pudieron cargar los paquetes')
+    const paquetes = await Promise.all((pkgs || []).map(async pkg => {
+      try {
+        const { data: versiones } = await supabase
+          .from('package_versions')
+          .select('id, display_name, price, is_active')
+          .eq('package_id', pkg.id).eq('is_active', true).order('price', { ascending: true })
 
-    // 2. Para cada paquete, obtener sus versiones activas
-    const paquetesConVersiones = await Promise.all(
-      (pkgs || []).map(async pkg => {
-        try {
-          // Obtener package_versions
-          const { data: versiones, error: versionesError } = await supabase
-            .from('package_versions')
-            .select('id, display_name, price, is_active')
-            .eq('package_id', pkg.id)
-            .eq('is_active', true)
-            .order('price', { ascending: true })
+        const versionIds = (versiones || []).map(v => v.id)
+        let evaluations = []
 
-          if (versionesError) {
-            console.warn(`[Suscripciones] versiones error para package ${pkg.id}:`, versionesError.message)
-            return { ...pkg, versiones: [], evaluations: [] }
+        if (versionIds.length) {
+          const { data: ev } = await supabase.from('evaluation_versions').select('evaluation_id').in('package_version_id', versionIds)
+          const evalIds = [...new Set((ev || []).map(e => e.evaluation_id).filter(Boolean))]
+          if (evalIds.length) {
+            const { data: evs } = await supabase.from('evaluations').select('id, title, categories(name), levels(id)').in('id', evalIds)
+            evaluations = evs || []
           }
-
-          // 3. Obtener evaluation_versions y luego evaluations (en dos pasos por robustez)
-          const versionIds = versiones.map(v => v.id)
-          let evaluations = []
-
-          if (versionIds.length > 0) {
-            // Paso 1: obtener evaluation_ids
-            const { data: evalVersions, error: evErr } = await supabase
-              .from('evaluation_versions')
-              .select('evaluation_id')
-              .in('package_version_id', versionIds)
-
-            if (!evErr && evalVersions?.length) {
-              // Paso 2: obtener evaluations por IDs únicos
-              const evalIds = [...new Set(evalVersions.map(ev => ev.evaluation_id).filter(Boolean))]
-              if (evalIds.length > 0) {
-                const { data: evs, error: evsError } = await supabase
-                  .from('evaluations')
-                  .select('id, title, categories(name), levels(id)')
-                  .in('id', evalIds)
-
-                if (!evsError && evs) {
-                  evaluations = evs
-                } else {
-                  console.warn(`[Suscripciones] evaluations error para package ${pkg.id}:`, evsError?.message)
-                }
-              }
-            } else {
-              console.warn(`[Suscripciones] evaluation_versions error para package ${pkg.id}:`, evErr?.message)
-            }
-          }
-
-          return {
-            ...pkg,
-            versiones: versiones || [],
-            evaluations: evaluations,
-          }
-        } catch (err) {
-          console.warn(`[Suscripciones] error procesando package ${pkg.id}:`, err)
-          return { ...pkg, versiones: [], evaluations: [] }
         }
-      })
-    )
 
-    // 4. Obtener compras del usuario
+        return { ...pkg, versiones: versiones || [], evaluations }
+      } catch { return { ...pkg, versiones: [], evaluations: [] } }
+    }))
+
     let comprasUsuario = []
     if (user?.id) {
-      try {
-        const { data: compras, error: comprasError } = await supabase
-          .from('purchases')
-          .select('package_id, package_version_id, end_date, status')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .gte('end_date', new Date().toISOString())
-
-        if (!comprasError && compras) {
-          comprasUsuario = compras
-        } else {
-          console.warn('[Suscripciones] purchases error:', comprasError?.message)
-        }
-      } catch (err) {
-        console.warn('[Suscripciones] purchases exception:', err)
-      }
+      const { data: compras } = await supabase.from('purchases')
+        .select('package_id, package_version_id, end_date, status')
+        .eq('user_id', user.id).eq('status', 'active').gte('end_date', new Date().toISOString())
+      comprasUsuario = compras || []
     }
 
-    // Categorías únicas de las evaluaciones
-    const categorias = [
-      ...new Set(
-        paquetesConVersiones
-          .flatMap(p => p.evaluations?.map(e => e.categories?.name).filter(Boolean) || [])
-      ),
-    ]
-
-    return {
-      hero,
-      paquetes: paquetesConVersiones,
-      comprasUsuario,
-      categorias,
-    }
+    const categorias = [...new Set(paquetes.flatMap(p => p.evaluations?.map(e => e.categories?.name).filter(Boolean) || []))]
+    return { hero, paquetes, comprasUsuario, categorias }
   }, ['suscripciones', user?.id])
 
-  const hero = data?.hero ?? HERO_DEFAULTS
-  const paquetes = data?.paquetes ?? []
+  const hero          = data?.hero ?? HERO_DEFAULTS
+  const paquetes      = data?.paquetes ?? []
   const comprasUsuario = data?.comprasUsuario ?? []
-  const categorias = data?.categorias ?? []
+  const categorias    = data?.categorias ?? []
 
-  const paquetesFiltrados = filtroCategoria === 'Todos'
+  const filtrados = filtro === 'Todos'
     ? paquetes
-    : paquetes.filter(p => p.evaluations?.some(e => e.categories?.name === filtroCategoria))
+    : paquetes.filter(p => p.evaluations?.some(e => e.categories?.name === filtro))
 
-  const handleAbrirDetalle = (pkg) => {
-    if (!user) {
-      setShowLoginPrompt(true)
-      return
-    }
-    setModalPaquete({ pkg, versiones: pkg.versiones })
-  }
-
-  const handleCerrarModal = () => {
-    setModalPaquete(null)
-  }
-
-  const handleLoginPromptClose = () => {
-    setShowLoginPrompt(false)
-  }
-
-  const handleLoginRedirect = () => {
-    setShowLoginPrompt(false)
-    navigate('/login')
-  }
-
-  const handlePagoExitosoClose = () => {
-    setPagoExitoso(null)
-  }
-
-  const handleVerSimulacros = () => {
-    setPagoExitoso(null)
-    navigate('/catalogo')
-  }
-
-  const handleVerMisPaquetes = () => {
-    setPagoExitoso(null)
-    navigate('/mis-paquetes')
+  function abrirDetalle(pkg) {
+    if (!user) { setShowLogin(true); return }
+    setPanelPkg({ pkg, versiones: pkg.versiones })
   }
 
   async function onComprar(pkg, version) {
-    if (!user) {
-      setShowLoginPrompt(true)
-      return
-    }
-
-    if (!version) {
-      alert('Debe seleccionar una versión para continuar.')
-      return
-    }
-
-    const key = version.id
-    if (procesando) return
-
-    setProcesando(key)
+    if (!version || procesando) return
+    setProcesando(version.id)
 
     try {
-      if (!window.WidgetCheckout) {
-        throw new Error('El widget de pago aún no ha terminado de cargar.')
-      }
+      if (!window.WidgetCheckout) throw new Error('El widget de pago aún no cargó. Recarga la página.')
 
-      const sessionResult = await supabase.auth.getSession()
-      const token = sessionResult?.data?.session?.access_token
-
-      if (!token) {
-        throw new Error('No se pudo validar la sesión. Inicia sesión nuevamente.')
-      }
-
-      // Enviar package_version_id en lugar de profession_id
-      const body = {
-        package_id: pkg.id,
-        package_version_id: version.id,
-      }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sesión expirada. Inicia sesión de nuevo.')
 
       const res = await fetch(`${API}/api/paquetes/comprar`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ package_id: pkg.id, package_version_id: version.id }),
       })
+      const datos = await res.json()
+      if (!res.ok) throw new Error(datos?.error || 'Error al iniciar el pago.')
 
-      let datos = null
-      try {
-        datos = await res.json()
-      } catch {
-        throw new Error('La respuesta del servidor no fue válida.')
-      }
-
-      if (!res.ok) {
-        throw new Error(datos?.error || 'Error al iniciar el pago.')
-      }
+      setPanelPkg(null)
 
       const checkout = new window.WidgetCheckout({
         currency: 'COP',
@@ -704,187 +707,149 @@ export default function Suscripciones() {
         redirectUrl: datos.redirect_url,
       })
 
-      // Cerrar el modal de detalle/checkout antes de abrir Wompi
-      setModalPaquete(null)
-
       checkout.open(result => {
-        const transaction = result?.transaction
-
-        if (transaction?.status === 'APPROVED') {
-          // Mostrar modal de éxito en lugar de navegar directamente
+        if (result?.transaction?.status === 'APPROVED') {
           setPagoExitoso({ pkg, version })
         } else {
           navigate('/pago-resultado?status=declined')
         }
       })
-    } catch (err) {
-      console.error('[Suscripciones] onComprar error:', err)
-      alert(err.message || 'Error al iniciar el pago. Intenta de nuevo.')
+    } catch (e) {
+      alert(e.message || 'Error al iniciar el pago.')
     } finally {
       setProcesando(null)
     }
   }
 
   return (
-    <div className="p-6 md:p-8 pb-20 max-w-6xl animate-fade-in">
-      {/* Hero */}
-      <div className="premium-gradient rounded-3xl p-8 md:p-10 text-white mb-10">
-        <h2 className="font-headline font-extrabold text-3xl md:text-4xl leading-tight mb-4 tracking-tight">
-          {hero.hero_titulo}
-        </h2>
-        <p className="text-primary-fixed opacity-90 text-lg mb-6 leading-relaxed max-w-2xl">
-          {hero.hero_subtitulo}
-        </p>
-        <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/10">
-          <span
-            className="material-symbols-outlined text-secondary-fixed"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            workspace_premium
-          </span>
-          <p className="text-sm font-semibold uppercase tracking-wider">{hero.hero_badge}</p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto px-4 py-8 pb-24 space-y-8">
 
-      {/* Estado de paquetes activos */}
-      {comprasUsuario.length > 0 && (
-        <div className="mb-8 p-4 bg-secondary-container/30 border border-secondary/30 rounded-2xl flex items-center gap-4">
-          <span
-            className="material-symbols-outlined text-secondary text-3xl"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            verified
-          </span>
-          <div>
-            <p className="font-bold text-secondary">
-              Tienes {comprasUsuario.length} paquete{comprasUsuario.length !== 1 ? 's' : ''} activo{comprasUsuario.length !== 1 ? 's' : ''}
+        {/* ── Hero ── */}
+        <div className="relative bg-gradient-to-br from-primary via-primary to-[#1a56db] rounded-3xl p-8 md:p-12 text-white overflow-hidden">
+          <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -translate-y-20 translate-x-20 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-16 -translate-x-16 pointer-events-none" />
+          <div className="relative z-10 max-w-2xl">
+            <div className="inline-flex items-center gap-2 bg-white/15 text-white/90 text-xs font-bold px-3 py-1.5 rounded-full mb-6 uppercase tracking-widest">
+              <span className="material-symbols-outlined text-sm"
+                style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+              {hero.hero_badge}
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold leading-tight mb-4">
+              {hero.hero_titulo}
+            </h1>
+            <p className="text-white/75 text-base leading-relaxed">
+              {hero.hero_subtitulo}
             </p>
-            <p className="text-sm text-on-surface-variant">Accede a tus simulacros desde el catálogo.</p>
           </div>
-          <button
-            onClick={() => navigate('/catalogo')}
-            className="ml-auto text-xs font-bold text-secondary hover:underline"
-          >
-            Ver catálogo →
-          </button>
         </div>
-      )}
 
-      {/* Error */}
-      {error && (
-        <div className="mb-6 p-4 bg-error-container text-on-error-container rounded-xl flex items-center gap-3">
-          <span className="material-symbols-outlined">error</span>
-          <p className="text-sm font-semibold flex-1">{error}</p>
-          <button onClick={retry} className="text-xs font-bold underline">
-            Reintentar
-          </button>
-        </div>
-      )}
-
-      {/* Filtros */}
-      {!loading && categorias.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-8">
-          <button
-            onClick={() => setFiltroCategoria('Todos')}
-            className={`px-4 py-2 rounded-full text-sm font-bold transition-all
-              ${filtroCategoria === 'Todos'
-                ? 'bg-primary text-on-primary shadow-md'
-                : 'bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary'}`}
-          >
-            Todos
-          </button>
-          {categorias.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setFiltroCategoria(cat)}
-              className={`px-4 py-2 rounded-full text-sm font-bold transition-all
-                ${filtroCategoria === cat
-                  ? 'bg-primary text-on-primary shadow-md'
-                  : 'bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary'}`}
-            >
-              {cat}
+        {/* ── Banner activos ── */}
+        {comprasUsuario.length > 0 && (
+          <div className="flex items-center gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-emerald-600"
+                style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-emerald-800 text-sm">
+                Tienes {comprasUsuario.length} paquete{comprasUsuario.length !== 1 ? 's' : ''} activo{comprasUsuario.length !== 1 ? 's' : ''}
+              </p>
+              <p className="text-xs text-emerald-600">Accede a tus simulacros desde el catálogo.</p>
+            </div>
+            <button onClick={() => navigate('/catalogo')}
+              className="text-xs font-extrabold text-emerald-700 hover:underline shrink-0">
+              Ver catálogo →
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Grid de paquetes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-10">
-        {loading && [1, 2, 3, 4, 5, 6].map(i => <SkeletonPaquete key={i} />)}
-
-        {!loading && paquetesFiltrados.length === 0 && (
-          <div className="col-span-full card p-10 text-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-4xl opacity-40 mb-2 block">inventory_2</span>
-            <p className="font-semibold">No hay paquetes disponibles en este momento</p>
-            <p className="text-xs mt-1">Pronto habrá nuevos paquetes disponibles</p>
           </div>
         )}
 
-        {!loading && paquetesFiltrados.map(pkg => (
-          <TarjetaPaquete
-            key={pkg.id}
-            pkg={pkg}
-            comprasUsuario={comprasUsuario}
-            onAbrirDetalle={handleAbrirDetalle}
-          />
-        ))}
+        {/* ── Error ── */}
+        {error && (
+          <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700">
+            <span className="material-symbols-outlined">error</span>
+            <p className="text-sm font-semibold flex-1">{error}</p>
+            <button onClick={retry} className="text-xs font-bold underline">Reintentar</button>
+          </div>
+        )}
+
+        {/* ── Filtros ── */}
+        {!loading && categorias.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {['Todos', ...categorias].map(cat => (
+              <button key={cat} onClick={() => setFiltro(cat)}
+                className={`px-4 py-2 rounded-full text-sm font-bold transition-all
+                  ${filtro === cat
+                    ? 'bg-primary text-white shadow-md'
+                    : 'bg-white text-slate-500 border border-slate-200 hover:border-primary/40 hover:text-primary'}`}>
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Grid paquetes ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {loading && [1,2,3,4,5,6].map(i => <Skeleton key={i} />)}
+          {!loading && filtrados.length === 0 && (
+            <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
+              <span className="material-symbols-outlined text-5xl mb-3 block opacity-30">inventory_2</span>
+              <p className="font-bold">No hay paquetes disponibles</p>
+              <p className="text-sm mt-1">Pronto habrá nuevas convocatorias.</p>
+            </div>
+          )}
+          {!loading && filtrados.map(pkg => (
+            <TarjetaPaquete key={pkg.id} pkg={pkg} comprasUsuario={comprasUsuario} onVer={abrirDetalle} />
+          ))}
+        </div>
+
+        {/* ── Testimonio ── */}
+        {!loading && hero.testimonio && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center max-w-xl mx-auto">
+            <div className="flex justify-center -space-x-3 mb-5">
+              {['CA', 'MG', 'JP'].map((ini, i) => (
+                <div key={ini} className={`w-11 h-11 rounded-full border-4 border-white flex items-center justify-center text-white font-extrabold text-xs
+                  ${i === 0 ? 'bg-primary' : i === 1 ? 'bg-secondary' : 'bg-tertiary'}`}>
+                  {ini}
+                </div>
+              ))}
+              <div className="w-11 h-11 rounded-full border-4 border-white bg-slate-200 flex items-center justify-center font-extrabold text-[10px] text-slate-500">
+                +15k
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-3xl text-primary mb-3 block"
+              style={{ fontVariationSettings: "'FILL' 1" }}>format_quote</span>
+            <p className="text-base font-semibold text-slate-700 italic mb-2">{hero.testimonio}</p>
+            <p className="text-xs text-slate-400">{hero.testimonio_autor}</p>
+          </div>
+        )}
       </div>
 
-      {/* Testimonio */}
-      {hero.testimonio && (
-        <div className="card p-8 text-center max-w-2xl mx-auto">
-          <div className="flex justify-center -space-x-3 mb-6">
-            {['CA', 'MG', 'JP'].map((ini, idx) => (
-              <div
-                key={idx}
-                className={`w-12 h-12 rounded-full border-4 border-white flex items-center justify-center text-white font-bold text-sm ${idx === 0 ? 'bg-primary' : idx === 1 ? 'bg-secondary' : 'bg-tertiary'}`}
-              >
-                {ini}
-              </div>
-            ))}
-            <div className="w-12 h-12 rounded-full border-4 border-white bg-primary-container flex items-center justify-center text-white font-bold text-xs">
-              +15k
-            </div>
-          </div>
-          <span
-            className="material-symbols-outlined text-4xl text-primary mb-4 block"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            format_quote
-          </span>
-          <p className="text-lg font-semibold text-on-surface italic mb-3">{hero.testimonio}</p>
-          <p className="text-sm text-on-surface-variant">{hero.testimonio_autor}</p>
-        </div>
-      )}
-
-      {/* Modal de detalle/checkout */}
-      {modalPaquete && (
-        <ModalPaquete
-          pkg={modalPaquete.pkg}
-          versiones={modalPaquete.versiones}
+      {/* ── Modales ── */}
+      {panelPkg && (
+        <PanelDetalle
+          pkg={panelPkg.pkg}
+          versiones={panelPkg.versiones}
           comprasUsuario={comprasUsuario}
-          onClose={handleCerrarModal}
+          onClose={() => setPanelPkg(null)}
           onComprar={onComprar}
           procesando={procesando}
         />
       )}
 
-      {/* Modal de aviso de inicio de sesión */}
-      {showLoginPrompt && (
-        <ModalLoginPrompt
-          onClose={handleLoginPromptClose}
-          onLogin={handleLoginRedirect}
+      {showLogin && (
+        <ModalLogin
+          onClose={() => setShowLogin(false)}
+          onLogin={() => { setShowLogin(false); navigate('/login') }}
         />
       )}
 
-      {/* Modal de pago exitoso */}
       {pagoExitoso && (
-        <ModalPagoExitoso
+        <ModalExito
           pkg={pagoExitoso.pkg}
           version={pagoExitoso.version}
-          onClose={handlePagoExitosoClose}
-          onVerSimulacros={handleVerSimulacros}
-          onVerMisPaquetes={handleVerMisPaquetes}
+          onVerSimulacros={() => { setPagoExitoso(null); navigate('/catalogo') }}
+          onClose={() => setPagoExitoso(null)}
         />
       )}
     </div>
