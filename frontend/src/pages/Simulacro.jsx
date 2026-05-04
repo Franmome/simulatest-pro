@@ -281,7 +281,9 @@ export default function Simulacro() {
 
       let lista = qData.map(q => ({
         ...q,
-        options: [...(q.options || [])].sort((a, b) => (a.letter || '').localeCompare(b.letter || '')),
+        options: [...(q.options || [])]
+          .filter(o => o.text?.trim())
+          .sort((a, b) => (a.letter || '').localeCompare(b.letter || '')),
       }))
 
       // Aplicar orden
