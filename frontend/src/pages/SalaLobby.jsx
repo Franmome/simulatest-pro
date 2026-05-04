@@ -17,6 +17,7 @@ export default function SalaLobby() {
   const [chatAbierto, setChatAbierto] = useState(false)
   const [yo, setYo] = useState(null)
   const [toast, setToast] = useState(null)
+  const [mensajesNoLeidos, setMensajesNoLeidos] = useState(0)
   const chatRef = useRef(null)
   const toastTimerRef = useRef(null)
 
@@ -32,10 +33,10 @@ export default function SalaLobby() {
         (payload) => {
           setMessages(prev => [...prev, payload.new])
           if (!chatAbierto && payload.new.participant_id !== participantId) {
-            // Toast con duración de 5 minutos
+            setMensajesNoLeidos(n => n + 1)
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
             setToast(`${payload.new.display_name}: ${payload.new.message}`)
-            toastTimerRef.current = setTimeout(() => setToast(null), 5 * 60 * 1000)
+            toastTimerRef.current = setTimeout(() => setToast(null), 5000)
           }
         })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },

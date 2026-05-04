@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
+import { chatPraxia } from '../utils/gemini'
 
 function formatTimer(s) {
   const m = Math.floor(s / 60)
@@ -238,7 +239,7 @@ export default function SalaSimulacro() {
       const ordenados = [...participantes].sort((a, b) => b.score - a.score)
       const total = preguntasRef.current.length
 
-      const prompt = `Eres un tutor educativo analizando los resultados de una sala de competencia de simulacros del estado colombiano.
+      const mensaje = `Analiza los resultados de esta sala de competencia de simulacros del estado colombiano.
 
 Participantes:
 ${ordenados.map((p, i) => `${i+1}. ${p.display_name}: ${p.correct} aciertos, ${p.wrong} errores de ${total} preguntas (${Math.round(p.correct/total*100)}%)`).join('\n')}
@@ -251,17 +252,12 @@ Genera un análisis breve y motivador que incluya:
 
 Sé concreto, amigable y en español colombiano. Máximo 200 palabras.`
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }]
-        })
+      const respuesta = await chatPraxia({
+        mensaje,
+        contexto_evaluacion: `Sala de competencia ${roomId}`,
+        historial: [],
       })
-      const data = await response.json()
-      setAnalisisIA(data.content?.[0]?.text || 'No se pudo generar el análisis.')
+      setAnalisisIA(respuesta)
     } catch {
       setAnalisisIA('Error al generar el análisis. Intenta de nuevo.')
     } finally {
