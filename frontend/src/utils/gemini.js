@@ -70,6 +70,18 @@ export async function analizarSala({ participantes, total, modelo = 'gemini' }) 
   return json.analisis
 }
 
+// POST /api/ia/verificar-opec — busca info real del OPEC con Google Search
+export async function verificarOpec({ cargo }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/verificar-opec`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cargo }),
+  })
+  const json = await res.json()
+  return json.verificacion || null
+}
+
 // POST /api/ia/generar (multipart con PDF opcional)
 export async function generarBancoDesdeIA({ pdf, evaluacion_id, nivel_id, cargo, modelo = 'gemini' }) {
   const headers = await authHeaders()

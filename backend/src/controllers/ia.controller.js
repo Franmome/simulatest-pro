@@ -428,3 +428,40 @@ export async function chatIA(req, res) {
     return res.status(500).json({ error: formatError(err) })
   }
 }
+
+// ── Endpoint: Verificar OPEC con Google Search ────────────────────────────────
+
+const VERIFICACION_FALLBACK = { encontrado: false, entidad: null, total_preguntas: null, duracion_minutos: null, modulos: [], año_info: null, nota: null }
+
+export async function verificarOpec(req, res) {
+  const { cargo } = req.body
+  if (!cargo?.trim()) return res.status(400).json({ error: 'Cargo requerido' })
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      tools: [{ googleSearch: {} }],
+    })
+
+    const prompt = `Busca en internet información ACTUAL sobre la prueba de conocimientos (OPEC) para el cargo "${cargo.trim()}" en el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
+
+Responde EXCLUSIVAMENTE con este JSON (sin markdown, sin texto adicional):
+{"encontrado":true,"entidad":"nombre de la entidad","total_preguntas":número,"duracion_minutos":número_o_null,"modulos":[{"nombre":"nombre del módulo","porcentaje":número}],"año_info":"2024 o 2025","nota":"observación relevante o null"}
+
+Si no encuentras información específica para ese cargo, responde exactamente:
+{"encontrado":false,"entidad":null,"total_preguntas":null,"duracion_minutos":null,"modulos":[],"año_info":null,"nota":null}`
+
+    const result = await model.generateContent(prompt)
+    const raw    = result.response.text() || ''
+    // Extraer el objeto JSON del texto (el modelo puede agregar texto extra)
+    const match  = raw.match(/\{[\s\S]*\}/)
+    if (!match) return res.json({ verificacion: VERIFICACION_FALLBACK })
+
+    const data = JSON.parse(match[0])
+    return res.json({ verificacion: data })
+
+  } catch (e) {
+    console.error('[IA] verificarOpec:', e.message)
+    return res.json({ verificacion: VERIFICACION_FALLBACK })
+  }
+}
