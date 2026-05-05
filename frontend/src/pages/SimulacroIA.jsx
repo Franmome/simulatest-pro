@@ -190,7 +190,9 @@ export default function SimulacroIA() {
   const [enviado,   setEnviado]   = useState(false)
   const [segundos,  setSegundos]  = useState(60 * 60) // 60 min
   const [timerWarn, setTimerWarn] = useState(false)
-  const intervalRef = useRef(null)
+  const intervalRef         = useRef(null)
+  const tiempoInicioPregRef = useRef(null)   // timestamp al llegar a la pregunta actual
+  const tiemposPregRef      = useRef({})     // { [idx]: segundos acumulados }
 
   const TIEMPO_TOTAL = 60 * 60 // 60 minutos
 
@@ -217,6 +219,8 @@ export default function SimulacroIA() {
       setPreguntas(lista)
       setCargo(data.cargo || '')
       arrancarTimer()
+      tiempoInicioPregRef.current = Date.now()
+      tiemposPregRef.current = {}
     } catch (e) {
       setError(e.message)
     } finally {
@@ -253,30 +257,61 @@ export default function SimulacroIA() {
     )
   }
 
-  function irA(i) { if (i >= 0 && i < preguntas.length) setPregActual(i) }
+  function registrarTiempoPregActual() {
+    if (tiempoInicioPregRef.current === null) return
+    const elapsed = Math.round((Date.now() - tiempoInicioPregRef.current) / 1000)
+    tiemposPregRef.current[pregActual] = (tiemposPregRef.current[pregActual] || 0) + elapsed
+    tiempoInicioPregRef.current = Date.now()
+  }
+
+  function irA(i) {
+    if (i < 0 || i >= preguntas.length) return
+    registrarTiempoPregActual()
+    setPregActual(i)
+  }
 
   function enviar() {
     clearInterval(intervalRef.current)
+    registrarTiempoPregActual()
     setEnviado(true)
     guardarRespuestas()
   }
 
   async function guardarRespuestas() {
     try {
+      const tiempoUsado     = TIEMPO_TOTAL - segundos
+      const correctasCount  = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
+
       const rows = preguntas.map((p, i) => ({
-        simulacro_id: parseInt(id),
-        user_id:      user.id,
-        pregunta_idx: i,
-        area:         p.area || 'General',
-        dificultad:   p.dificultad || 'medio',
-        es_correcta:  seleccion[i] === p.correcta,
+        simulacro_id:    parseInt(id),
+        user_id:         user.id,
+        pregunta_idx:    i,
+        area:            p.area || 'General',
+        dificultad:      p.dificultad || 'medio',
+        enunciado:       p.enunciado,
+        opcion_elegida:  seleccion[i] || null,
+        opcion_correcta: p.correcta,
+        explicacion:     p.explicacion || null,
+        es_correcta:     seleccion[i] === p.correcta,
+        tiempo_segundos: tiemposPregRef.current[i] || null,
       }))
+
       await supabase.from('user_simulacro_answers').insert(rows)
+
+      await supabase.rpc('completar_simulacro', {
+        p_simulacro_id:    parseInt(id),
+        p_user_id:         user.id,
+        p_correctas:       correctasCount,
+        p_total:           preguntas.length,
+        p_tiempo_segundos: tiempoUsado,
+      })
     } catch { /* falla silenciosa — no interrumpe resultados */ }
   }
 
   function repetir() {
     clearInterval(intervalRef.current)
+    tiempoInicioPregRef.current = Date.now()
+    tiemposPregRef.current = {}
     setSeleccion({})
     setMarcadas([])
     setPreguntas(prev => shuffleArray([...prev]))
