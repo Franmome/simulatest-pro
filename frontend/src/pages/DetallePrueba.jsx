@@ -47,7 +47,7 @@ function colorMaterial(t) {
 
 // ── Tab Material ──────────────────────────────────────────────────────────────
 
-function TabMaterial({ packageId, tienePlan }) {
+function TabMaterial({ packageId, tienePlan, evaluacionId, userId }) {
   const { data, loading, error, retry } = useFetch(async () => {
     if (!packageId) return []
     const { data, error } = await supabase
@@ -114,6 +114,12 @@ function TabMaterial({ packageId, tienePlan }) {
           <div className="space-y-2">
             {items.map(m => (
               <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
+                onClick={() => {
+                  if (userId) supabase.from('user_material_views').insert({
+                    user_id: userId, evaluacion_id: evaluacionId || null,
+                    material_id: m.id, material_nombre: m.title, material_tipo: m.type || 'link',
+                  }).then(() => {}).catch(() => {})
+                }}
                 className="flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-200 hover:border-primary/30 hover:shadow-md transition-all group">
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMaterial(m.type)}`}>
                   <span className="material-symbols-outlined text-xl"
@@ -617,7 +623,7 @@ export default function DetallePrueba() {
           {/* Contenido del tab */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm min-h-32">
             {tabActiva === 'material' ? (
-              <TabMaterial packageId={packageId} tienePlan={tienePlan} />
+              <TabMaterial packageId={packageId} tienePlan={tienePlan} evaluacionId={id} userId={user?.id} />
             ) : (
               <div>
                 <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-4">

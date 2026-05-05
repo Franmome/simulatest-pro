@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
+import { useAuth } from '../context/AuthContext'
 import { analizarSala } from '../utils/gemini'
 import { ModelSelector } from '../components/IAPraxia'
 
@@ -15,6 +16,7 @@ export default function SalaSimulacro() {
   const { roomId } = useParams()
   const { state } = useLocation()
   const { participantId, isHost, displayName } = state || {}
+  const { user } = useAuth()
 
   const [room,            setRoom]            = useState(null)
   const [preguntas,       setPreguntas]       = useState([])
@@ -137,12 +139,29 @@ export default function SalaSimulacro() {
     setRespondida(true)
     clearInterval(intervalRef.current)
 
-    const esCorrecta = op.is_correct
+    const esCorrecta  = op.is_correct
+    const pregActual  = preguntasRef.current[pregActualRef.current]
+    const opCorrecta  = pregActual?.options?.find(o => o.is_correct)?.letter || null
+    const tiempoUsado = (roomRef.current?.timer_per_question || 90) - timerRef.current
+
     await supabase.from('room_answers').insert({
       room_id: roomId, participant_id: participantId,
       question_index: pregActualRef.current,
       selected_option_id: op.id, is_correct: esCorrecta
     })
+
+    if (user?.id) {
+      supabase.from('user_sala_answers').insert({
+        sala_codigo:     roomId,
+        user_id:         user.id,
+        pregunta_idx:    pregActualRef.current,
+        enunciado:       pregActual?.text || null,
+        opcion_elegida:  op.letter || null,
+        opcion_correcta: opCorrecta,
+        es_correcta:     esCorrecta,
+        tiempo_segundos: tiempoUsado,
+      }).then(() => {}).catch(() => {})
+    }
 
     const newCorrect = miScoreRef.current.correct + (esCorrecta ? 1 : 0)
     const newWrong   = miScoreRef.current.wrong   + (!esCorrecta ? 1 : 0)
@@ -156,11 +175,28 @@ export default function SalaSimulacro() {
 
   async function avanzarManual(porTiempo = false) {
     if (porTiempo && !respondida) {
+      const pregActual = preguntasRef.current[pregActualRef.current]
+      const opCorrecta = pregActual?.options?.find(o => o.is_correct)?.letter || null
+
       await supabase.from('room_answers').insert({
         room_id: roomId, participant_id: participantId,
         question_index: pregActualRef.current,
         selected_option_id: null, is_correct: false
       })
+
+      if (user?.id) {
+        supabase.from('user_sala_answers').insert({
+          sala_codigo:     roomId,
+          user_id:         user.id,
+          pregunta_idx:    pregActualRef.current,
+          enunciado:       pregActual?.text || null,
+          opcion_elegida:  null,
+          opcion_correcta: opCorrecta,
+          es_correcta:     false,
+          tiempo_segundos: roomRef.current?.timer_per_question || 90,
+        }).then(() => {}).catch(() => {})
+      }
+
       const newWrong = miScoreRef.current.wrong + 1
       miScoreRef.current.wrong = newWrong
       setMiScore(prev => ({ ...prev, wrong: newWrong }))
