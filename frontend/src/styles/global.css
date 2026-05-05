@@ -26,10 +26,14 @@
   /* Inversos */
   --c-inverse-surface:    46 49 50;
   --c-inverse-on-surface: 240 241 242;
-  /* Marca (sin cambio) */
-  --c-primary:           0 61 155;
-  --c-primary-container: 0 82 204;
-  --c-primary-fixed:     218 226 255;
+  /* Marca */
+  --c-primary:              0 61 155;
+  --c-primary-container:    0 82 204;
+  --c-primary-fixed:        218 226 255;
+  --c-on-primary-container: 196 210 255;
+  /* Secondary container */
+  --c-secondary-container:    160 243 153;
+  --c-on-secondary-container: 33 113 40;
 }
 
 /* ── Dark Mode — "Deep Navy" ─────────────────────────────────────────────── */
@@ -56,10 +60,14 @@ html.dark {
   /* Inversos */
   --c-inverse-surface:    205 217 229;
   --c-inverse-on-surface: 28 33 40;
-  /* Marca — más claros sobre fondo oscuro */
-  --c-primary:           76 142 255;
-  --c-primary-container: 30 58 138;
-  --c-primary-fixed:     30 58 138;
+  /* Marca — tonos equilibrados para fondo oscuro */
+  --c-primary:              96 165 250;
+  --c-primary-container:    30 64 175;
+  --c-primary-fixed:        30 58 138;
+  --c-on-primary-container: 191 219 254;
+  /* Secondary container — verde oscuro, no neón */
+  --c-secondary-container:    20 83 45;
+  --c-on-secondary-container: 134 239 172;
 }
 
 /* ── Overrides dark para clases hardcoded (bg-white, bg-slate-*, etc.) ──── */
@@ -85,6 +93,9 @@ html.dark .border-slate-300 { border-color: rgb(var(--c-outline) / 0.5) !importa
 html.dark .divide-slate-100 > * + *, html.dark .divide-slate-200 > * + * {
   border-color: rgb(var(--c-outline-variant) / 0.25) !important;
 }
+/* Blue text hardcoded */
+html.dark .text-blue-800 { color: rgb(var(--c-primary)) !important; }
+html.dark .text-blue-700 { color: rgb(var(--c-primary) / 0.85) !important; }
 /* Header / sidebar glass */
 html.dark .glass-effect {
   background: rgba(13, 17, 23, 0.92) !important;

@@ -262,25 +262,44 @@ export default function DetallePrueba() {
   const [configIA,       setConfigIA]       = useState({ cantidad: 20, tiempo: 0, dificultad: 'mixta' })
   const [personalizarIA, setPersonalizarIA] = useState(false)
   const [simulacroCreado,setSimulacroCreado]= useState(null) // { simulacro_id, cargo, cantidad, dificultad, tiempo }
-  const [loadingMsg,     setLoadingMsg]     = useState('')
-  const [recargarSims,   setRecargarSims]   = useState(0)
+  const [loadingMsg,      setLoadingMsg]      = useState('')
+  const [loadingProgress, setLoadingProgress] = useState(0)
+  const [recargarSims,    setRecargarSims]    = useState(0)
   const [verificacion,   setVerificacion]   = useState(null) // resultado Google Search
   const [verificando,    setVerificando]    = useState(false)
 
-  const LOADING_MSGS = [
-    'Analizando el cargo y la convocatoria…',
-    'Generando preguntas de competencias funcionales…',
-    'Calibrando nivel de dificultad…',
-    'Añadiendo preguntas comportamentales…',
-    'Revisando calidad y coherencia…',
-    'Casi listo, un momento más…',
-  ]
-
   useEffect(() => {
-    if (!generandoIA) { setLoadingMsg(''); return }
-    let i = 0
-    setLoadingMsg(LOADING_MSGS[0])
-    const iv = setInterval(() => { i = (i + 1) % LOADING_MSGS.length; setLoadingMsg(LOADING_MSGS[i]) }, 2500)
+    if (!generandoIA) { setLoadingMsg(''); setLoadingProgress(0); return }
+
+    const n          = personalizarIA ? configIA.cantidad : 20
+    const batches    = Math.ceil(n / 20)
+    const waves      = Math.ceil(batches / 3)
+    const expectedMs = (waves * 14 + 3) * 1000
+
+    const funcBatches = Math.ceil(Math.round(n * 0.65) / 20)
+    const funcWaves   = Math.ceil(funcBatches / 3)
+    const stages = [
+      'Verificando tu saldo y perfil…',
+      ...Array.from({ length: funcWaves }, (_, i) =>
+        `Generando preguntas funcionales — bloque ${i + 1}/${funcWaves}…`),
+      'Generando preguntas comportamentales…',
+      'Generando conocimientos básicos…',
+      'Revisando calidad y coherencia…',
+      '¡Casi listo…',
+    ]
+
+    const startTime = Date.now()
+    setLoadingMsg(stages[0])
+    setLoadingProgress(3)
+
+    const iv = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const pct = Math.min(95, Math.round((elapsed / expectedMs) * 91 + 4))
+      setLoadingProgress(pct)
+      const idx = Math.min(stages.length - 1, Math.floor((elapsed / expectedMs) * stages.length))
+      setLoadingMsg(stages[idx])
+    }, 250)
+
     return () => clearInterval(iv)
   }, [generandoIA]) // eslint-disable-line
 
@@ -289,7 +308,7 @@ export default function DetallePrueba() {
     setGenerandoIA(true)
     setErrorIA(null)
     try {
-      const { simulacro_id } = await generarSimulacroPersonal({
+      const { simulacro_id, total } = await generarSimulacroPersonal({
         evaluacion_id:       id,
         cargo:               cargo.trim(),
         pdf:                 pdfIA || undefined,
@@ -298,10 +317,11 @@ export default function DetallePrueba() {
         tiempo_por_pregunta: personalizarIA ? configIA.tiempo   : 0,
         dificultad_config:   personalizarIA ? configIA.dificultad : 'mixta',
       })
+      setLoadingProgress(100)
       setSimulacroCreado({
         simulacro_id,
         cargo:     cargo.trim(),
-        cantidad:  personalizarIA ? configIA.cantidad   : 20,
+        cantidad:  total || (personalizarIA ? configIA.cantidad : 20),
         dificultad:personalizarIA ? configIA.dificultad : 'mixta',
         tiempo:    personalizarIA ? configIA.tiempo     : 0,
       })
@@ -545,7 +565,7 @@ export default function DetallePrueba() {
                 </div>
                 <div className="flex-1">
                   <p className="font-extrabold text-white text-sm">Simulacro personalizado IA</p>
-                  <p className="text-white/60 text-xs">Generado para tu OPEC · Praxia IA</p>
+                  <p className="text-white/60 text-xs">Hasta 150 preguntas · Sigue el prompt OPEC maestro</p>
                 </div>
                 <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
               </div>
@@ -1112,7 +1132,7 @@ export default function DetallePrueba() {
                 <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-xl p-3 text-left w-full">
                   <span className="material-symbols-outlined text-primary text-sm shrink-0 mt-0.5">info</span>
                   <p className="text-xs text-primary/80 leading-relaxed">
-                    Tu prueba queda guardada en la pestaña <strong>Mis IA</strong> de esta evaluación. Las OPECs reales tienen 160–250 preguntas — genera varios simulacros para cubrir todo el temario.
+                    Tu prueba queda guardada en la pestaña <strong>Mis IA</strong>. Las OPECs reales tienen 160–250 preguntas — puedes generar hasta <strong>150 preguntas</strong> por simulacro o crear varios para cubrir el temario completo.
                   </p>
                 </div>
                 <div className="flex gap-3 w-full">
@@ -1137,17 +1157,27 @@ export default function DetallePrueba() {
                   </div>
                   <div className="absolute -inset-2 rounded-[24px] border-2 border-primary/30 animate-ping" />
                 </div>
-                <div className="text-center px-4">
-                  <p className="font-extrabold text-lg">Generando tu simulacro</p>
-                  <p className="text-sm text-on-surface-variant mt-1.5 min-h-[20px] transition-all">{loadingMsg}</p>
+                <div className="text-center px-4 w-full">
+                  <p className="font-extrabold text-lg mb-1">Generando tu simulacro</p>
+                  <p className="text-sm text-on-surface-variant min-h-[20px] transition-all duration-500 mb-4">{loadingMsg}</p>
+                  <div className="w-full max-w-xs mx-auto">
+                    <div className="flex justify-between items-center text-[10px] text-on-surface-variant mb-1.5">
+                      <span>Progreso</span>
+                      <span className="font-bold tabular-nums">{loadingProgress}%</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-slate-700 to-slate-500 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${loadingProgress}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-1.5">
-                  {[0, 1, 2].map(i => (
-                    <div key={i} className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }} />
-                  ))}
-                </div>
-                <p className="text-[10px] text-on-surface-variant/60">Esto puede tardar entre 10 y 20 segundos</p>
+                <p className="text-[10px] text-on-surface-variant/60 text-center px-4">
+                  {(personalizarIA ? configIA.cantidad : 20) > 20
+                    ? `Generando ${personalizarIA ? configIA.cantidad : 20} preguntas en lotes — puede tomar ~${Math.round((Math.ceil(Math.ceil((personalizarIA ? configIA.cantidad : 20) / 20) / 3) * 14 + 3))} segundos`
+                    : 'Esto puede tardar entre 10 y 20 segundos'}
+                </p>
               </div>
             ) : (
               <>
@@ -1159,7 +1189,7 @@ export default function DetallePrueba() {
                   </div>
                   <div>
                     <h3 className="font-extrabold text-xl">Simulacro IA</h3>
-                    <p className="text-xs text-on-surface-variant">Generado por Praxia · máx. 3 por día</p>
+                    <p className="text-xs text-on-surface-variant">Generado por Praxia · usa tus créditos IA</p>
                   </div>
                 </div>
 
@@ -1227,12 +1257,12 @@ export default function DetallePrueba() {
                           {verificacion.nota && (
                             <p className="text-blue-600 italic">{verificacion.nota}</p>
                           )}
-                          {/* Alerta si hay discrepancia de cantidad */}
-                          {verificacion.total_preguntas > 40 && (
-                            <div className="mt-2 flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                              <span className="material-symbols-outlined text-amber-600 text-sm shrink-0 mt-0.5">warning</span>
-                              <p className="text-amber-800 leading-relaxed">
-                                La OPEC real tiene <strong>~{verificacion.total_preguntas} preguntas</strong>. Cada simulacro IA genera hasta 40 — genera varios para cubrir todo el temario.
+                          {/* Info de cantidad real vs generación */}
+                          {verificacion.total_preguntas && (
+                            <div className="mt-2 flex items-start gap-1.5 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                              <span className="material-symbols-outlined text-blue-600 text-sm shrink-0 mt-0.5">info</span>
+                              <p className="text-blue-800 leading-relaxed">
+                                La OPEC real tiene <strong>~{verificacion.total_preguntas} preguntas</strong>. Puedes generar hasta <strong>150</strong> por simulacro — activa "Personalizar" para elegir la cantidad.
                               </p>
                             </div>
                           )}
@@ -1266,14 +1296,15 @@ export default function DetallePrueba() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Preguntas</p>
                     <div className="flex gap-1.5 flex-wrap">
-                      {[10, 20, 30, 40].map(n => (
+                      {[...new Set([20, 40, 60, 100, ...(verificacion?.total_preguntas > 100 ? [Math.min(verificacion.total_preguntas, 150)] : [])])].map(n => (
                         <button key={n} onClick={() => setConfigIA(c => ({ ...c, cantidad: n }))}
                           className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
                             ${configIA.cantidad === n ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
-                          {n}
+                          {n}{verificacion?.total_preguntas && n === Math.min(verificacion.total_preguntas, 150) && n > 100 ? ' ★' : ''}
                         </button>
                       ))}
                     </div>
+                    <p className="text-[10px] text-on-surface-variant/70 mt-1.5">Máx. 150 — para cantidades mayores genera varios simulacros</p>
                   </div>
 
                   {/* Dificultad */}

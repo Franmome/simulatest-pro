@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useLang } from '../context/LangContext'
 
 function QuickPill({ children, tone = 'default' }) {
   const tones = {
@@ -19,6 +20,7 @@ function QuickPill({ children, tone = 'default' }) {
 export default function Header({ title, children, expanded, onMenuClick }) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { t } = useLang()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -183,7 +185,7 @@ export default function Header({ title, children, expanded, onMenuClick }) {
               >
                 <span className="material-symbols-outlined text-lg text-on-surface-variant">person</span>
                 <div>
-                  <p className="font-semibold">Mi perfil</p>
+                  <p className="font-semibold">{t('nav.profile')}</p>
                   <p className="text-[10px] text-on-surface-variant">Ver progreso y resultados</p>
                 </div>
               </button>
@@ -197,7 +199,7 @@ export default function Header({ title, children, expanded, onMenuClick }) {
               >
                 <span className="material-symbols-outlined text-lg text-on-surface-variant">workspace_premium</span>
                 <div>
-                  <p className="font-semibold">Mis planes</p>
+                  <p className="font-semibold">{t('nav.plans')}</p>
                   <p className="text-[10px] text-on-surface-variant">Suscripciones y acceso premium</p>
                 </div>
               </button>
@@ -211,7 +213,7 @@ export default function Header({ title, children, expanded, onMenuClick }) {
               >
                 <span className="material-symbols-outlined text-lg text-on-surface-variant">settings</span>
                 <div>
-                  <p className="font-semibold">Ajustes</p>
+                  <p className="font-semibold">{t('nav.config')}</p>
                   <p className="text-[10px] text-on-surface-variant">Preferencias y configuración</p>
                 </div>
               </button>
@@ -225,7 +227,7 @@ export default function Header({ title, children, expanded, onMenuClick }) {
               >
                 <span className="material-symbols-outlined text-lg">logout</span>
                 <div>
-                  <p className="font-semibold">{loggingOut ? 'Cerrando...' : 'Cerrar sesión'}</p>
+                  <p className="font-semibold">{loggingOut ? t('common.loading') : t('nav.logout')}</p>
                   <p className="text-[10px] opacity-80">Salir de esta cuenta</p>
                 </div>
               </button>

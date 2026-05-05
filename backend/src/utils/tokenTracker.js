@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
-const TOKEN_LIMIT_DEFAULT = 500_000
+const TOKEN_LIMIT_DEFAULT = 1_000_000
 
 // Devuelve la compra activa del usuario (necesitamos el purchase_id para el saldo)
 export async function getActivePurchase(userId) {

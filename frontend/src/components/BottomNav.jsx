@@ -1,21 +1,23 @@
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useLang } from '../context/LangContext'
 
-const navItems = [
-  { icon: 'home',              label: 'Inicio',     path: '/dashboard' },
-  { icon: 'assignment',        label: 'Simulacros', path: '/catalogo'  },
-  { icon: 'workspace_premium', label: 'Planes',     path: '/planes'    },
-  { icon: 'menu_book',         label: 'Estudio',    path: '/estudio'   },
-  { icon: 'leaderboard',       label: 'Progreso',   path: '/perfil'    },
+const NAV_DEFS = [
+  { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard' },
+  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo'  },
+  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes'    },
+  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio'   },
+  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil'    },
 ]
 
 export default function BottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useLang()
   const isActive = (path) => location.pathname.startsWith(path)
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 flex justify-around items-center h-16 px-1 safe-area-inset-bottom">
-      {navItems.map(item => (
+      {NAV_DEFS.map(item => (
         <button
           key={item.path}
           onClick={() => navigate(item.path)}
@@ -27,7 +29,7 @@ export default function BottomNav() {
             style={{ fontVariationSettings: isActive(item.path) ? "'FILL' 1" : "'FILL' 0" }}>
             {item.icon}
           </span>
-          <span className="text-[9px] font-bold">{item.label}</span>
+          <span className="text-[9px] font-bold">{t(item.labelKey)}</span>
         </button>
       ))}
     </nav>

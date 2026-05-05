@@ -296,7 +296,7 @@ export async function generarSimulacroPersonal(req, res) {
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
 
-    const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 20, 5), 40)
+    const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 20, 5), 150)
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
     const dificultadTarget = ['mixta','facil','medio','dificil'].includes(dificultad_config) ? dificultad_config : 'mixta'
 
@@ -311,14 +311,6 @@ export async function generarSimulacroPersonal(req, res) {
         tokens_agotados: true,
       })
 
-    // Rate limit: máx 3/día
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-    const { count } = await supabase.from('user_simulacros')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId).gte('created_at', hoy.toISOString())
-
-    if ((count ?? 0) >= 3)
-      return res.status(429).json({ error: 'Límite diario alcanzado. Puedes generar hasta 3 simulacros por día.', restante_manana: true })
 
     // Instrucciones dinámicas de configuración
     const instrConfig = [
@@ -344,28 +336,92 @@ export async function generarSimulacroPersonal(req, res) {
     let tokensIn = 0, tokensOut = 0
 
     if (!preguntas) {
-      let result
-      // max_tokens escala con cantidad de preguntas: ~200 tokens por pregunta + margen
-      const dsMaxTokens = Math.min(cantidadTarget * 250 + 1024, 8192)
+      const BATCH    = 20
+      const PARALLEL = 3
 
-      if (file) {
-        if (modelo === 'deepseek') {
-          const pdfText = await extractPdfText(file.buffer)
-          const pdfLimit = cantidadTarget > 20 ? 8000 : 12000 // menos PDF si hay más preguntas
-          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, pdfLimit)}\n\n` : ''}Analiza el material y genera exactamente ${cantidadTarget} preguntas.`
-          result = await deepseekGenerar(prompt, dsMaxTokens)
-        } else {
-          const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera exactamente ${cantidadTarget} preguntas.`
-          result = await geminiGenerar([prompt, pdfPart])
-        }
-      } else {
-        const prompt = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera exactamente ${cantidadTarget} preguntas típicas para este cargo en el sector público colombiano.`
-        result = modelo === 'deepseek' ? await deepseekGenerar(prompt, dsMaxTokens) : await geminiGenerar(prompt)
+      // Preparar PDF una sola vez
+      const pdfText = file && modelo === 'deepseek' ? await extractPdfText(file.buffer) : null
+      const pdfPart = file && modelo !== 'deepseek'
+        ? { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } } : null
+
+      // Distribución OPEC para lotes (65% Funcionales / 25% Comportamentales / 10% Básicos)
+      function calcularLotes() {
+        const f = Math.round(cantidadTarget * 0.65)
+        const c = Math.round(cantidadTarget * 0.25)
+        const b = cantidadTarget - f - c
+        const lotes = []
+        for (let r = f; r > 0; r -= BATCH) lotes.push({ n: Math.min(BATCH, r),
+          area: 'Competencias Funcionales',
+          instrArea: 'conocimiento técnico del cargo, normativa aplicable, procedimientos y legislación sectorial específica.' })
+        for (let r = c; r > 0; r -= BATCH) lotes.push({ n: Math.min(BATCH, r),
+          area: 'Competencias Comportamentales',
+          instrArea: 'ética pública, trabajo en equipo, orientación al logro, compromiso institucional y relaciones interpersonales.' })
+        if (b > 0) lotes.push({ n: b,
+          area: 'Conocimientos Básicos',
+          instrArea: 'Constitución Política, Ley 909/2004, Ley 734/2002 (Código Disciplinario), Ley 1437/2011 (CPACA) y principios de administración pública.' })
+        return lotes
       }
-      preguntas = validarPreguntas(extraerArrayJSON(result.texto))
-      tokensIn  = result.tokensIn
-      tokensOut = result.tokensOut
+
+      async function generarLote(lote) {
+        const instr = [
+          `- Genera EXACTAMENTE ${lote.n} preguntas.`,
+          `- ÁREA EXCLUSIVA: "${lote.area}". Tema: ${lote.instrArea}`,
+          dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '',
+        ].filter(Boolean).join('\n')
+        const prompt = `${SYSTEM_PROMPT}\n\n${instr}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
+        if (modelo === 'deepseek') {
+          const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
+          return deepseekGenerar(full, lote.n * 320 + 512)
+        }
+        return geminiGenerar(pdfPart ? [prompt, pdfPart] : [prompt])
+      }
+
+      if (cantidadTarget <= BATCH) {
+        // ── Llamada única ──────────────────────────────────────────────────────
+        let result
+        const sp = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
+        if (file) {
+          if (modelo === 'deepseek') {
+            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 320 + 512)
+          } else {
+            result = await geminiGenerar([`${sp}\n\nAnaliza el material y genera exactamente ${cantidadTarget} preguntas.`, pdfPart])
+          }
+        } else {
+          const p = `${sp}\n\nGenera exactamente ${cantidadTarget} preguntas típicas para este cargo en el sector público colombiano.`
+          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 320 + 512) : await geminiGenerar(p)
+        }
+        preguntas = validarPreguntas(extraerArrayJSON(result.texto))
+        tokensIn = result.tokensIn; tokensOut = result.tokensOut
+
+      } else {
+        // ── Generación por lotes en paralelo (hasta 3 simultáneos) ────────────
+        const lotes = calcularLotes()
+        const allPreguntas = []
+        let totalTIn = 0, totalTOut = 0
+
+        for (let i = 0; i < lotes.length; i += PARALLEL) {
+          const wave = lotes.slice(i, i + PARALLEL)
+          const resultados = await Promise.allSettled(wave.map(l => generarLote(l)))
+          for (const r of resultados) {
+            if (r.status === 'fulfilled') {
+              try {
+                const ps = validarPreguntas(extraerArrayJSON(r.value.texto))
+                allPreguntas.push(...ps)
+                totalTIn  += r.value.tokensIn  || 0
+                totalTOut += r.value.tokensOut || 0
+              } catch (e) { console.error('[IA] batch parse:', e.message) }
+            } else {
+              console.error('[IA] batch wave failed:', r.reason?.message)
+            }
+          }
+        }
+
+        if (allPreguntas.length < Math.ceil(cantidadTarget * 0.5))
+          throw new Error('La generación por lotes falló parcialmente. Intenta con menos preguntas o vuelve a intentarlo.')
+
+        preguntas = allPreguntas
+        tokensIn = totalTIn; tokensOut = totalTOut
+      }
 
       // Solo cachear configuración estándar (mixta/20 preguntas)
       if (evaluacion_id && cargoKey && dificultadTarget === 'mixta' && cantidadTarget === 20) {

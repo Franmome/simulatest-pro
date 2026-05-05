@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git commit -m 'fix: new packages default to draft \\(is_active: false\\) *)",
+      "Bash(git commit -m 'feat: import CSV+JSON con preview, plantillas ricas, referencia de formato, prompt IA mejorado *)",
+      "Bash(git commit -m 'fix: remove level_id from package_versions select — column lives in package_version_levels *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const env=fs.readFileSync\\('.env','utf8'\\); const key=env.match\\(/GEMINI_API_KEY=\\(.+\\)/\\)?.[1]?.trim\\(\\); console.log\\('key found:', !!key, key?.slice\\(0,8\\)+'...'\\)\")",
+      "Bash(npm install *)",
+      "Bash(git reset *)",
+      "Bash(git commit -m 'fix\\(ia\\): lazy-load pdf-parse to prevent Railway startup crash *)",
+      "Bash(git commit -m 'feat\\(ia\\): full context schema + enriched context builder *)",
+      "Bash(git commit -m 'feat\\(simulacro\\): track per-question time + save full answer context *)"
+    ]
+  }
+}

@@ -1,14 +1,15 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useLang } from '../context/LangContext'
 import APP from '../utils/app.config.js'
 
-const navItems = [
-  { icon: 'home', label: 'Inicio', path: '/dashboard', hint: 'Vista principal' },
-  { icon: 'assignment', label: 'Simulacros', path: '/catalogo', hint: 'Paquetes y pruebas' },
-  { icon: 'workspace_premium', label: 'Planes', path: '/planes', hint: 'Suscripciones' },
-  { icon: 'leaderboard', label: 'Mi progreso', path: '/perfil', hint: 'Resultados y métricas' },
-  { icon: 'menu_book', label: 'Estudio', path: '/estudio', hint: 'Material y recursos' },
+const NAV_DEFS = [
+  { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard', hint: 'Vista principal'     },
+  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo',  hint: 'Paquetes y pruebas'  },
+  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',    hint: 'Suscripciones'       },
+  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',    hint: 'Resultados y métricas' },
+  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',   hint: 'Material y recursos' },
 ]
 
 function QuickPill({ children, active = false }) {
@@ -29,7 +30,10 @@ export default function Sidebar({ expanded, setExpanded }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
+  const { t } = useLang()
   const [loggingOut, setLoggingOut] = useState(false)
+
+  const navItems = NAV_DEFS.map(d => ({ ...d, label: t(d.labelKey) }))
 
   const isActive = (path) => location.pathname.startsWith(path)
 
@@ -62,7 +66,7 @@ export default function Sidebar({ expanded, setExpanded }) {
   const avatarUrl = user?.user_metadata?.avatar_url || null
   const esAdmin = user?.role === 'admin'
 
-  const currentItem = navItems.find(item => isActive(item.path))
+  const currentItem = NAV_DEFS.find(item => isActive(item.path))
 
   return (
     <aside
@@ -117,7 +121,7 @@ export default function Sidebar({ expanded, setExpanded }) {
 
         {expanded && (
           <div className="flex flex-wrap gap-2 mt-3">
-            {currentItem && <QuickPill active>{currentItem.label}</QuickPill>}
+            {currentItem && <QuickPill active>{t(currentItem.labelKey)}</QuickPill>}
             {esAdmin && <QuickPill>Admin</QuickPill>}
           </div>
         )}
@@ -194,7 +198,7 @@ export default function Sidebar({ expanded, setExpanded }) {
           <span className="material-symbols-outlined text-xl flex-shrink-0 mt-0.5">settings</span>
 
           <div className={`min-w-0 transition-all duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
-            <p className="text-sm font-semibold whitespace-nowrap">Ajustes</p>
+            <p className="text-sm font-semibold whitespace-nowrap">{t('nav.config')}</p>
             <p className="text-[10px] whitespace-nowrap opacity-80">Cuenta y preferencias</p>
           </div>
         </button>
@@ -209,7 +213,7 @@ export default function Sidebar({ expanded, setExpanded }) {
 
           <div className={`min-w-0 transition-all duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
             <p className="text-sm font-semibold whitespace-nowrap">
-              {loggingOut ? 'Cerrando...' : 'Cerrar sesión'}
+              {loggingOut ? t('common.loading') : t('nav.logout')}
             </p>
             <p className="text-[10px] whitespace-nowrap opacity-80">
               Salir de la cuenta actual
