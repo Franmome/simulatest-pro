@@ -6,7 +6,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
-import pdfParse from 'pdf-parse'
 import { checkTokenBalance, recordTokenUsage, getActivePurchase } from '../utils/tokenTracker.js'
 import { buildUserContext } from '../utils/contextBuilder.js'
 
@@ -41,6 +40,7 @@ function hashBuffer(b) { return crypto.createHash('sha256').update(b).digest('he
 
 async function extractPdfText(buffer) {
   try {
+    const { default: pdfParse } = await import('pdf-parse')
     const data = await pdfParse(buffer)
     return data.text?.trim() || ''
   } catch { return '' }
