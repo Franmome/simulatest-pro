@@ -64,6 +64,44 @@ function limpiarJSON(t) {
   return t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
 }
 
+// Extrae el array JSON aunque el modelo agregue texto antes/después
+function extraerArrayJSON(texto) {
+  // 1) Limpieza básica de fences
+  const cleaned = limpiarJSON(texto)
+  try {
+    const parsed = JSON.parse(cleaned)
+    if (Array.isArray(parsed)) return parsed
+    if (parsed?.preguntas && Array.isArray(parsed.preguntas)) return parsed.preguntas
+  } catch (_) {}
+
+  // 2) Buscar primer '[' y último ']' balanceado
+  const start = texto.indexOf('[')
+  if (start !== -1) {
+    let depth = 0, end = -1
+    for (let i = start; i < texto.length; i++) {
+      if (texto[i] === '[') depth++
+      else if (texto[i] === ']') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end !== -1) {
+      try { return JSON.parse(texto.slice(start, end + 1)) } catch (_) {}
+    }
+  }
+
+  // 3) Wrapper objeto {"preguntas": [...]}
+  const objStart = texto.indexOf('{')
+  if (objStart !== -1) {
+    const objEnd = texto.lastIndexOf('}')
+    if (objEnd !== -1) {
+      try {
+        const obj = JSON.parse(texto.slice(objStart, objEnd + 1))
+        if (Array.isArray(obj?.preguntas)) return obj.preguntas
+      } catch (_) {}
+    }
+  }
+
+  throw new Error('No se pudo extraer JSON válido de la respuesta del modelo.')
+}
+
 function validarPreguntas(arr) {
   if (!Array.isArray(arr) || !arr.length) throw new Error('El modelo devolvió un array vacío.')
   for (const [i, p] of arr.entries()) {
@@ -132,11 +170,15 @@ async function geminiChat(systemCtx, historial, mensaje) {
 
 // ── DeepSeek ──────────────────────────────────────────────────────────────────
 
-async function deepseekGenerar(prompt) {
+async function deepseekGenerar(prompt, maxTokens = 8192) {
   const r = await deepseek.chat.completions.create({
-    model: 'deepseek-chat',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
+    model:      'deepseek-chat',
+    messages:   [
+      { role: 'system', content: 'Eres un experto generador de preguntas para el sector público colombiano. Devuelves ÚNICAMENTE JSON válido, sin texto adicional, sin markdown.' },
+      { role: 'user',   content: prompt },
+    ],
+    temperature: 0.6,
+    max_tokens:  maxTokens,
   })
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
@@ -218,7 +260,7 @@ export async function generarBanco(req, res) {
         result = await geminiGenerar([prompt, pdfPart])
       }
       const { texto, tokensIn, tokensOut } = result
-      const preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
+      const preguntas = validarPreguntas(extraerArrayJSON(texto))
 
       await Promise.all([
         supabase.from('bancos_preguntas').upsert(
@@ -235,7 +277,7 @@ export async function generarBanco(req, res) {
     const prompt = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
     const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
       ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
-    const preguntas = validarPreguntas(JSON.parse(limpiarJSON(texto)))
+    const preguntas = validarPreguntas(extraerArrayJSON(texto))
 
     await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'banco', modelo })
     return res.json({ preguntas, cached: false })
@@ -303,21 +345,25 @@ export async function generarSimulacroPersonal(req, res) {
 
     if (!preguntas) {
       let result
+      // max_tokens escala con cantidad de preguntas: ~200 tokens por pregunta + margen
+      const dsMaxTokens = Math.min(cantidadTarget * 250 + 1024, 8192)
+
       if (file) {
         if (modelo === 'deepseek') {
           const pdfText = await extractPdfText(file.buffer)
-          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
-          result = await deepseekGenerar(prompt)
+          const pdfLimit = cantidadTarget > 20 ? 8000 : 12000 // menos PDF si hay más preguntas
+          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, pdfLimit)}\n\n` : ''}Analiza el material y genera exactamente ${cantidadTarget} preguntas.`
+          result = await deepseekGenerar(prompt, dsMaxTokens)
         } else {
           const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
+          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera exactamente ${cantidadTarget} preguntas.`
           result = await geminiGenerar([prompt, pdfPart])
         }
       } else {
-        const prompt = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
-        result = modelo === 'deepseek' ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
+        const prompt = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera exactamente ${cantidadTarget} preguntas típicas para este cargo en el sector público colombiano.`
+        result = modelo === 'deepseek' ? await deepseekGenerar(prompt, dsMaxTokens) : await geminiGenerar(prompt)
       }
-      preguntas = validarPreguntas(JSON.parse(limpiarJSON(result.texto)))
+      preguntas = validarPreguntas(extraerArrayJSON(result.texto))
       tokensIn  = result.tokensIn
       tokensOut = result.tokensOut
 
