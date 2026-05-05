@@ -27,13 +27,16 @@ export async function chatPraxia({ mensaje, contexto_evaluacion, historial = [],
 }
 
 // POST /api/ia/simulacro — genera simulacro personal por OPEC
-export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf, modelo = 'gemini' }) {
+export async function generarSimulacroPersonal({ evaluacion_id, cargo, pdf, modelo = 'gemini', cantidad = 20, tiempo_por_pregunta = 0, dificultad_config = 'mixta' }) {
   const headers = await authHeaders()
   const fd = new FormData()
   if (pdf) fd.append('pdf', pdf)
   if (evaluacion_id) fd.append('evaluacion_id', String(evaluacion_id))
   if (cargo) fd.append('cargo', cargo)
   fd.append('modelo', modelo)
+  fd.append('cantidad', String(cantidad))
+  fd.append('tiempo_por_pregunta', String(tiempo_por_pregunta))
+  fd.append('dificultad_config', dificultad_config)
 
   const res = await fetch(`${BASE}/api/ia/simulacro`, {
     method: 'POST',

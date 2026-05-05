@@ -242,8 +242,12 @@ export async function generarBanco(req, res) {
 export async function generarSimulacroPersonal(req, res) {
   try {
     const userId = req.user.id
-    const { evaluacion_id, cargo, modelo = 'gemini' } = req.body
+    const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
+
+    const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 20, 5), 40)
+    const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
+    const dificultadTarget = ['mixta','facil','medio','dificil'].includes(dificultad_config) ? dificultad_config : 'mixta'
 
     const compra = await getActivePurchase(userId)
     if (!compra?.packages?.has_ai_chat)
@@ -265,10 +269,18 @@ export async function generarSimulacroPersonal(req, res) {
     if ((count ?? 0) >= 3)
       return res.status(429).json({ error: 'Límite diario alcanzado. Puedes generar hasta 3 simulacros por día.', restante_manana: true })
 
-    // RAG cache
+    // Instrucciones dinámicas de configuración
+    const instrConfig = [
+      `- Genera EXACTAMENTE ${cantidadTarget} preguntas.`,
+      dificultadTarget !== 'mixta' ? `- TODAS las preguntas deben ser de dificultad "${dificultadTarget}".` : '',
+    ].filter(Boolean).join('\n')
+
+    const promptBase = `${SYSTEM_PROMPT}\n\n${instrConfig}`
+
+    // RAG cache (solo cuando no hay configuración personalizada de dificultad)
     let preguntas = null
     const cargoKey = cargo?.trim().toLowerCase() || ''
-    if (evaluacion_id && cargoKey) {
+    if (evaluacion_id && cargoKey && dificultadTarget === 'mixta' && cantidadTarget === 20) {
       const hashCargo = `cargo:${evaluacion_id}:${cargoKey}`
       const { data: cached } = await supabase.from('bancos_preguntas')
         .select('preguntas, created_at').eq('pdf_hash', hashCargo).eq('evaluacion_id', parseInt(evaluacion_id, 10)).maybeSingle()
@@ -285,22 +297,23 @@ export async function generarSimulacroPersonal(req, res) {
       if (file) {
         if (modelo === 'deepseek') {
           const pdfText = await extractPdfText(file.buffer)
-          const prompt  = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
+          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
           result = await deepseekGenerar(prompt)
         } else {
           const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-          const prompt  = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
+          const prompt  = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nAnaliza este material y genera el banco de preguntas.`
           result = await geminiGenerar([prompt, pdfPart])
         }
       } else {
-        const prompt = `${SYSTEM_PROMPT}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
+        const prompt = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
         result = modelo === 'deepseek' ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
       }
       preguntas = validarPreguntas(JSON.parse(limpiarJSON(result.texto)))
       tokensIn  = result.tokensIn
       tokensOut = result.tokensOut
 
-      if (evaluacion_id && cargoKey) {
+      // Solo cachear configuración estándar (mixta/20 preguntas)
+      if (evaluacion_id && cargoKey && dificultadTarget === 'mixta' && cantidadTarget === 20) {
         const hashCargo = `cargo:${evaluacion_id}:${cargoKey}`
         await supabase.from('bancos_preguntas').upsert(
           { pdf_hash: hashCargo, evaluacion_id: parseInt(evaluacion_id, 10), cargo: cargo.trim(), preguntas, created_at: new Date().toISOString() },
@@ -310,7 +323,15 @@ export async function generarSimulacroPersonal(req, res) {
     }
 
     const { data: sim, error: simErr } = await supabase.from('user_simulacros')
-      .insert({ user_id: userId, evaluacion_id: evaluacion_id ? parseInt(evaluacion_id, 10) : null, cargo: cargo?.trim() || null, preguntas })
+      .insert({
+        user_id:           userId,
+        evaluacion_id:     evaluacion_id ? parseInt(evaluacion_id, 10) : null,
+        cargo:             cargo?.trim() || null,
+        preguntas,
+        cantidad_preguntas: cantidadTarget,
+        tiempo_por_pregunta: tiempoPregunta || null,
+        dificultad_config:  dificultadTarget,
+      })
       .select('id').single()
 
     if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)

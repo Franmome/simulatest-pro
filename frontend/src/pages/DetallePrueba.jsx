@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -188,6 +188,25 @@ export default function DetallePrueba() {
   const [generandoIA,  setGenerandoIA]  = useState(false)
   const [errorIA,      setErrorIA]      = useState(null)
   const [modeloIA,     setModeloIA]     = useState('gemini')
+  const [configIA,     setConfigIA]     = useState({ cantidad: 20, tiempo: 0, dificultad: 'mixta' })
+  const [loadingMsg,   setLoadingMsg]   = useState('')
+
+  const LOADING_MSGS = [
+    'Analizando el cargo y la convocatoria…',
+    'Generando preguntas de competencias funcionales…',
+    'Calibrando nivel de dificultad…',
+    'Añadiendo preguntas comportamentales…',
+    'Revisando calidad y coherencia…',
+    'Casi listo, un momento más…',
+  ]
+
+  useEffect(() => {
+    if (!generandoIA) { setLoadingMsg(''); return }
+    let i = 0
+    setLoadingMsg(LOADING_MSGS[0])
+    const iv = setInterval(() => { i = (i + 1) % LOADING_MSGS.length; setLoadingMsg(LOADING_MSGS[i]) }, 2500)
+    return () => clearInterval(iv)
+  }, [generandoIA]) // eslint-disable-line
 
   async function lanzarSimulacroIA() {
     if (!cargo.trim()) { setErrorIA('Escribe el nombre del OPEC o cargo.'); return }
@@ -195,10 +214,13 @@ export default function DetallePrueba() {
     setErrorIA(null)
     try {
       const { simulacro_id } = await generarSimulacroPersonal({
-        evaluacion_id: id,
-        cargo: cargo.trim(),
-        pdf: pdfIA || undefined,
-        modelo: modeloIA,
+        evaluacion_id:      id,
+        cargo:              cargo.trim(),
+        pdf:                pdfIA || undefined,
+        modelo:             modeloIA,
+        cantidad:           configIA.cantidad,
+        tiempo_por_pregunta: configIA.tiempo,
+        dificultad_config:  configIA.dificultad,
       })
       setModalIA(false)
       navigate(`/simulacro-ia/${simulacro_id}`)
@@ -963,96 +985,154 @@ export default function DetallePrueba() {
           onClick={() => { if (!generandoIA) setModalIA(false) }}>
           <div className="bg-white rounded-3xl w-full max-w-md p-6 animate-fade-in shadow-2xl" onClick={e => e.stopPropagation()}>
 
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-white text-2xl"
-                  style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            {/* ── Pantalla de carga ── */}
+            {generandoIA ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-5">
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-white text-4xl animate-pulse"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                  </div>
+                  <div className="absolute -inset-2 rounded-[24px] border-2 border-primary/30 animate-ping" />
+                </div>
+                <div className="text-center px-4">
+                  <p className="font-extrabold text-lg">Generando tu simulacro</p>
+                  <p className="text-sm text-on-surface-variant mt-1.5 min-h-[20px] transition-all">{loadingMsg}</p>
+                </div>
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
+                <p className="text-[10px] text-on-surface-variant/60">Esto puede tardar entre 10 y 20 segundos</p>
               </div>
-              <div>
-                <h3 className="font-extrabold text-xl">Simulacro IA</h3>
-                <p className="text-xs text-on-surface-variant">Generado por Praxia · máx. 3 por día</p>
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-white text-2xl"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-xl">Simulacro IA</h3>
+                    <p className="text-xs text-on-surface-variant">Generado por Praxia · máx. 3 por día</p>
+                  </div>
+                </div>
 
-            {/* Campo cargo */}
-            <div className="mb-4">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
-                Nombre del OPEC / Cargo
-              </label>
-              <input
-                type="text"
-                value={cargo}
-                onChange={e => { setCargo(e.target.value); setErrorIA(null) }}
-                onKeyDown={e => e.key === 'Enter' && lanzarSimulacroIA()}
-                placeholder="ej: Profesional Universitario Grado 11 DIAN"
-                disabled={generandoIA}
-                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
-                autoFocus
-              />
-              <p className="text-[10px] text-on-surface-variant mt-1.5">
-                Escribe el cargo exacto de la convocatoria para mejores resultados.
-              </p>
-            </div>
+                {/* Campo cargo */}
+                <div className="mb-4">
+                  <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                    Nombre del OPEC / Cargo
+                  </label>
+                  <input
+                    type="text" value={cargo}
+                    onChange={e => { setCargo(e.target.value); setErrorIA(null) }}
+                    onKeyDown={e => e.key === 'Enter' && lanzarSimulacroIA()}
+                    placeholder="ej: Profesional Universitario Grado 11 DIAN"
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20 transition-all"
+                    autoFocus
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-1.5">
+                    Escribe el cargo exacto de la convocatoria para mejores resultados.
+                  </p>
+                </div>
 
-            {/* Selector modelo */}
-            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <ModelSelector value={modeloIA} onChange={setModeloIA} />
-            </div>
+                {/* Configuración */}
+                <div className="mb-4 space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  {/* Preguntas */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Preguntas</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[10, 20, 30].map(n => (
+                        <button key={n} onClick={() => setConfigIA(c => ({ ...c, cantidad: n }))}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
+                            ${configIA.cantidad === n ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* PDF opcional */}
-            <div className="mb-5">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
-                Material de estudio (opcional)
-              </label>
-              <label className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors
-                ${pdfIA ? 'border-primary/40 bg-primary/5' : 'border-slate-200 hover:border-slate-300 bg-slate-50'} ${generandoIA ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <span className="material-symbols-outlined text-xl text-on-surface-variant"
-                  style={{ fontVariationSettings: pdfIA ? "'FILL' 1" : "'FILL' 0" }}>
-                  {pdfIA ? 'picture_as_pdf' : 'upload_file'}
-                </span>
-                <span className="text-sm text-on-surface-variant truncate flex-1">
-                  {pdfIA ? pdfIA.name : 'Subir PDF (temario, normas, convocatoria…)'}
-                </span>
-                {pdfIA && (
-                  <button type="button" onClick={e => { e.preventDefault(); setPdfIA(null) }}
-                    className="text-error text-xs font-bold shrink-0">
-                    Quitar
+                  {/* Dificultad */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Dificultad</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[{ v: 'mixta', l: 'Mixta' }, { v: 'facil', l: 'Fácil' }, { v: 'medio', l: 'Medio' }, { v: 'dificil', l: 'Difícil' }].map(d => (
+                        <button key={d.v} onClick={() => setConfigIA(c => ({ ...c, dificultad: d.v }))}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
+                            ${configIA.dificultad === d.v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
+                          {d.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tiempo */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Tiempo / pregunta</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[{ v: 0, l: 'Sin límite' }, { v: 60, l: '1 min' }, { v: 90, l: '90 s' }, { v: 120, l: '2 min' }].map(t => (
+                        <button key={t.v} onClick={() => setConfigIA(c => ({ ...c, tiempo: t.v }))}
+                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
+                            ${configIA.tiempo === t.v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
+                          {t.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selector modelo */}
+                <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <ModelSelector value={modeloIA} onChange={setModeloIA} />
+                </div>
+
+                {/* PDF opcional */}
+                <div className="mb-5">
+                  <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                    Material de estudio (opcional)
+                  </label>
+                  <label className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors
+                    ${pdfIA ? 'border-primary/40 bg-primary/5' : 'border-slate-200 hover:border-slate-300 bg-slate-50'}`}>
+                    <span className="material-symbols-outlined text-xl text-on-surface-variant"
+                      style={{ fontVariationSettings: pdfIA ? "'FILL' 1" : "'FILL' 0" }}>
+                      {pdfIA ? 'picture_as_pdf' : 'upload_file'}
+                    </span>
+                    <span className="text-sm text-on-surface-variant truncate flex-1">
+                      {pdfIA ? pdfIA.name : 'Subir PDF (temario, normas, convocatoria…)'}
+                    </span>
+                    {pdfIA && (
+                      <button type="button" onClick={e => { e.preventDefault(); setPdfIA(null) }}
+                        className="text-error text-xs font-bold shrink-0">Quitar</button>
+                    )}
+                    <input type="file" accept=".pdf" className="hidden"
+                      onChange={e => setPdfIA(e.target.files?.[0] || null)} />
+                  </label>
+                </div>
+
+                {/* Error */}
+                {errorIA && (
+                  <div className="flex items-center gap-2 text-error text-xs bg-error-container/30 px-3 py-2 rounded-xl mb-4">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    {errorIA}
+                  </div>
+                )}
+
+                {/* Botones */}
+                <div className="flex gap-3">
+                  <button onClick={() => setModalIA(false)}
+                    className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all">
+                    Cancelar
                   </button>
-                )}
-                <input type="file" accept=".pdf" className="hidden" disabled={generandoIA}
-                  onChange={e => setPdfIA(e.target.files?.[0] || null)} />
-              </label>
-            </div>
-
-            {/* Error */}
-            {errorIA && (
-              <div className="flex items-center gap-2 text-error text-xs bg-error-container/30 px-3 py-2 rounded-xl mb-4">
-                <span className="material-symbols-outlined text-sm">error</span>
-                {errorIA}
-              </div>
-            )}
-
-            {/* Botones */}
-            <div className="flex gap-3">
-              <button onClick={() => setModalIA(false)} disabled={generandoIA}
-                className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all disabled:opacity-40">
-                Cancelar
-              </button>
-              <button onClick={lanzarSimulacroIA} disabled={generandoIA || !cargo.trim()}
-                className="flex-1 py-3 rounded-full bg-slate-900 text-white font-bold text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-                {generandoIA ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generando…</>
-                ) : (
-                  <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>Generar</>
-                )}
-              </button>
-            </div>
-
-            {generandoIA && (
-              <p className="text-center text-xs text-on-surface-variant mt-3 animate-pulse">
-                Praxia está generando tu simulacro personalizado…
-              </p>
+                  <button onClick={lanzarSimulacroIA} disabled={!cargo.trim()}
+                    className="flex-1 py-3 rounded-full bg-slate-900 text-white font-bold text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                    Generar
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
