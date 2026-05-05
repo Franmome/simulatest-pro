@@ -296,7 +296,7 @@ export async function generarSimulacroPersonal(req, res) {
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
 
-    const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 20, 5), 150)
+    const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 160, 5), 250)
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
     const dificultadTarget = ['mixta','facil','medio','dificil'].includes(dificultad_config) ? dificultad_config : 'mixta'
 

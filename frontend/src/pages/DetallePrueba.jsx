@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -47,15 +47,26 @@ function colorMaterial(t) {
 
 // ── Tab Simulacros IA ─────────────────────────────────────────────────────────
 
-function TabSimulacrosIA({ evaluacionId, userId, recargar, onIniciar }) {
-  const [sims, setSims] = useState([])
-  const [loading, setLoading] = useState(true)
+const LABEL_DIF = { mixta: 'Mixta', facil: 'Fácil', medio: 'Medio', dificil: 'Difícil' }
+const MODULOS_OPEC = [
+  { label: 'Funcionales',      pct: 65 },
+  { label: 'Comportamentales', pct: 25 },
+  { label: 'Básicos',          pct: 10 },
+]
+
+function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
+  const navigate = useNavigate()
+  const [sims,             setSims]             = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [simToStart,       setSimToStart]       = useState(null)
+  const [showPersonalizar, setShowPersonalizar] = useState(false)
+  const [preStartConfig,   setPreStartConfig]   = useState({ cantidad: 0, tiempo: 0 })
 
   useEffect(() => {
     if (!userId || !evaluacionId) { setLoading(false); return }
     setLoading(true)
     supabase.from('user_simulacros')
-      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, completado, created_at')
+      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, completado, created_at, tiempo_por_pregunta')
       .eq('evaluacion_id', evaluacionId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -63,7 +74,16 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, onIniciar }) {
       .then(({ data }) => { setSims(data || []); setLoading(false) })
   }, [evaluacionId, userId, recargar])
 
-  const labelDif = { mixta: 'Mixta', facil: 'Fácil', medio: 'Medio', dificil: 'Difícil' }
+  const abrirPreStart = useCallback((s) => {
+    setSimToStart(s)
+    setShowPersonalizar(false)
+    setPreStartConfig({ cantidad: s.cantidad_preguntas || 0, tiempo: s.tiempo_por_pregunta || 0 })
+  }, [])
+
+  const iniciar = () => {
+    navigate(`/simulacro-ia/${simToStart.id}`, { state: { preStartConfig } })
+    setSimToStart(null)
+  }
 
   if (loading) return (
     <div className="flex justify-center py-8">
@@ -82,37 +102,174 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, onIniciar }) {
     </div>
   )
 
+  const total = simToStart?.cantidad_preguntas || 0
+  const cuartos = total > 0
+    ? [...new Set([Math.round(total * 0.25), Math.round(total * 0.5), Math.round(total * 0.75), total])].filter(n => n > 0)
+    : []
+
   return (
-    <div className="space-y-2">
-      {sims.map(s => (
-        <div key={s.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 transition-colors">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-white text-sm"
-              style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm truncate">{s.cargo || 'Simulacro IA'}</p>
-            <div className="flex items-center gap-2 flex-wrap mt-0.5">
-              <span className="text-[10px] text-on-surface-variant">{s.cantidad_preguntas || '—'} pregs</span>
-              <span className="text-[10px] text-on-surface-variant">·</span>
-              <span className="text-[10px] text-on-surface-variant">{labelDif[s.dificultad_config] || 'Mixta'}</span>
-              {s.completado && s.score_pct !== null && (
-                <>
-                  <span className="text-[10px] text-on-surface-variant">·</span>
-                  <span className={`text-[10px] font-bold ${s.score_pct >= 70 ? 'text-secondary' : 'text-error'}`}>
+    <>
+      <div className="space-y-3">
+        {sims.map(s => (
+          <div key={s.id}
+            className="group flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+            onClick={() => abrirPreStart(s)}>
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0 shadow-sm">
+              <span className="material-symbols-outlined text-white text-lg"
+                style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">
+                {s.cargo || 'Simulacro IA'}
+              </p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                <span className="text-[10px] font-semibold bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full">
+                  {s.cantidad_preguntas || '—'} pregs
+                </span>
+                <span className="text-[10px] font-semibold bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full">
+                  {LABEL_DIF[s.dificultad_config] || 'Mixta'}
+                </span>
+                {s.completado && s.score_pct !== null && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.score_pct >= 70 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
                     {Math.round(s.score_pct)}%
                   </span>
-                </>
-              )}
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <span className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all
+                ${s.completado
+                  ? 'bg-slate-200 text-slate-700 group-hover:bg-primary group-hover:text-white'
+                  : 'bg-primary text-white group-hover:bg-primary/90'}`}>
+                {s.completado ? 'Repetir' : 'Iniciar'}
+              </span>
+              <span className="text-[9px] text-on-surface-variant">{tiempoRelativo(s.created_at)}</span>
             </div>
           </div>
-          <button onClick={() => onIniciar(s.id)}
-            className="shrink-0 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-bold active:scale-95 transition-all">
-            {s.completado ? 'Repetir' : 'Iniciar'}
-          </button>
+        ))}
+      </div>
+
+      {/* ── Modal pre-inicio ── */}
+      {simToStart && (
+        <div className="fixed inset-0 z-[200] bg-black/65 flex items-end md:items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => setSimToStart(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Cabecera oscura */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 text-white">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-xl"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mb-0.5">Simulacro IA · OPEC</p>
+                  <h3 className="font-extrabold text-base leading-snug">{simToStart.cargo || 'Simulacro IA'}</h3>
+                </div>
+                <button onClick={() => setSimToStart(null)}
+                  className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0">
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[
+                  { val: preStartConfig.cantidad || simToStart.cantidad_preguntas || '—', sub: 'Preguntas' },
+                  { val: LABEL_DIF[simToStart.dificultad_config] || 'Mixta', sub: 'Dificultad' },
+                  { val: preStartConfig.tiempo === 0 ? '∞' : `${preStartConfig.tiempo}s`, sub: 'Por preg.' },
+                ].map(s => (
+                  <div key={s.sub} className="bg-white/10 rounded-xl p-3 text-center">
+                    <p className="font-black text-lg leading-none mb-1">{s.val}</p>
+                    <p className="text-[9px] opacity-50 uppercase tracking-widest">{s.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-1.5 flex-wrap">
+                {MODULOS_OPEC.map(m => (
+                  <span key={m.label} className="bg-white/10 text-white/70 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                    {m.label} {m.pct}%
+                  </span>
+                ))}
+              </div>
+
+              {simToStart.completado && simToStart.score_pct !== null && (
+                <div className="mt-3 flex items-center gap-2 bg-white/10 rounded-xl px-3 py-2">
+                  <span className="material-symbols-outlined text-sm"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {simToStart.score_pct >= 70 ? 'emoji_events' : 'replay'}
+                  </span>
+                  <span className="text-xs font-bold">Último: {Math.round(simToStart.score_pct)}%</span>
+                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${simToStart.score_pct >= 70 ? 'bg-emerald-400/20 text-emerald-300' : 'bg-red-400/20 text-red-300'}`}>
+                    {simToStart.score_pct >= 70 ? 'Aprobado' : 'No aprobado'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Cuerpo */}
+            <div className="p-5">
+              <button onClick={() => setShowPersonalizar(v => !v)}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl border-2 border-slate-200 hover:border-primary/40 hover:bg-primary/5 transition-all mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-primary"
+                    style={{ fontVariationSettings: showPersonalizar ? "'FILL' 1" : "'FILL' 0" }}>tune</span>
+                  <span className="text-xs font-bold text-on-surface">Personalizar esta sesión</span>
+                </div>
+                <span className={`text-[10px] font-bold ${showPersonalizar ? 'text-primary' : 'text-on-surface-variant'}`}>
+                  {showPersonalizar ? 'Activo ✓' : 'Opcional →'}
+                </span>
+              </button>
+
+              {showPersonalizar && (
+                <div className="mb-4 space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                  {cuartos.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Preguntas a responder</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {cuartos.map(n => (
+                          <button key={n} onClick={() => setPreStartConfig(c => ({ ...c, cantidad: n }))}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all
+                              ${preStartConfig.cantidad === n ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-500 bg-white'}`}>
+                            {n}{n === total ? ' · todas' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Tiempo por pregunta</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[{ v: 0, l: 'Sin límite' }, { v: 60, l: '1 min' }, { v: 90, l: '90 s' }, { v: 120, l: '2 min' }].map(t => (
+                        <button key={t.v} onClick={() => setPreStartConfig(c => ({ ...c, tiempo: t.v }))}
+                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all
+                            ${preStartConfig.tiempo === t.v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-500 bg-white'}`}>
+                          {t.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => setSimToStart(null)}
+                  className="flex-1 py-3.5 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all text-on-surface-variant">
+                  Cancelar
+                </button>
+                <button onClick={iniciar}
+                  className="flex-[2] py-3.5 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">
+                  <span className="material-symbols-outlined text-base"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+                  Iniciar prueba
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   )
 }
 
@@ -259,9 +416,8 @@ export default function DetallePrueba() {
   const [generandoIA,    setGenerandoIA]    = useState(false)
   const [errorIA,        setErrorIA]        = useState(null)
   const [modeloIA,       setModeloIA]       = useState('gemini')
-  const [configIA,       setConfigIA]       = useState({ cantidad: 20, tiempo: 0, dificultad: 'mixta' })
-  const [personalizarIA, setPersonalizarIA] = useState(false)
-  const [simulacroCreado,setSimulacroCreado]= useState(null) // { simulacro_id, cargo, cantidad, dificultad, tiempo }
+  const [configIA,       setConfigIA]       = useState({ cantidad: 160, tiempo: 0, dificultad: 'mixta' })
+  const [simulacroCreado,setSimulacroCreado]= useState(null)
   const [loadingMsg,      setLoadingMsg]      = useState('')
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [recargarSims,    setRecargarSims]    = useState(0)
@@ -271,7 +427,7 @@ export default function DetallePrueba() {
   useEffect(() => {
     if (!generandoIA) { setLoadingMsg(''); setLoadingProgress(0); return }
 
-    const n          = personalizarIA ? configIA.cantidad : 20
+    const n          = configIA.cantidad
     const batches    = Math.ceil(n / 20)
     const waves      = Math.ceil(batches / 3)
     const expectedMs = (waves * 14 + 3) * 1000
@@ -313,17 +469,17 @@ export default function DetallePrueba() {
         cargo:               cargo.trim(),
         pdf:                 pdfIA || undefined,
         modelo:              modeloIA,
-        cantidad:            personalizarIA ? configIA.cantidad : 20,
-        tiempo_por_pregunta: personalizarIA ? configIA.tiempo   : 0,
-        dificultad_config:   personalizarIA ? configIA.dificultad : 'mixta',
+        cantidad:            configIA.cantidad,
+        tiempo_por_pregunta: configIA.tiempo,
+        dificultad_config:   configIA.dificultad,
       })
       setLoadingProgress(100)
       setSimulacroCreado({
         simulacro_id,
         cargo:     cargo.trim(),
-        cantidad:  total || (personalizarIA ? configIA.cantidad : 20),
-        dificultad:personalizarIA ? configIA.dificultad : 'mixta',
-        tiempo:    personalizarIA ? configIA.tiempo     : 0,
+        cantidad:  total || configIA.cantidad,
+        dificultad:configIA.dificultad,
+        tiempo:    configIA.tiempo,
       })
       setRecargarSims(v => v + 1)
     } catch (e) {
@@ -340,6 +496,9 @@ export default function DetallePrueba() {
     try {
       const v = await verificarOpec({ cargo: cargo.trim() })
       setVerificacion(v)
+      if (v?.total_preguntas) {
+        setConfigIA(c => ({ ...c, cantidad: Math.min(v.total_preguntas, 250) }))
+      }
     } catch { setVerificacion(null) }
     finally { setVerificando(false) }
   }
@@ -765,7 +924,6 @@ export default function DetallePrueba() {
                 evaluacionId={id}
                 userId={user?.id}
                 recargar={recargarSims}
-                onIniciar={sid => navigate(`/simulacro-ia/${sid}`)}
               />
             ) : (
               <div>
@@ -1108,41 +1266,52 @@ export default function DetallePrueba() {
 
             {/* ── Pantalla éxito ── */}
             {simulacroCreado ? (
-              <div className="flex flex-col items-center text-center gap-4 py-4">
-                <div className="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-secondary text-4xl"
-                    style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
+              <div className="flex flex-col gap-0 overflow-hidden rounded-2xl -mx-0">
+                {/* Cabecera éxito */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 text-white text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-3">
+                    <span className="material-symbols-outlined text-white text-3xl"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
+                  </div>
+                  <p className="font-black text-2xl mb-1">¡Prueba lista!</p>
+                  <p className="text-white/70 text-sm font-semibold truncate">{simulacroCreado.cargo}</p>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    {[
+                      { val: simulacroCreado.cantidad, sub: 'Preguntas' },
+                      { val: { mixta: 'Mixta', facil: 'Fácil', medio: 'Medio', dificil: 'Difícil' }[simulacroCreado.dificultad] || 'Mixta', sub: 'Dificultad' },
+                      { val: simulacroCreado.tiempo === 0 ? '∞' : `${simulacroCreado.tiempo}s`, sub: 'Por preg.' },
+                    ].map(s => (
+                      <div key={s.sub} className="bg-white/10 rounded-xl p-3">
+                        <p className="font-black text-xl leading-none">{s.val}</p>
+                        <p className="text-[9px] opacity-50 uppercase tracking-widest mt-1">{s.sub}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Módulos OPEC */}
+                  <div className="mt-3 flex gap-1.5 flex-wrap justify-center">
+                    {MODULOS_OPEC.map(m => {
+                      const n = Math.round(simulacroCreado.cantidad * m.pct / 100)
+                      return (
+                        <span key={m.label} className="bg-white/10 text-white/70 text-[9px] font-bold px-2.5 py-1 rounded-full">
+                          {m.label} · {n} pregs
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <p className="font-extrabold text-xl text-secondary">¡Prueba creada!</p>
-                  <p className="text-sm text-on-surface-variant mt-1 font-semibold truncate max-w-xs">{simulacroCreado.cargo}</p>
-                </div>
-                <div className="w-full grid grid-cols-3 gap-2 text-center">
-                  {[
-                    { label: 'Preguntas', val: simulacroCreado.cantidad },
-                    { label: 'Dificultad', val: { mixta:'Mixta', facil:'Fácil', medio:'Medio', dificil:'Difícil' }[simulacroCreado.dificultad] },
-                    { label: 'Tiempo', val: simulacroCreado.tiempo === 0 ? 'Libre' : `${simulacroCreado.tiempo}s` },
-                  ].map(s => (
-                    <div key={s.label} className="bg-slate-50 rounded-xl p-2.5 border border-slate-200">
-                      <p className="font-extrabold text-base text-on-surface">{s.val}</p>
-                      <p className="text-[10px] text-on-surface-variant font-bold">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-xl p-3 text-left w-full">
-                  <span className="material-symbols-outlined text-primary text-sm shrink-0 mt-0.5">info</span>
-                  <p className="text-xs text-primary/80 leading-relaxed">
-                    Tu prueba queda guardada en la pestaña <strong>Mis IA</strong>. Las OPECs reales tienen 160–250 preguntas — puedes generar hasta <strong>150 preguntas</strong> por simulacro o crear varios para cubrir el temario completo.
-                  </p>
-                </div>
-                <div className="flex gap-3 w-full">
+
+                {/* Acciones */}
+                <div className="p-5 flex gap-3">
                   <button onClick={() => { setModalIA(false); setSimulacroCreado(null) }}
-                    className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all">
-                    Hacerlo después
+                    className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all text-on-surface-variant">
+                    Ver en Mis IA
                   </button>
                   <button onClick={() => navigate(`/simulacro-ia/${simulacroCreado.simulacro_id}`)}
-                    className="flex-1 py-3 rounded-full bg-secondary text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
+                    className="flex-[2] py-3 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">
+                    <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
                     Iniciar ahora
                   </button>
                 </div>
@@ -1174,9 +1343,7 @@ export default function DetallePrueba() {
                   </div>
                 </div>
                 <p className="text-[10px] text-on-surface-variant/60 text-center px-4">
-                  {(personalizarIA ? configIA.cantidad : 20) > 20
-                    ? `Generando ${personalizarIA ? configIA.cantidad : 20} preguntas en lotes — puede tomar ~${Math.round((Math.ceil(Math.ceil((personalizarIA ? configIA.cantidad : 20) / 20) / 3) * 14 + 3))} segundos`
-                    : 'Esto puede tardar entre 10 y 20 segundos'}
+                  {`Generando ${configIA.cantidad} preguntas en lotes — puede tomar ~${Math.round((Math.ceil(Math.ceil(configIA.cantidad / 20) / 3) * 14 + 3))} segundos`}
                 </p>
               </div>
             ) : (
@@ -1257,12 +1424,11 @@ export default function DetallePrueba() {
                           {verificacion.nota && (
                             <p className="text-blue-600 italic">{verificacion.nota}</p>
                           )}
-                          {/* Info de cantidad real vs generación */}
                           {verificacion.total_preguntas && (
                             <div className="mt-2 flex items-start gap-1.5 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                              <span className="material-symbols-outlined text-blue-600 text-sm shrink-0 mt-0.5">info</span>
+                              <span className="material-symbols-outlined text-blue-600 text-sm shrink-0 mt-0.5">auto_awesome</span>
                               <p className="text-blue-800 leading-relaxed">
-                                La OPEC real tiene <strong>~{verificacion.total_preguntas} preguntas</strong>. Puedes generar hasta <strong>150</strong> por simulacro — activa "Personalizar" para elegir la cantidad.
+                                La IA generará <strong>~{verificacion.total_preguntas} preguntas</strong> siguiendo la estructura real de esta OPEC.
                               </p>
                             </div>
                           )}
@@ -1276,65 +1442,6 @@ export default function DetallePrueba() {
                     )}
                   </div>
                 )}
-
-                {/* Toggle personalizar */}
-                <button onClick={() => setPersonalizarIA(v => !v)}
-                  className="mb-3 w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sm text-primary"
-                      style={{ fontVariationSettings: personalizarIA ? "'FILL' 1" : "'FILL' 0" }}>tune</span>
-                    <span className="text-xs font-bold text-on-surface">Personalizar prueba</span>
-                  </div>
-                  {personalizarIA
-                    ? <span className="text-[10px] font-bold text-primary">Activo</span>
-                    : <span className="text-[10px] text-on-surface-variant">20 pregs · Mixta · Sin límite</span>}
-                </button>
-
-                {/* Configuración (solo si personalizar activo) */}
-                {personalizarIA && <div className="mb-4 space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  {/* Preguntas */}
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Preguntas</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {[...new Set([20, 40, 60, 100, ...(verificacion?.total_preguntas > 100 ? [Math.min(verificacion.total_preguntas, 150)] : [])])].map(n => (
-                        <button key={n} onClick={() => setConfigIA(c => ({ ...c, cantidad: n }))}
-                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
-                            ${configIA.cantidad === n ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
-                          {n}{verificacion?.total_preguntas && n === Math.min(verificacion.total_preguntas, 150) && n > 100 ? ' ★' : ''}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-on-surface-variant/70 mt-1.5">Máx. 150 — para cantidades mayores genera varios simulacros</p>
-                  </div>
-
-                  {/* Dificultad */}
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Dificultad</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {[{ v: 'mixta', l: 'Mixta' }, { v: 'facil', l: 'Fácil' }, { v: 'medio', l: 'Medio' }, { v: 'dificil', l: 'Difícil' }].map(d => (
-                        <button key={d.v} onClick={() => setConfigIA(c => ({ ...c, dificultad: d.v }))}
-                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
-                            ${configIA.dificultad === d.v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
-                          {d.l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tiempo */}
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Tiempo / pregunta</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {[{ v: 0, l: 'Sin límite' }, { v: 60, l: '1 min' }, { v: 90, l: '90 s' }, { v: 120, l: '2 min' }].map(t => (
-                        <button key={t.v} onClick={() => setConfigIA(c => ({ ...c, tiempo: t.v }))}
-                          className={`px-3 py-1 rounded-full text-xs font-bold border transition-all
-                            ${configIA.tiempo === t.v ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-on-surface-variant hover:border-slate-400 bg-white'}`}>
-                          {t.l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>}
 
                 {/* Selector modelo */}
                 <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
