@@ -187,14 +187,17 @@ export default function SimulacroIA() {
   const [pregActual,setPregActual]= useState(0)
   const [seleccion, setSeleccion] = useState({})
   const [marcadas,  setMarcadas]  = useState([])
-  const [enviado,   setEnviado]   = useState(false)
-  const [segundos,  setSegundos]  = useState(60 * 60) // 60 min
-  const [timerWarn, setTimerWarn] = useState(false)
+  const [enviado,          setEnviado]          = useState(false)
+  const [segundos,         setSegundos]         = useState(60 * 60)
+  const [timerWarn,        setTimerWarn]        = useState(false)
+  const [tiempoPorPregunta,setTiempoPorPregunta]= useState(0)  // 0 = timer global
+  const [timerExpired,     setTimerExpired]     = useState(false)
   const intervalRef         = useRef(null)
-  const tiempoInicioPregRef = useRef(null)   // timestamp al llegar a la pregunta actual
-  const tiemposPregRef      = useRef({})     // { [idx]: segundos acumulados }
+  const tiempoInicioPregRef = useRef(null)
+  const tiemposPregRef      = useRef({})
+  const tppRef              = useRef(0)  // ref para leer tpp dentro de callbacks
 
-  const TIEMPO_TOTAL = 60 * 60 // 60 minutos
+  const TIEMPO_TOTAL = 60 * 60
 
   useEffect(() => {
     if (!user) { navigate('/login'); return }
@@ -206,7 +209,7 @@ export default function SimulacroIA() {
     try {
       const { data, error: err } = await supabase
         .from('user_simulacros')
-        .select('preguntas, cargo, evaluacion_id')
+        .select('preguntas, cargo, evaluacion_id, tiempo_por_pregunta')
         .eq('id', id)
         .eq('user_id', user.id)
         .maybeSingle()
@@ -215,12 +218,17 @@ export default function SimulacroIA() {
       if (!data) throw new Error('Simulacro no encontrado o no te pertenece.')
       if (!data.preguntas?.length) throw new Error('Este simulacro no tiene preguntas.')
 
+      const tpp  = data.tiempo_por_pregunta || 0
+      tppRef.current = tpp
+      setTiempoPorPregunta(tpp)
+
       const lista = shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
       setPreguntas(lista)
       setCargo(data.cargo || '')
-      arrancarTimer()
       tiempoInicioPregRef.current = Date.now()
       tiemposPregRef.current = {}
+      // Timer global solo si no hay límite por pregunta
+      if (tpp === 0) arrancarTimer()
     } catch (e) {
       setError(e.message)
     } finally {
@@ -229,20 +237,50 @@ export default function SimulacroIA() {
   }
 
   function arrancarTimer() {
+    // Solo modo global (sin límite por pregunta)
+    clearInterval(intervalRef.current)
     setSegundos(TIEMPO_TOTAL)
+    setTimerWarn(false)
     intervalRef.current = setInterval(() => {
       setSegundos(s => {
         const n = s - 1
         if (n <= 300) setTimerWarn(true)
-        if (n <= 0) {
-          clearInterval(intervalRef.current)
-          setEnviado(true)
-          return 0
-        }
+        if (n <= 0) { clearInterval(intervalRef.current); setEnviado(true); return 0 }
         return n
       })
     }, 1000)
   }
+
+  // Timer por pregunta: se reinicia cada vez que cambia la pregunta activa
+  useEffect(() => {
+    if (enviado || tppRef.current === 0 || preguntas.length === 0) return
+    clearInterval(intervalRef.current)
+    setTimerWarn(false)
+    setSegundos(tppRef.current)
+    tiempoInicioPregRef.current = Date.now()
+    intervalRef.current = setInterval(() => {
+      setSegundos(s => {
+        const n = s - 1
+        if (n <= 10) setTimerWarn(true)
+        if (n <= 0) { clearInterval(intervalRef.current); setTimerExpired(true); return 0 }
+        return n
+      })
+    }, 1000)
+  }, [pregActual, tiempoPorPregunta, enviado, preguntas.length]) // eslint-disable-line
+
+  // Cuando se agota el tiempo de una pregunta: avanzar o terminar
+  useEffect(() => {
+    if (!timerExpired) return
+    setTimerExpired(false)
+    registrarTiempoPregActual()
+    const siguiente = pregActual + 1
+    if (siguiente >= preguntas.length) {
+      setEnviado(true)
+      guardarRespuestas()
+    } else {
+      setPregActual(siguiente)
+    }
+  }, [timerExpired]) // eslint-disable-line
 
   function seleccionar(letra) {
     if (enviado) return
@@ -279,7 +317,9 @@ export default function SimulacroIA() {
 
   async function guardarRespuestas() {
     try {
-      const tiempoUsado     = TIEMPO_TOTAL - segundos
+      const tiempoUsado     = tppRef.current > 0
+        ? Object.values(tiemposPregRef.current).reduce((a, b) => a + b, 0)
+        : TIEMPO_TOTAL - segundos
       const correctasCount  = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
 
       const rows = preguntas.map((p, i) => ({
@@ -314,10 +354,13 @@ export default function SimulacroIA() {
     tiemposPregRef.current = {}
     setSeleccion({})
     setMarcadas([])
+    setTimerWarn(false)
+    setTimerExpired(false)
     setPreguntas(prev => shuffleArray([...prev]))
     setPregActual(0)
     setEnviado(false)
-    arrancarTimer()
+    if (tppRef.current === 0) arrancarTimer()
+    // Per-question mode: useEffect se encarga al cambiar pregActual/enviado
   }
 
   if (loading) return <LoadingScreen />
@@ -359,9 +402,10 @@ export default function SimulacroIA() {
             </div>
           </div>
 
-          <div className={`flex items-center gap-1 font-mono font-bold text-sm px-3 py-1.5 rounded-full flex-shrink-0 ${timerWarn ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 text-on-surface'}`}>
-            <span className="material-symbols-outlined text-sm">timer</span>
+          <div className={`flex items-center gap-1 font-mono font-bold text-sm px-3 py-1.5 rounded-full flex-shrink-0 ${timerWarn ? 'bg-red-100 text-red-600 animate-pulse' : tiempoPorPregunta > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-on-surface'}`}>
+            <span className="material-symbols-outlined text-sm">{tiempoPorPregunta > 0 ? 'hourglass_bottom' : 'timer'}</span>
             {formatTimer(segundos)}
+            {tiempoPorPregunta > 0 && <span className="text-[9px] font-bold opacity-60 ml-0.5">/ preg</span>}
           </div>
         </div>
       </div>
