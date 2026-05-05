@@ -2,11 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Tema de colores: variables CSS (light / dark) ───────────────────────── */
+
+:root {
+  /* Superficie */
+  --c-surface:          248 249 250;
+  --c-surface-dim:      217 218 219;
+  --c-surface-bright:   248 249 250;
+  --c-surface-variant:  225 227 228;
+  --c-surface-c0:       255 255 255;
+  --c-surface-clow:     243 244 245;
+  --c-surface-c:        237 238 239;
+  --c-surface-chigh:    231 232 233;
+  --c-surface-chighest: 225 227 228;
+  /* Texto */
+  --c-on-surface:         25 28 29;
+  --c-on-surface-variant: 67 70 84;
+  --c-background:         248 249 250;
+  --c-on-background:      25 28 29;
+  /* Bordes */
+  --c-outline:         115 118 133;
+  --c-outline-variant: 195 198 214;
+  /* Inversos */
+  --c-inverse-surface:    46 49 50;
+  --c-inverse-on-surface: 240 241 242;
+  /* Marca (sin cambio) */
+  --c-primary:           0 61 155;
+  --c-primary-container: 0 82 204;
+  --c-primary-fixed:     218 226 255;
+}
+
+/* ── Dark Mode — "Deep Navy" ─────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+  /* Superficie */
+  --c-surface:          13 17 23;
+  --c-surface-dim:      4 8 14;
+  --c-surface-bright:   22 27 34;
+  --c-surface-variant:  28 33 40;
+  --c-surface-c0:       13 17 23;
+  --c-surface-clow:     22 27 34;
+  --c-surface-c:        28 33 40;
+  --c-surface-chigh:    34 39 46;
+  --c-surface-chighest: 45 51 59;
+  /* Texto */
+  --c-on-surface:         205 217 229;
+  --c-on-surface-variant: 139 148 158;
+  --c-background:         13 17 23;
+  --c-on-background:      205 217 229;
+  /* Bordes */
+  --c-outline:         68 76 86;
+  --c-outline-variant: 55 62 71;
+  /* Inversos */
+  --c-inverse-surface:    205 217 229;
+  --c-inverse-on-surface: 28 33 40;
+  /* Marca — más claros sobre fondo oscuro */
+  --c-primary:           76 142 255;
+  --c-primary-container: 30 58 138;
+  --c-primary-fixed:     30 58 138;
+}
+
+/* ── Overrides dark para clases hardcoded (bg-white, bg-slate-*, etc.) ──── */
+html.dark body {
+  background-color: rgb(var(--c-background));
+  color: rgb(var(--c-on-surface));
+}
+html.dark .bg-white { background-color: rgb(var(--c-surface-clow)) !important; }
+html.dark .bg-slate-50 { background-color: rgb(var(--c-surface-clow)) !important; }
+html.dark .bg-slate-100 { background-color: rgb(var(--c-surface-c)) !important; }
+html.dark .bg-slate-200 { background-color: rgb(var(--c-surface-chigh)) !important; }
+html.dark .bg-slate-800 { background-color: rgb(var(--c-surface-chighest)) !important; }
+html.dark .bg-slate-900 { background-color: rgb(18 24 32) !important; }
+html.dark .text-slate-400,
+html.dark .text-slate-500 { color: rgb(var(--c-on-surface-variant)) !important; }
+html.dark .text-slate-600,
+html.dark .text-slate-700,
+html.dark .text-slate-800,
+html.dark .text-slate-900 { color: rgb(var(--c-on-surface)) !important; }
+html.dark .border-slate-100,
+html.dark .border-slate-200 { border-color: rgb(var(--c-outline-variant) / 0.35) !important; }
+html.dark .border-slate-300 { border-color: rgb(var(--c-outline) / 0.5) !important; }
+html.dark .divide-slate-100 > * + *, html.dark .divide-slate-200 > * + * {
+  border-color: rgb(var(--c-outline-variant) / 0.25) !important;
+}
+/* Header / sidebar glass */
+html.dark .glass-effect {
+  background: rgba(13, 17, 23, 0.92) !important;
+  border-color: rgba(55, 62, 71, 0.6) !important;
+}
+/* Inputs */
+html.dark input:not([type="radio"]):not([type="checkbox"]):not([type="file"]),
+html.dark textarea,
+html.dark select {
+  background-color: rgb(var(--c-surface-c)) !important;
+  color: rgb(var(--c-on-surface)) !important;
+  border-color: rgb(var(--c-outline-variant) / 0.4) !important;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: rgb(var(--c-on-surface-variant) / 0.6) !important; }
+/* Gradientes blancos del hero */
+html.dark .from-white { --tw-gradient-from: rgb(var(--c-surface-clow)) !important; }
+/* Footer y bordes de sección */
+html.dark footer { background-color: rgb(var(--c-surface-clow)) !important; border-color: rgb(var(--c-outline-variant) / 0.2) !important; }
+/* Cards con bg-gradient-to-br que combinan con white */
+html.dark [class*="from-slate-"] { }
+/* Scrollbar dark */
+html.dark ::-webkit-scrollbar-track { background: rgb(var(--c-surface-c)); }
+html.dark ::-webkit-scrollbar-thumb { background: rgb(var(--c-outline)); border-radius: 4px; }
+
 @layer base {
   body {
     font-family: 'Public Sans', sans-serif;
-    background-color: #f8f9fa;
-    color: #191c1d;
+    background-color: rgb(var(--c-background));
+    color: rgb(var(--c-on-surface));
     min-height: 100dvh;
   }
 

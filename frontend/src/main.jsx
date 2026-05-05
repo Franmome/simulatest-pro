@@ -4,6 +4,8 @@ import App from './App'
 import './styles/global.css'
 import { supabase } from './utils/supabase'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from './context/ThemeContext'
+import { LangProvider } from './context/LangContext'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +42,12 @@ window.addEventListener('error', async (event) => {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <ThemeProvider>
+      <LangProvider>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </LangProvider>
+    </ThemeProvider>
   </React.StrictMode>
 )

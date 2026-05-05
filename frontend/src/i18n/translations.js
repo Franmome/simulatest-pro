@@ -1,0 +1,273 @@
+// Traducciones UI — se aplican a navegación y configuración.
+// El contenido de exámenes/preguntas permanece en español (es contenido oficial colombiano).
+
+export const LANGUAGES = [
+  { code: 'es', label: 'Español (Colombia)', flag: '🇨🇴' },
+  { code: 'en', label: 'English',            flag: '🇺🇸' },
+  { code: 'pt', label: 'Português',          flag: '🇧🇷' },
+  { code: 'fr', label: 'Français',           flag: '🇫🇷' },
+  { code: 'de', label: 'Deutsch',            flag: '🇩🇪' },
+  { code: 'it', label: 'Italiano',           flag: '🇮🇹' },
+  { code: 'zh', label: '中文 (简体)',          flag: '🇨🇳' },
+  { code: 'ja', label: '日本語',              flag: '🇯🇵' },
+  { code: 'ko', label: '한국어',              flag: '🇰🇷' },
+  { code: 'ar', label: 'العربية',            flag: '🇸🇦' },
+]
+
+export const T = {
+  es: {
+    common: {
+      save: 'Guardar', cancel: 'Cancelar', close: 'Cerrar', back: 'Volver',
+      loading: 'Cargando…', saving: 'Guardando…', retry: 'Reintentar',
+      active: 'Activo', inactive: 'Inactivo', yes: 'Sí', no: 'No',
+    },
+    nav: {
+      dashboard: 'Panel', catalog: 'Catálogo', simulacros: 'Simulacros',
+      results: 'Resultados', study: 'Estudio', rooms: 'Salas', plans: 'Planes',
+      config: 'Configuración', profile: 'Perfil', logout: 'Cerrar sesión',
+    },
+    config: {
+      title: 'Configuración',
+      tabs: {
+        perfil: 'Perfil', seguridad: 'Seguridad', suscripcion: 'Suscripción',
+        notificaciones: 'Notificaciones', preferencias: 'Preferencias',
+      },
+      perfil: {
+        title: 'Información de Perfil',
+        photo: 'Foto de perfil', photoHint: 'JPG, PNG o GIF. Máximo 2MB.',
+        fullName: 'Nombre completo', email: 'Correo electrónico',
+        emailHint: 'El correo no se puede cambiar',
+        profileType: 'Tipo de perfil',
+        billingTitle: 'Datos de facturación',
+        docType: 'Tipo de documento', docNumber: 'Número de documento',
+        phone: 'Teléfono de contacto', city: 'Ciudad', dept: 'Departamento',
+        address: 'Dirección de residencia',
+        saveBtn: 'Guardar cambios', photoNewSelected: '✓ Nueva foto seleccionada — guarda para aplicar',
+        uploadError: 'Error subiendo foto. Verifica el bucket de almacenamiento.',
+      },
+      seguridad: {
+        title: 'Seguridad',
+        googleAccount: 'Cuenta vinculada con Google',
+        googleHint: 'Tu cuenta usa Google OAuth. Administra tu contraseña desde tu cuenta de Google.',
+        changePass: 'Cambiar contraseña',
+        newPass: 'Nueva contraseña', confirmPass: 'Confirmar contraseña',
+        passStrength: { short: 'Muy corta', ok: 'Aceptable', strong: 'Contraseña fuerte' },
+        passHint: 'Elige una contraseña segura de al menos 8 caracteres.',
+        passMismatch: 'Las contraseñas no coinciden',
+        passShort: 'La contraseña debe tener al menos 8 caracteres',
+        passSuccess: 'Contraseña actualizada', passError: 'Error al cambiar contraseña',
+        session: 'Información de sesión',
+        provider: 'Proveedor', lastAccess: 'Último acceso',
+        created: 'Cuenta creada', userId: 'ID de usuario',
+      },
+      suscripcion: {
+        title: 'Suscripción', activePlan: 'Plan Activo',
+        expires: 'Vence el', upgradePlan: 'Mejorar plan',
+        noPlan: 'Sin plan activo', noPlanHint: 'Activa un plan para acceder a todos los simulacros.',
+        seePlans: 'Ver planes', purchaseHistory: 'Historial de compras',
+      },
+      notificaciones: {
+        title: 'Notificaciones',
+        results: 'Resultados de simulacros', resultsDesc: 'Cuando termines un intento',
+        reminders: 'Recordatorios de estudio', remindersDesc: 'Metas semanales y racha diaria',
+        news: 'Novedades y actualizaciones', newsDesc: 'Nuevos simulacros disponibles',
+        tips: 'Tips de preparación', tipsDesc: 'Consejos personalizados',
+        emailHint: 'Las notificaciones por correo electrónico están disponibles solo en planes activos.',
+        saveBtn: 'Guardar notificaciones', saved: 'Preferencias de notificación guardadas',
+      },
+      preferencias: {
+        title: 'Preferencias',
+        darkMode: 'Modo oscuro', darkModeDesc: 'Tema oscuro para toda la aplicación',
+        autosave: 'Autoguardar respuestas', autosaveDesc: 'Guarda cada respuesta al seleccionarla',
+        sounds: 'Sonidos de interfaz', soundsDesc: 'Efectos al responder preguntas',
+        timer: 'Timer siempre visible', timerDesc: 'Muestra el contador de tiempo en pantalla',
+        language: 'Idioma de la interfaz',
+        saveBtn: 'Guardar preferencias', saved: 'Preferencias guardadas',
+      },
+    },
+  },
+
+  en: {
+    common: {
+      save: 'Save', cancel: 'Cancel', close: 'Close', back: 'Back',
+      loading: 'Loading…', saving: 'Saving…', retry: 'Retry',
+      active: 'Active', inactive: 'Inactive', yes: 'Yes', no: 'No',
+    },
+    nav: {
+      dashboard: 'Dashboard', catalog: 'Catalog', simulacros: 'Practice Tests',
+      results: 'Results', study: 'Study', rooms: 'Rooms', plans: 'Plans',
+      config: 'Settings', profile: 'Profile', logout: 'Sign out',
+    },
+    config: {
+      title: 'Settings',
+      tabs: {
+        perfil: 'Profile', seguridad: 'Security', suscripcion: 'Subscription',
+        notificaciones: 'Notifications', preferencias: 'Preferences',
+      },
+      perfil: {
+        title: 'Profile Information',
+        photo: 'Profile photo', photoHint: 'JPG, PNG or GIF. Max 2MB.',
+        fullName: 'Full name', email: 'Email address',
+        emailHint: 'Email cannot be changed',
+        profileType: 'Profile type',
+        billingTitle: 'Billing information',
+        docType: 'Document type', docNumber: 'Document number',
+        phone: 'Contact phone', city: 'City', dept: 'Department / State',
+        address: 'Home address',
+        saveBtn: 'Save changes', photoNewSelected: '✓ New photo selected — save to apply',
+        uploadError: 'Error uploading photo. Check storage bucket.',
+      },
+      seguridad: {
+        title: 'Security',
+        googleAccount: 'Account linked with Google',
+        googleHint: 'Your account uses Google OAuth. Manage your password from your Google account.',
+        changePass: 'Change password',
+        newPass: 'New password', confirmPass: 'Confirm password',
+        passStrength: { short: 'Too short', ok: 'Acceptable', strong: 'Strong password' },
+        passHint: 'Choose a strong password of at least 8 characters.',
+        passMismatch: 'Passwords do not match',
+        passShort: 'Password must be at least 8 characters',
+        passSuccess: 'Password updated', passError: 'Error changing password',
+        session: 'Session information',
+        provider: 'Provider', lastAccess: 'Last access',
+        created: 'Account created', userId: 'User ID',
+      },
+      suscripcion: {
+        title: 'Subscription', activePlan: 'Active Plan',
+        expires: 'Expires on', upgradePlan: 'Upgrade plan',
+        noPlan: 'No active plan', noPlanHint: 'Activate a plan to access all practice tests.',
+        seePlans: 'View plans', purchaseHistory: 'Purchase history',
+      },
+      notificaciones: {
+        title: 'Notifications',
+        results: 'Test results', resultsDesc: 'When you finish an attempt',
+        reminders: 'Study reminders', remindersDesc: 'Weekly goals and daily streak',
+        news: 'News & updates', newsDesc: 'New practice tests available',
+        tips: 'Preparation tips', tipsDesc: 'Personalized advice',
+        emailHint: 'Email notifications are available on active plans only.',
+        saveBtn: 'Save notifications', saved: 'Notification preferences saved',
+      },
+      preferencias: {
+        title: 'Preferences',
+        darkMode: 'Dark mode', darkModeDesc: 'Dark theme for the entire app',
+        autosave: 'Autosave answers', autosaveDesc: 'Save each answer when selected',
+        sounds: 'Interface sounds', soundsDesc: 'Effects when answering questions',
+        timer: 'Timer always visible', timerDesc: 'Show time counter on screen',
+        language: 'Interface language',
+        saveBtn: 'Save preferences', saved: 'Preferences saved',
+      },
+    },
+  },
+
+  pt: {
+    common: { save: 'Salvar', cancel: 'Cancelar', close: 'Fechar', back: 'Voltar', loading: 'Carregando…', saving: 'Salvando…', retry: 'Tentar novamente', active: 'Ativo', inactive: 'Inativo', yes: 'Sim', no: 'Não' },
+    nav: { dashboard: 'Painel', catalog: 'Catálogo', simulacros: 'Simulados', results: 'Resultados', study: 'Estudo', rooms: 'Salas', plans: 'Planos', config: 'Configurações', profile: 'Perfil', logout: 'Sair' },
+    config: {
+      title: 'Configurações',
+      tabs: { perfil: 'Perfil', seguridad: 'Segurança', suscripcion: 'Assinatura', notificaciones: 'Notificações', preferencias: 'Preferências' },
+      perfil: { title: 'Informações do Perfil', photo: 'Foto de perfil', photoHint: 'JPG, PNG ou GIF. Máximo 2MB.', fullName: 'Nome completo', email: 'Endereço de email', emailHint: 'O email não pode ser alterado', profileType: 'Tipo de perfil', billingTitle: 'Dados de faturamento', docType: 'Tipo de documento', docNumber: 'Número do documento', phone: 'Telefone de contato', city: 'Cidade', dept: 'Estado', address: 'Endereço', saveBtn: 'Salvar alterações', photoNewSelected: '✓ Nova foto selecionada', uploadError: 'Erro ao fazer upload da foto.' },
+      seguridad: { title: 'Segurança', googleAccount: 'Conta vinculada ao Google', googleHint: 'Sua conta usa Google OAuth. Gerencie sua senha na sua conta Google.', changePass: 'Alterar senha', newPass: 'Nova senha', confirmPass: 'Confirmar senha', passStrength: { short: 'Muito curta', ok: 'Aceitável', strong: 'Senha forte' }, passHint: 'Escolha uma senha segura com pelo menos 8 caracteres.', passMismatch: 'As senhas não coincidem', passShort: 'A senha deve ter pelo menos 8 caracteres', passSuccess: 'Senha atualizada', passError: 'Erro ao alterar senha', session: 'Informações de sessão', provider: 'Provedor', lastAccess: 'Último acesso', created: 'Conta criada', userId: 'ID do usuário' },
+      suscripcion: { title: 'Assinatura', activePlan: 'Plano Ativo', expires: 'Vence em', upgradePlan: 'Melhorar plano', noPlan: 'Sem plano ativo', noPlanHint: 'Ative um plano para acessar todos os simulados.', seePlans: 'Ver planos', purchaseHistory: 'Histórico de compras' },
+      notificaciones: { title: 'Notificações', results: 'Resultados de simulados', resultsDesc: 'Quando terminar uma tentativa', reminders: 'Lembretes de estudo', remindersDesc: 'Metas semanais e sequência diária', news: 'Novidades e atualizações', newsDesc: 'Novos simulados disponíveis', tips: 'Dicas de preparação', tipsDesc: 'Conselhos personalizados', emailHint: 'Notificações por email disponíveis apenas em planos ativos.', saveBtn: 'Salvar notificações', saved: 'Preferências de notificação salvas' },
+      preferencias: { title: 'Preferências', darkMode: 'Modo escuro', darkModeDesc: 'Tema escuro para todo o aplicativo', autosave: 'Salvar respostas automaticamente', autosaveDesc: 'Salva cada resposta ao selecioná-la', sounds: 'Sons da interface', soundsDesc: 'Efeitos ao responder perguntas', timer: 'Timer sempre visível', timerDesc: 'Mostra o contador de tempo na tela', language: 'Idioma da interface', saveBtn: 'Salvar preferências', saved: 'Preferências salvas' },
+    },
+  },
+
+  fr: {
+    common: { save: 'Sauvegarder', cancel: 'Annuler', close: 'Fermer', back: 'Retour', loading: 'Chargement…', saving: 'Sauvegarde…', retry: 'Réessayer', active: 'Actif', inactive: 'Inactif', yes: 'Oui', no: 'Non' },
+    nav: { dashboard: 'Tableau de bord', catalog: 'Catalogue', simulacros: 'Tests pratiques', results: 'Résultats', study: 'Étude', rooms: 'Salles', plans: 'Plans', config: 'Paramètres', profile: 'Profil', logout: 'Déconnexion' },
+    config: {
+      title: 'Paramètres',
+      tabs: { perfil: 'Profil', seguridad: 'Sécurité', suscripcion: 'Abonnement', notificaciones: 'Notifications', preferencias: 'Préférences' },
+      perfil: { title: 'Informations de profil', photo: 'Photo de profil', photoHint: 'JPG, PNG ou GIF. Max 2 Mo.', fullName: 'Nom complet', email: 'Adresse e-mail', emailHint: "L'e-mail ne peut pas être modifié", profileType: 'Type de profil', billingTitle: 'Informations de facturation', docType: 'Type de document', docNumber: 'Numéro de document', phone: 'Téléphone', city: 'Ville', dept: 'Département', address: 'Adresse', saveBtn: 'Sauvegarder', photoNewSelected: '✓ Nouvelle photo sélectionnée', uploadError: 'Erreur lors du chargement de la photo.' },
+      seguridad: { title: 'Sécurité', googleAccount: 'Compte lié à Google', googleHint: 'Votre compte utilise Google OAuth. Gérez votre mot de passe depuis votre compte Google.', changePass: 'Changer le mot de passe', newPass: 'Nouveau mot de passe', confirmPass: 'Confirmer le mot de passe', passStrength: { short: 'Trop court', ok: 'Acceptable', strong: 'Mot de passe fort' }, passHint: 'Choisissez un mot de passe sécurisé d\'au moins 8 caractères.', passMismatch: 'Les mots de passe ne correspondent pas', passShort: 'Le mot de passe doit comporter au moins 8 caractères', passSuccess: 'Mot de passe mis à jour', passError: 'Erreur lors du changement de mot de passe', session: 'Informations de session', provider: 'Fournisseur', lastAccess: 'Dernier accès', created: 'Compte créé', userId: 'ID utilisateur' },
+      suscripcion: { title: 'Abonnement', activePlan: 'Plan actif', expires: 'Expire le', upgradePlan: 'Améliorer le plan', noPlan: 'Aucun plan actif', noPlanHint: 'Activez un plan pour accéder à tous les tests.', seePlans: 'Voir les plans', purchaseHistory: 'Historique des achats' },
+      notificaciones: { title: 'Notifications', results: 'Résultats des tests', resultsDesc: 'Quand vous terminez une tentative', reminders: 'Rappels d\'étude', remindersDesc: 'Objectifs hebdomadaires et série quotidienne', news: 'Nouveautés et mises à jour', newsDesc: 'Nouveaux tests disponibles', tips: 'Conseils de préparation', tipsDesc: 'Conseils personnalisés', emailHint: 'Notifications par e-mail disponibles sur les plans actifs.', saveBtn: 'Sauvegarder', saved: 'Préférences sauvegardées' },
+      preferencias: { title: 'Préférences', darkMode: 'Mode sombre', darkModeDesc: 'Thème sombre pour toute l\'application', autosave: 'Sauvegarde auto', autosaveDesc: 'Sauvegarde chaque réponse à la sélection', sounds: 'Sons d\'interface', soundsDesc: 'Effets lors des réponses', timer: 'Minuteur toujours visible', timerDesc: 'Affiche le compteur de temps', language: 'Langue de l\'interface', saveBtn: 'Sauvegarder', saved: 'Préférences sauvegardées' },
+    },
+  },
+
+  de: {
+    common: { save: 'Speichern', cancel: 'Abbrechen', close: 'Schließen', back: 'Zurück', loading: 'Lädt…', saving: 'Speichert…', retry: 'Erneut versuchen', active: 'Aktiv', inactive: 'Inaktiv', yes: 'Ja', no: 'Nein' },
+    nav: { dashboard: 'Dashboard', catalog: 'Katalog', simulacros: 'Übungstests', results: 'Ergebnisse', study: 'Lernen', rooms: 'Räume', plans: 'Pläne', config: 'Einstellungen', profile: 'Profil', logout: 'Abmelden' },
+    config: {
+      title: 'Einstellungen',
+      tabs: { perfil: 'Profil', seguridad: 'Sicherheit', suscripcion: 'Abonnement', notificaciones: 'Benachrichtigungen', preferencias: 'Einstellungen' },
+      perfil: { title: 'Profilinformationen', photo: 'Profilfoto', photoHint: 'JPG, PNG oder GIF. Max. 2 MB.', fullName: 'Vollständiger Name', email: 'E-Mail-Adresse', emailHint: 'E-Mail kann nicht geändert werden', profileType: 'Profiltyp', billingTitle: 'Rechnungsdaten', docType: 'Dokumenttyp', docNumber: 'Dokumentnummer', phone: 'Telefon', city: 'Stadt', dept: 'Bundesland', address: 'Adresse', saveBtn: 'Änderungen speichern', photoNewSelected: '✓ Neues Foto ausgewählt', uploadError: 'Fehler beim Hochladen des Fotos.' },
+      seguridad: { title: 'Sicherheit', googleAccount: 'Mit Google verknüpftes Konto', googleHint: 'Ihr Konto verwendet Google OAuth. Verwalten Sie Ihr Passwort in Ihrem Google-Konto.', changePass: 'Passwort ändern', newPass: 'Neues Passwort', confirmPass: 'Passwort bestätigen', passStrength: { short: 'Zu kurz', ok: 'Akzeptabel', strong: 'Sicheres Passwort' }, passHint: 'Wählen Sie ein sicheres Passwort mit mindestens 8 Zeichen.', passMismatch: 'Passwörter stimmen nicht überein', passShort: 'Passwort muss mindestens 8 Zeichen haben', passSuccess: 'Passwort aktualisiert', passError: 'Fehler beim Ändern des Passworts', session: 'Sitzungsinformationen', provider: 'Anbieter', lastAccess: 'Letzter Zugriff', created: 'Konto erstellt', userId: 'Benutzer-ID' },
+      suscripcion: { title: 'Abonnement', activePlan: 'Aktiver Plan', expires: 'Läuft ab am', upgradePlan: 'Plan upgraden', noPlan: 'Kein aktiver Plan', noPlanHint: 'Aktivieren Sie einen Plan für alle Übungstests.', seePlans: 'Pläne ansehen', purchaseHistory: 'Kaufhistorie' },
+      notificaciones: { title: 'Benachrichtigungen', results: 'Testergebnisse', resultsDesc: 'Wenn Sie einen Versuch beenden', reminders: 'Lernbenachrichtigungen', remindersDesc: 'Wöchentliche Ziele und tägliche Serie', news: 'Neuigkeiten und Updates', newsDesc: 'Neue Tests verfügbar', tips: 'Vorbereitungstipps', tipsDesc: 'Personalisierte Ratschläge', emailHint: 'E-Mail-Benachrichtigungen sind nur bei aktiven Plänen verfügbar.', saveBtn: 'Speichern', saved: 'Einstellungen gespeichert' },
+      preferencias: { title: 'Einstellungen', darkMode: 'Dunkler Modus', darkModeDesc: 'Dunkles Design für die gesamte App', autosave: 'Antworten autospeichern', autosaveDesc: 'Speichert jede Antwort bei Auswahl', sounds: 'Oberflächentöne', soundsDesc: 'Effekte beim Beantworten', timer: 'Timer immer sichtbar', timerDesc: 'Zeigt den Zeitcounter', language: 'Oberflächensprache', saveBtn: 'Einstellungen speichern', saved: 'Einstellungen gespeichert' },
+    },
+  },
+
+  it: {
+    common: { save: 'Salva', cancel: 'Annulla', close: 'Chiudi', back: 'Indietro', loading: 'Caricamento…', saving: 'Salvataggio…', retry: 'Riprova', active: 'Attivo', inactive: 'Inattivo', yes: 'Sì', no: 'No' },
+    nav: { dashboard: 'Dashboard', catalog: 'Catalogo', simulacros: 'Test pratici', results: 'Risultati', study: 'Studio', rooms: 'Sale', plans: 'Piani', config: 'Impostazioni', profile: 'Profilo', logout: 'Esci' },
+    config: {
+      title: 'Impostazioni',
+      tabs: { perfil: 'Profilo', seguridad: 'Sicurezza', suscripcion: 'Abbonamento', notificaciones: 'Notifiche', preferencias: 'Preferenze' },
+      perfil: { title: 'Informazioni profilo', photo: 'Foto profilo', photoHint: 'JPG, PNG o GIF. Max 2 MB.', fullName: 'Nome completo', email: 'Indirizzo email', emailHint: "L'email non può essere modificata", profileType: 'Tipo di profilo', billingTitle: 'Dati di fatturazione', docType: 'Tipo di documento', docNumber: 'Numero documento', phone: 'Telefono', city: 'Città', dept: 'Regione', address: 'Indirizzo', saveBtn: 'Salva modifiche', photoNewSelected: '✓ Nuova foto selezionata', uploadError: 'Errore nel caricamento della foto.' },
+      seguridad: { title: 'Sicurezza', googleAccount: 'Account collegato con Google', googleHint: 'Il tuo account usa Google OAuth. Gestisci la password dal tuo account Google.', changePass: 'Cambia password', newPass: 'Nuova password', confirmPass: 'Conferma password', passStrength: { short: 'Troppo corta', ok: 'Accettabile', strong: 'Password sicura' }, passHint: 'Scegli una password sicura di almeno 8 caratteri.', passMismatch: 'Le password non coincidono', passShort: 'La password deve avere almeno 8 caratteri', passSuccess: 'Password aggiornata', passError: 'Errore nel cambio password', session: 'Informazioni sessione', provider: 'Provider', lastAccess: 'Ultimo accesso', created: 'Account creato', userId: 'ID utente' },
+      suscripcion: { title: 'Abbonamento', activePlan: 'Piano attivo', expires: 'Scade il', upgradePlan: 'Migliora piano', noPlan: 'Nessun piano attivo', noPlanHint: 'Attiva un piano per accedere a tutti i test.', seePlans: 'Vedi piani', purchaseHistory: 'Storico acquisti' },
+      notificaciones: { title: 'Notifiche', results: 'Risultati test', resultsDesc: 'Quando finisci un tentativo', reminders: 'Promemoria studio', remindersDesc: 'Obiettivi settimanali e serie giornaliera', news: 'Novità e aggiornamenti', newsDesc: 'Nuovi test disponibili', tips: 'Consigli preparazione', tipsDesc: 'Consigli personalizzati', emailHint: 'Notifiche email disponibili solo con piani attivi.', saveBtn: 'Salva notifiche', saved: 'Preferenze salvate' },
+      preferencias: { title: 'Preferenze', darkMode: 'Modalità scura', darkModeDesc: 'Tema scuro per tutta l\'app', autosave: 'Salvataggio auto', autosaveDesc: 'Salva ogni risposta alla selezione', sounds: 'Suoni interfaccia', soundsDesc: 'Effetti alle risposte', timer: 'Timer sempre visibile', timerDesc: 'Mostra il conto alla rovescia', language: 'Lingua interfaccia', saveBtn: 'Salva preferenze', saved: 'Preferenze salvate' },
+    },
+  },
+
+  zh: {
+    common: { save: '保存', cancel: '取消', close: '关闭', back: '返回', loading: '加载中…', saving: '保存中…', retry: '重试', active: '活跃', inactive: '不活跃', yes: '是', no: '否' },
+    nav: { dashboard: '仪表板', catalog: '目录', simulacros: '模拟测试', results: '结果', study: '学习', rooms: '房间', plans: '计划', config: '设置', profile: '个人资料', logout: '退出登录' },
+    config: {
+      title: '设置',
+      tabs: { perfil: '个人资料', seguridad: '安全', suscripcion: '订阅', notificaciones: '通知', preferencias: '偏好设置' },
+      perfil: { title: '个人资料信息', photo: '头像', photoHint: 'JPG、PNG 或 GIF。最大 2MB。', fullName: '全名', email: '电子邮件地址', emailHint: '电子邮件不可更改', profileType: '账户类型', billingTitle: '账单信息', docType: '证件类型', docNumber: '证件号码', phone: '联系电话', city: '城市', dept: '省份', address: '住址', saveBtn: '保存更改', photoNewSelected: '✓ 已选择新照片', uploadError: '上传照片时出错。' },
+      seguridad: { title: '安全', googleAccount: '已关联 Google 账户', googleHint: '您的账户使用 Google OAuth。请从 Google 账户管理密码。', changePass: '更改密码', newPass: '新密码', confirmPass: '确认密码', passStrength: { short: '太短', ok: '可接受', strong: '强密码' }, passHint: '请选择至少 8 个字符的强密码。', passMismatch: '密码不匹配', passShort: '密码至少需要 8 个字符', passSuccess: '密码已更新', passError: '更改密码时出错', session: '会话信息', provider: '提供商', lastAccess: '上次访问', created: '账户创建', userId: '用户 ID' },
+      suscripcion: { title: '订阅', activePlan: '活跃计划', expires: '到期日', upgradePlan: '升级计划', noPlan: '无活跃计划', noPlanHint: '激活计划以访问所有模拟测试。', seePlans: '查看计划', purchaseHistory: '购买历史' },
+      notificaciones: { title: '通知', results: '测试结果', resultsDesc: '完成测试时', reminders: '学习提醒', remindersDesc: '每周目标和每日连续', news: '新闻和更新', newsDesc: '新模拟测试可用', tips: '备考技巧', tipsDesc: '个性化建议', emailHint: '电子邮件通知仅适用于活跃计划。', saveBtn: '保存通知', saved: '偏好已保存' },
+      preferencias: { title: '偏好设置', darkMode: '深色模式', darkModeDesc: '整个应用的深色主题', autosave: '自动保存答案', autosaveDesc: '选择后保存每个答案', sounds: '界面声音', soundsDesc: '回答问题时的音效', timer: '计时器始终可见', timerDesc: '在屏幕上显示时间计数器', language: '界面语言', saveBtn: '保存偏好设置', saved: '偏好已保存' },
+    },
+  },
+
+  ja: {
+    common: { save: '保存', cancel: 'キャンセル', close: '閉じる', back: '戻る', loading: '読み込み中…', saving: '保存中…', retry: '再試行', active: 'アクティブ', inactive: '非アクティブ', yes: 'はい', no: 'いいえ' },
+    nav: { dashboard: 'ダッシュボード', catalog: 'カタログ', simulacros: '模擬テスト', results: '結果', study: '学習', rooms: 'ルーム', plans: 'プラン', config: '設定', profile: 'プロフィール', logout: 'ログアウト' },
+    config: {
+      title: '設定',
+      tabs: { perfil: 'プロフィール', seguridad: 'セキュリティ', suscripcion: 'サブスクリプション', notificaciones: '通知', preferencias: '設定' },
+      perfil: { title: 'プロフィール情報', photo: 'プロフィール写真', photoHint: 'JPG、PNG、GIF。最大 2MB。', fullName: 'フルネーム', email: 'メールアドレス', emailHint: 'メールは変更できません', profileType: 'プロフィールタイプ', billingTitle: '請求情報', docType: '書類の種類', docNumber: '書類番号', phone: '連絡先電話', city: '市区町村', dept: '都道府県', address: '住所', saveBtn: '変更を保存', photoNewSelected: '✓ 新しい写真が選択されました', uploadError: '写真のアップロードエラー。' },
+      seguridad: { title: 'セキュリティ', googleAccount: 'Googleアカウントに連携済み', googleHint: 'アカウントはGoogle OAuthを使用しています。Googleアカウントからパスワードを管理してください。', changePass: 'パスワードを変更', newPass: '新しいパスワード', confirmPass: 'パスワードを確認', passStrength: { short: '短すぎる', ok: '許容範囲', strong: '強いパスワード' }, passHint: '少なくとも8文字の安全なパスワードを選択してください。', passMismatch: 'パスワードが一致しません', passShort: 'パスワードは8文字以上必要です', passSuccess: 'パスワードが更新されました', passError: 'パスワード変更エラー', session: 'セッション情報', provider: 'プロバイダー', lastAccess: '最終アクセス', created: 'アカウント作成', userId: 'ユーザーID' },
+      suscripcion: { title: 'サブスクリプション', activePlan: 'アクティブプラン', expires: '有効期限', upgradePlan: 'プランをアップグレード', noPlan: 'アクティブなプランなし', noPlanHint: 'すべての模擬テストにアクセスするにはプランを有効にしてください。', seePlans: 'プランを見る', purchaseHistory: '購入履歴' },
+      notificaciones: { title: '通知', results: 'テスト結果', resultsDesc: '試みを終了したとき', reminders: '学習リマインダー', remindersDesc: '週次目標と毎日の連続', news: 'ニュースとアップデート', newsDesc: '新しいテストが利用可能', tips: '準備のヒント', tipsDesc: 'パーソナライズされたアドバイス', emailHint: 'メール通知はアクティブなプランでのみ利用可能です。', saveBtn: '通知を保存', saved: '設定が保存されました' },
+      preferencias: { title: '設定', darkMode: 'ダークモード', darkModeDesc: 'アプリ全体のダークテーマ', autosave: '回答を自動保存', autosaveDesc: '選択時に各回答を保存', sounds: 'インターフェースサウンド', soundsDesc: '回答時の効果音', timer: 'タイマー常時表示', timerDesc: '画面にタイムカウンターを表示', language: 'インターフェース言語', saveBtn: '設定を保存', saved: '設定が保存されました' },
+    },
+  },
+
+  ko: {
+    common: { save: '저장', cancel: '취소', close: '닫기', back: '뒤로', loading: '로딩 중…', saving: '저장 중…', retry: '재시도', active: '활성', inactive: '비활성', yes: '예', no: '아니오' },
+    nav: { dashboard: '대시보드', catalog: '카탈로그', simulacros: '모의시험', results: '결과', study: '학습', rooms: '방', plans: '플랜', config: '설정', profile: '프로필', logout: '로그아웃' },
+    config: {
+      title: '설정',
+      tabs: { perfil: '프로필', seguridad: '보안', suscripcion: '구독', notificaciones: '알림', preferencias: '환경설정' },
+      perfil: { title: '프로필 정보', photo: '프로필 사진', photoHint: 'JPG, PNG 또는 GIF. 최대 2MB.', fullName: '전체 이름', email: '이메일 주소', emailHint: '이메일은 변경할 수 없습니다', profileType: '프로필 유형', billingTitle: '청구 정보', docType: '문서 유형', docNumber: '문서 번호', phone: '연락처 전화번호', city: '도시', dept: '주/도', address: '주소', saveBtn: '변경사항 저장', photoNewSelected: '✓ 새 사진이 선택되었습니다', uploadError: '사진 업로드 오류.' },
+      seguridad: { title: '보안', googleAccount: 'Google 계정 연결됨', googleHint: '계정이 Google OAuth를 사용합니다. Google 계정에서 비밀번호를 관리하세요.', changePass: '비밀번호 변경', newPass: '새 비밀번호', confirmPass: '비밀번호 확인', passStrength: { short: '너무 짧음', ok: '허용 가능', strong: '강력한 비밀번호' }, passHint: '최소 8자의 강력한 비밀번호를 선택하세요.', passMismatch: '비밀번호가 일치하지 않습니다', passShort: '비밀번호는 최소 8자 이상이어야 합니다', passSuccess: '비밀번호가 업데이트되었습니다', passError: '비밀번호 변경 오류', session: '세션 정보', provider: '제공업체', lastAccess: '마지막 접근', created: '계정 생성', userId: '사용자 ID' },
+      suscripcion: { title: '구독', activePlan: '활성 플랜', expires: '만료일', upgradePlan: '플랜 업그레이드', noPlan: '활성 플랜 없음', noPlanHint: '모든 모의시험에 접근하려면 플랜을 활성화하세요.', seePlans: '플랜 보기', purchaseHistory: '구매 내역' },
+      notificaciones: { title: '알림', results: '시험 결과', resultsDesc: '시도를 완료할 때', reminders: '학습 알림', remindersDesc: '주간 목표 및 일일 연속', news: '뉴스 및 업데이트', newsDesc: '새 모의시험 가용', tips: '준비 팁', tipsDesc: '맞춤형 조언', emailHint: '이메일 알림은 활성 플랜에서만 사용 가능합니다.', saveBtn: '알림 저장', saved: '설정이 저장되었습니다' },
+      preferencias: { title: '환경설정', darkMode: '다크 모드', darkModeDesc: '전체 앱의 다크 테마', autosave: '답변 자동 저장', autosaveDesc: '선택 시 각 답변 저장', sounds: '인터페이스 사운드', soundsDesc: '질문 답변 시 효과음', timer: '타이머 항상 표시', timerDesc: '화면에 시간 카운터 표시', language: '인터페이스 언어', saveBtn: '환경설정 저장', saved: '설정이 저장되었습니다' },
+    },
+  },
+
+  ar: {
+    common: { save: 'حفظ', cancel: 'إلغاء', close: 'إغلاق', back: 'رجوع', loading: 'جارٍ التحميل…', saving: 'جارٍ الحفظ…', retry: 'إعادة المحاولة', active: 'نشط', inactive: 'غير نشط', yes: 'نعم', no: 'لا' },
+    nav: { dashboard: 'لوحة التحكم', catalog: 'الكتالوج', simulacros: 'الاختبارات التجريبية', results: 'النتائج', study: 'الدراسة', rooms: 'الغرف', plans: 'الخطط', config: 'الإعدادات', profile: 'الملف الشخصي', logout: 'تسجيل الخروج' },
+    config: {
+      title: 'الإعدادات',
+      tabs: { perfil: 'الملف الشخصي', seguridad: 'الأمان', suscripcion: 'الاشتراك', notificaciones: 'الإشعارات', preferencias: 'التفضيلات' },
+      perfil: { title: 'معلومات الملف الشخصي', photo: 'صورة الملف الشخصي', photoHint: 'JPG أو PNG أو GIF. الحد الأقصى 2 ميغابايت.', fullName: 'الاسم الكامل', email: 'عنوان البريد الإلكتروني', emailHint: 'لا يمكن تغيير البريد الإلكتروني', profileType: 'نوع الملف الشخصي', billingTitle: 'معلومات الفواتير', docType: 'نوع الوثيقة', docNumber: 'رقم الوثيقة', phone: 'هاتف الاتصال', city: 'المدينة', dept: 'المنطقة', address: 'العنوان', saveBtn: 'حفظ التغييرات', photoNewSelected: '✓ تم اختيار صورة جديدة', uploadError: 'خطأ في تحميل الصورة.' },
+      seguridad: { title: 'الأمان', googleAccount: 'الحساب مرتبط بـ Google', googleHint: 'يستخدم حسابك Google OAuth. إدارة كلمة المرور من حساب Google الخاص بك.', changePass: 'تغيير كلمة المرور', newPass: 'كلمة المرور الجديدة', confirmPass: 'تأكيد كلمة المرور', passStrength: { short: 'قصيرة جداً', ok: 'مقبولة', strong: 'كلمة مرور قوية' }, passHint: 'اختر كلمة مرور قوية مكونة من 8 أحرف على الأقل.', passMismatch: 'كلمات المرور غير متطابقة', passShort: 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل', passSuccess: 'تم تحديث كلمة المرور', passError: 'خطأ في تغيير كلمة المرور', session: 'معلومات الجلسة', provider: 'المزود', lastAccess: 'آخر وصول', created: 'تاريخ إنشاء الحساب', userId: 'معرّف المستخدم' },
+      suscripcion: { title: 'الاشتراك', activePlan: 'الخطة النشطة', expires: 'تنتهي في', upgradePlan: 'ترقية الخطة', noPlan: 'لا توجد خطة نشطة', noPlanHint: 'قم بتفعيل خطة للوصول إلى جميع الاختبارات.', seePlans: 'عرض الخطط', purchaseHistory: 'سجل المشتريات' },
+      notificaciones: { title: 'الإشعارات', results: 'نتائج الاختبارات', resultsDesc: 'عند الانتهاء من محاولة', reminders: 'تذكيرات الدراسة', remindersDesc: 'الأهداف الأسبوعية والسلسلة اليومية', news: 'الأخبار والتحديثات', newsDesc: 'اختبارات جديدة متاحة', tips: 'نصائح التحضير', tipsDesc: 'نصائح مخصصة', emailHint: 'إشعارات البريد الإلكتروني متاحة فقط للخطط النشطة.', saveBtn: 'حفظ الإشعارات', saved: 'تم حفظ الإعدادات' },
+      preferencias: { title: 'التفضيلات', darkMode: 'الوضع الداكن', darkModeDesc: 'سمة داكنة لكامل التطبيق', autosave: 'الحفظ التلقائي للإجابات', autosaveDesc: 'يحفظ كل إجابة عند تحديدها', sounds: 'أصوات الواجهة', soundsDesc: 'تأثيرات عند الإجابة على الأسئلة', timer: 'المؤقت مرئي دائماً', timerDesc: 'إظهار عداد الوقت على الشاشة', language: 'لغة الواجهة', saveBtn: 'حفظ التفضيلات', saved: 'تم حفظ الإعدادات' },
+    },
+  },
+}
