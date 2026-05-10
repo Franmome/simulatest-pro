@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { checkTokenBalance, recordTokenUsage, getActivePurchase } from '../utils/tokenTracker.js'
 import { buildUserContext } from '../utils/contextBuilder.js'
+import { getPrompt } from '../utils/promptLoader.js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 const genAI    = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
@@ -228,6 +229,7 @@ export async function generarBanco(req, res) {
     const userId = req.user.id
     const { evaluacion_id, nivel_id, cargo, modelo = 'gemini' } = req.body
     const file   = req.file
+    const SP = await getPrompt('opec_maestro', SYSTEM_PROMPT)
 
     const compra = await getActivePurchase(userId)
     if (!compra?.packages?.has_ai_chat)
@@ -252,11 +254,11 @@ export async function generarBanco(req, res) {
       let result
       if (modelo === 'deepseek') {
         const pdfText = await extractPdfText(file.buffer)
-        const prompt  = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
+        const prompt  = `${SP}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
         result = await deepseekGenerar(prompt)
       } else {
         const pdfPart = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-        const prompt  = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
+        const prompt  = `${SP}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\nAnaliza el material adjunto y genera el banco de preguntas.`
         result = await geminiGenerar([prompt, pdfPart])
       }
       const { texto, tokensIn, tokensOut } = result
@@ -274,7 +276,7 @@ export async function generarBanco(req, res) {
 
     if (!cargo) return res.status(400).json({ error: 'Debes subir un PDF o especificar un cargo.' })
 
-    const prompt = `${SYSTEM_PROMPT}\n\nCARGO OBJETIVO: ${cargo}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
+    const prompt = `${SP}\n\nCARGO OBJETIVO: ${cargo}\n\nGenera preguntas típicas para este cargo en el sector público colombiano.`
     const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
       ? await deepseekGenerar(prompt) : await geminiGenerar(prompt)
     const preguntas = validarPreguntas(extraerArrayJSON(texto))
@@ -295,6 +297,7 @@ export async function generarSimulacroPersonal(req, res) {
     const userId = req.user.id
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
+    const SP = await getPrompt('opec_maestro', SYSTEM_PROMPT)
 
     const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 160, 5), 250)
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
@@ -318,7 +321,7 @@ export async function generarSimulacroPersonal(req, res) {
       dificultadTarget !== 'mixta' ? `- TODAS las preguntas deben ser de dificultad "${dificultadTarget}".` : '',
     ].filter(Boolean).join('\n')
 
-    const promptBase = `${SYSTEM_PROMPT}\n\n${instrConfig}`
+    const promptBase = `${SP}\n\n${instrConfig}`
 
     // RAG cache (solo cuando no hay configuración personalizada de dificultad)
     let preguntas = null
@@ -368,7 +371,7 @@ export async function generarSimulacroPersonal(req, res) {
           `- ÁREA EXCLUSIVA: "${lote.area}". Tema: ${lote.instrArea}`,
           dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '',
         ].filter(Boolean).join('\n')
-        const prompt = `${SYSTEM_PROMPT}\n\n${instr}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
+        const prompt = `${SP}\n\n${instr}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
         if (modelo === 'deepseek') {
           const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
           return deepseekGenerar(full, lote.n * 320 + 512)
@@ -467,7 +470,8 @@ export async function analizarSala(req, res) {
     if (!Array.isArray(participantes) || !participantes.length || !total)
       return res.status(400).json({ error: 'Faltan datos de participantes.' })
 
-    const prompt = `Analiza estos resultados de una sala de competencia de simulacros del estado colombiano y genera un análisis breve, concreto y motivador en español colombiano (máx. 200 palabras):
+    const salaSystem = await getPrompt('sala_analisis', '')
+    const prompt = `${salaSystem ? salaSystem + '\n\n' : ''}Analiza estos resultados de una sala de competencia de simulacros del estado colombiano y genera un análisis breve, concreto y motivador en español colombiano (máx. 200 palabras):
 
 Participantes:
 ${participantes.map((p, i) => `${i + 1}. ${p.display_name}: ${p.correct} aciertos, ${p.wrong} errores de ${total} preguntas (${Math.round((p.correct / total) * 100)}%)`).join('\n')}
@@ -508,14 +512,16 @@ export async function chatIA(req, res) {
       })
 
     // Construir contexto del usuario (historial, áreas débiles, etc.)
-    const userCtx = await buildUserContext(userId)
+    const userCtx   = await buildUserContext(userId)
+    const praxiaBase = await getPrompt('chat_praxia', null)
 
-    const systemCtx = [
-      contexto_evaluacion
+    const personalidad = praxiaBase
+      ? praxiaBase.replace('{{EXAMEN}}', contexto_evaluacion || 'concursos públicos colombianos')
+      : contexto_evaluacion
         ? `Eres Praxia, la asistente de estudio personal del usuario para el examen "${contexto_evaluacion}". Tienes un tono cálido, cercano y motivador — como una tutora o compañera de estudio que de verdad quiere que el usuario salga adelante. Si es la primera vez que alguien te habla (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale en qué lo puedes ayudar hoy. En las demás respuestas, sé natural y directa sin necesidad de presentarte de nuevo. Nunca respondas de forma fría o robótica. Usa lenguaje natural en español colombiano, con energía positiva. Ayuda con temas del examen, explica conceptos difíciles con ejemplos, da estrategias de estudio y motiva cuando el usuario se sienta frustrado.`
-        : `Eres Praxia, la asistente de estudio personal del usuario para concursos públicos colombianos. Tienes un tono cálido, cercano y motivador — como una tutora que de verdad quiere que el usuario tenga éxito. Si es la primera vez que te hablan (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale cómo lo puedes ayudar. En las demás respuestas sé natural y directa. Usa lenguaje natural en español colombiano.`,
-      userCtx || '',
-    ].join('\n\n')
+        : `Eres Praxia, la asistente de estudio personal del usuario para concursos públicos colombianos. Tienes un tono cálido, cercano y motivador — como una tutora que de verdad quiere que el usuario tenga éxito. Si es la primera vez que te hablan (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale cómo lo puedes ayudar. En las demás respuestas sé natural y directa. Usa lenguaje natural en español colombiano.`
+
+    const systemCtx = [personalidad, userCtx || ''].join('\n\n')
 
     const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
       ? await deepseekChat(systemCtx, historial, mensaje)
@@ -545,7 +551,10 @@ export async function verificarOpec(req, res) {
       tools: [{ googleSearch: {} }],
     })
 
-    const prompt = `Busca en internet información ACTUAL sobre la prueba de conocimientos (OPEC) para el cargo "${cargo.trim()}" en el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
+    const opecTemplate = await getPrompt('verificar_opec', null)
+    const prompt = opecTemplate
+      ? opecTemplate.replace(/\{\{CARGO\}\}/g, cargo.trim())
+      : `Busca en internet información ACTUAL sobre la prueba de conocimientos (OPEC) para el cargo "${cargo.trim()}" en el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
 
 Responde EXCLUSIVAMENTE con este JSON (sin markdown, sin texto adicional):
 {"encontrado":true,"entidad":"nombre de la entidad","total_preguntas":número,"duracion_minutos":número_o_null,"modulos":[{"nombre":"nombre del módulo","porcentaje":número}],"año_info":"2024 o 2025","nota":"observación relevante o null"}

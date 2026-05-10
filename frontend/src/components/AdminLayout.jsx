@@ -10,6 +10,7 @@ const navItems = [
   { to: '/admin/tesoreria',    icon: 'payments',       label: 'Tesorería',         hint: 'Ventas y cupones' },
   { to: '/admin/editor',       icon: 'edit_note',      label: 'Editor de Página',  hint: 'Textos visibles' },
   { to: '/admin/errores',      icon: 'report_problem', label: 'Errores del Sistema', hint: 'Monitoreo técnico' },
+  { to: '/admin/ia-training',  icon: 'model_training',  label: 'Entrenamiento IA',    hint: 'Prompts y cerebros' },
 ]
 
 function QuickChip({ children, tone = 'default' }) {
