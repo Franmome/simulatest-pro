@@ -183,7 +183,7 @@ function formatError(err) {
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
 async function geminiGenerar(parts) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
   const usage  = result.response.usageMetadata
   return {
@@ -194,7 +194,7 @@ async function geminiGenerar(parts) {
 }
 
 async function geminiTexto(prompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent(prompt)
   const usage  = result.response.usageMetadata
   return {
@@ -612,7 +612,7 @@ export async function verificarOpec(req, res) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       tools: [{ googleSearch: {} }],
     })
 
