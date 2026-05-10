@@ -764,8 +764,9 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
 
     const prompt = `${systemPrompt}\n\nDATOS DEL ASPIRANTE:\n${resumenDatos}`
 
+    // Usar gemini-2.0-flash (mejor modelo) para garantizar JSON estructurado
     const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
-      ? await deepseekTexto(prompt) : await geminiTexto(prompt)
+      ? await deepseekTexto(prompt) : await geminiGenerar(prompt)
 
     // Extraer JSON de la respuesta
     let analisis
@@ -776,15 +777,15 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
 
     if (!analisis) return res.status(500).json({ error: 'El modelo no pudo generar el análisis.' })
 
-    // Registro soft de tokens
-    const compra = await getActivePurchase(userId).catch(() => null)
-    if (compra?.id)
-      recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'analisis', modelo }).catch(() => {})
+    // Registro soft de tokens (no bloquea si falla)
+    getActivePurchase(userId)
+      .then(c => { if (c?.id) recordTokenUsage({ userId, purchaseId: c.id, tokensIn, tokensOut, endpoint: 'analisis', modelo }).catch(()=>{}) })
+      .catch(()=>{})
 
     return res.json({ analisis })
 
   } catch (err) {
-    console.error('[IA] analizarResultadosSimulacro:', err)
+    console.error('[IA] analizarResultadosSimulacro:', err.message, err.stack?.split('\n')[1])
     return res.status(500).json({ error: 'No se pudo generar el análisis.' })
   }
 }

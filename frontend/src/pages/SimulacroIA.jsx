@@ -378,6 +378,8 @@ export default function SimulacroIA() {
   const [timerWarn,        setTimerWarn]        = useState(false)
   const [tiempoPorPregunta,setTiempoPorPregunta]= useState(0)  // 0 = timer global
   const [timerExpired,     setTimerExpired]     = useState(false)
+  const [visible,          setVisible]          = useState(true)   // animación entre preguntas
+  const [showModal,        setShowModal]        = useState(false)  // modal finalizar
   const intervalRef         = useRef(null)
   const tiempoInicioPregRef = useRef(null)
   const tiemposPregRef      = useRef({})
@@ -470,7 +472,12 @@ export default function SimulacroIA() {
 
   function seleccionar(letra) {
     if (enviado) return
+    if (seleccion[pregActual]) return   // respuesta fija — no se cambia
     setSeleccion(prev => ({ ...prev, [pregActual]: letra }))
+    // Auto-avanzar: si no es la última pregunta, ir a la siguiente tras 550ms
+    if (pregActual < preguntas.length - 1) {
+      setTimeout(() => irA(pregActual + 1), 550)
+    }
   }
 
   function toggleMarca() {
@@ -491,22 +498,25 @@ export default function SimulacroIA() {
   function irA(i) {
     if (i < 0 || i >= preguntas.length) return
     registrarTiempoPregActual()
-    setPregActual(i)
+    setVisible(false)
+    setTimeout(() => { setPregActual(i); setVisible(true) }, 160)
   }
 
   function enviar() {
     clearInterval(intervalRef.current)
     registrarTiempoPregActual()
     setEnviado(true)
+    setShowModal(false)
     guardarRespuestas()
   }
 
-  async function guardarRespuestas() {
+  async function guardarRespuestas(selOverride) {
+    const sel = selOverride ?? seleccion
     try {
-      const tiempoUsado     = tppRef.current > 0
+      const tiempoUsado    = tppRef.current > 0
         ? Object.values(tiemposPregRef.current).reduce((a, b) => a + b, 0)
         : TIEMPO_TOTAL - segundos
-      const correctasCount  = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
+      const correctasCount = preguntas.filter((p, i) => sel[i] === p.correcta).length
 
       const rows = preguntas.map((p, i) => ({
         simulacro_id:    parseInt(id),
@@ -515,10 +525,10 @@ export default function SimulacroIA() {
         area:            p.area || 'General',
         dificultad:      p.dificultad || 'medio',
         enunciado:       p.enunciado,
-        opcion_elegida:  seleccion[i] || null,
+        opcion_elegida:  sel[i] || null,
         opcion_correcta: p.correcta,
         explicacion:     p.explicacion || null,
-        es_correcta:     seleccion[i] === p.correcta,
+        es_correcta:     sel[i] === p.correcta,
         tiempo_segundos: tiemposPregRef.current[i] || null,
       }))
 
@@ -531,7 +541,23 @@ export default function SimulacroIA() {
         p_total:           preguntas.length,
         p_tiempo_segundos: tiempoUsado,
       })
-    } catch { /* falla silenciosa — no interrumpe resultados */ }
+    } catch { /* falla silenciosa */ }
+  }
+
+  // ── DEV ONLY: rellenar al azar y enviar (para QA rápido) ─────────────────────
+  function devResponderAlAzar() {
+    if (!window.confirm('[DEV] ¿Rellenar todas al azar y enviar?')) return
+    const nuevaSel = {}
+    preguntas.forEach((p, i) => {
+      const letras = p.opciones.map(op => op.letter)
+      nuevaSel[i] = letras[Math.floor(Math.random() * letras.length)]
+    })
+    setSeleccion(nuevaSel)
+    clearInterval(intervalRef.current)
+    registrarTiempoPregActual()
+    setEnviado(true)
+    setShowModal(false)
+    guardarRespuestas(nuevaSel)
   }
 
   function repetir() {
@@ -575,7 +601,7 @@ export default function SimulacroIA() {
       {/* ── Header ── */}
       <div className={`sticky top-0 z-50 border-b border-slate-200 shadow-sm transition-colors ${timerWarn ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => { if (window.confirm('¿Abandonar el simulacro?')) { clearInterval(intervalRef.current); navigate(-1) } }}
+          <button onClick={() => { clearInterval(intervalRef.current); navigate(-1) }}
             className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-lg">close</span>
           </button>
@@ -599,7 +625,7 @@ export default function SimulacroIA() {
       </div>
 
       {/* ── Cuerpo ── */}
-      <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-32 space-y-5">
+      <div className={`flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-32 space-y-5 transition-all duration-150 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}>
 
         {/* Metadata pregunta */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -628,27 +654,34 @@ export default function SimulacroIA() {
         </div>
 
         {/* Opciones */}
-        <div className="space-y-3">
-          {pActual.opciones.map(op => {
-            const sel = seleccion[pregActual] === op.letter
-            return (
-              <button key={op.letter} onClick={() => seleccionar(op.letter)}
-                className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-[0.99] flex items-center gap-3
-                  ${sel
-                    ? 'border-primary bg-primary/5 shadow-md'
-                    : 'border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5'
-                  }`}>
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 transition-colors
-                  ${sel ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  {op.letter}
-                </div>
-                <span className={`text-sm leading-relaxed ${sel ? 'font-semibold text-primary' : 'text-on-surface'}`}>
-                  {op.text}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+        {(() => {
+          const respondida = !!seleccion[pregActual]
+          return (
+            <div className="space-y-3">
+              {pActual.opciones.map(op => {
+                const sel = seleccion[pregActual] === op.letter
+                return (
+                  <button key={op.letter} onClick={() => seleccionar(op.letter)}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center gap-3
+                      ${sel
+                        ? 'border-primary bg-primary/5 shadow-md'
+                        : respondida
+                          ? 'border-slate-100 bg-white opacity-40 cursor-default'
+                          : 'border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]'
+                      }`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 transition-colors
+                      ${sel ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {sel ? <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check</span> : op.letter}
+                    </div>
+                    <span className={`text-sm leading-relaxed ${sel ? 'font-semibold text-primary' : 'text-on-surface'}`}>
+                      {op.text}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* Mapa de preguntas */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -671,6 +704,42 @@ export default function SimulacroIA() {
         </div>
       </div>
 
+      {/* ── Modal finalizar ── */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-outlined text-secondary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
+            </div>
+            <h3 className="font-extrabold text-lg text-center mb-1">¿Finalizar prueba?</h3>
+            <p className="text-center text-on-surface-variant text-sm mb-1">
+              Respondiste <span className="font-bold text-on-surface">{respondidas}/{total}</span> preguntas
+            </p>
+            {total - respondidas > 0 && (
+              <p className="text-center text-amber-600 text-xs font-semibold">
+                {total - respondidas} pregunta{total - respondidas > 1 ? 's' : ''} sin responder
+              </p>
+            )}
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowModal(false)}
+                className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all">
+                Seguir
+              </button>
+              <button onClick={enviar}
+                className="flex-1 py-3 rounded-full bg-secondary text-on-secondary font-bold text-sm active:scale-95 transition-all">
+                Finalizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Botón DEV (temporal QA) ── */}
+      <button onClick={devResponderAlAzar}
+        className="fixed bottom-20 right-4 z-40 bg-rose-500 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-full shadow-lg opacity-70 hover:opacity-100 transition-opacity">
+        DEV
+      </button>
+
       {/* ── Footer navegación ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-40">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -690,19 +759,11 @@ export default function SimulacroIA() {
 
           <div className="flex-1" />
 
-          {pregActual < preguntas.length - 1 ? (
-            <button onClick={() => irA(pregActual + 1)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold text-sm active:scale-95 transition-all">
-              Siguiente
-              <span className="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
-          ) : (
-            <button onClick={() => { if (window.confirm(`Enviar prueba con ${respondidas}/${total} respondidas?`)) enviar() }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-secondary text-on-secondary font-bold text-sm active:scale-95 transition-all">
-              <span className="material-symbols-outlined text-sm">send</span>
-              Finalizar
-            </button>
-          )}
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-secondary text-on-secondary font-bold text-sm active:scale-95 transition-all">
+            <span className="material-symbols-outlined text-sm">send</span>
+            Finalizar
+          </button>
         </div>
       </div>
     </div>
