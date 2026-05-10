@@ -87,6 +87,13 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
     setPreStartConfig({ cantidad: s.cantidad_preguntas || 0, tiempo: s.tiempo_por_pregunta || 0 })
   }, [])
 
+  const borrar = useCallback(async (e, simId) => {
+    e.stopPropagation()
+    if (!window.confirm('¿Borrar este simulacro IA? No se puede deshacer.')) return
+    await supabase.from('user_simulacros').delete().eq('id', simId)
+    setSims(prev => prev.filter(s => s.id !== simId))
+  }, [])
+
   const iniciar = () => {
     navigate(`/simulacro-ia/${simToStart.id}`, { state: { preStartConfig } })
     setSimToStart(null)
@@ -119,14 +126,23 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
       <div className="space-y-3">
         {sims.map(s => (
           <div key={s.id}
-            className="group flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+            className="group relative flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
             onClick={() => abrirPreStart(s)}>
+
+            {/* Botón borrar — visible al hover */}
+            <button
+              onClick={e => borrar(e, s.id)}
+              title="Borrar simulacro"
+              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 transition-all z-10">
+              <span className="material-symbols-outlined text-slate-500 hover:text-red-600" style={{ fontSize: '13px' }}>close</span>
+            </button>
+
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0 shadow-sm">
               <span className="material-symbols-outlined text-white text-lg"
                 style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">
+              <p className="font-bold text-sm truncate group-hover:text-primary transition-colors pr-4">
                 {s.cargo || 'Simulacro IA'}
               </p>
               <div className="flex items-center gap-1.5 flex-wrap mt-1">
