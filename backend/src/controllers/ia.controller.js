@@ -163,17 +163,21 @@ function validarPreguntas(arr) {
 
 function formatError(err) {
   const msg = (err.message || '').toLowerCase()
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('too many') || msg.includes('rate limit'))
-    return 'El servicio de IA está temporalmente saturado. Intenta en unos minutos.'
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('too many') || msg.includes('rate limit') || msg.includes('resource_exhausted'))
+    return 'El servicio de IA está temporalmente saturado. Intenta en unos minutos o usa DeepSeek.'
   if (msg.includes('404') || msg.includes('not found'))
     return 'Modelo de IA no disponible temporalmente. Prueba el otro modelo.'
-  if (msg.includes('401') || msg.includes('403') || msg.includes('api key') || msg.includes('authentication'))
-    return 'Error de autenticación con el servicio de IA. Contacta soporte.'
+  if (msg.includes('401') || msg.includes('403') || msg.includes('api key') || msg.includes('authentication') || msg.includes('permission_denied'))
+    return 'Error de autenticación con el servicio de IA. Verifica la API key.'
   if (msg.includes('network') || msg.includes('econnrefused') || msg.includes('enotfound'))
     return 'No se pudo conectar con el servicio de IA. Verifica tu conexión.'
   if (msg.includes('json') || msg.includes('parse'))
     return 'El modelo devolvió un formato inesperado. Intenta de nuevo.'
-  return 'El servicio de IA no pudo responder. Intenta de nuevo o cambia de modelo.'
+  if (msg.includes('unavailable') || msg.includes('overload') || msg.includes('service'))
+    return 'El servicio de IA está sobrecargado. Intenta en unos minutos.'
+  // Log completo para diagnóstico en Railway
+  console.error('[formatError] unmatched:', err.name, '|', err.message?.slice(0, 200))
+  return 'El servicio de IA no pudo responder. Intenta de nuevo o cambia a DeepSeek.'
 }
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
@@ -396,37 +400,18 @@ export async function generarSimulacroPersonal(req, res) {
       const pdfPart = file && modelo !== 'deepseek'
         ? { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } } : null
 
-      // ── Perfil específico del cargo (mejora drástica de calidad) ─────────────
-      // Hace UNA llamada rápida para saber qué hace este cargo en la práctica:
-      // funciones reales, sistemas, normativa, dependencias y dilemas típicos.
-      // Ese contexto se inyecta en CADA llamada de generación para que el modelo
-      // NO genere situaciones genéricas sino casos 100% propios del cargo.
-      let cargoCtx = cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''
-      if (cargo?.trim()) {
-        try {
-          const perfilPrompt = `Eres un experto en administración pública colombiana. Para el cargo "${cargo}" en el sector público colombiano, responde en JSON:
-{"funciones":["acción concreta 1 que realiza este cargo","acción concreta 2","acción concreta 3","acción concreta 4"],"sistemas":["sistema o herramienta real 1","sistema 2","sistema 3"],"normas":["norma específica aplicable 1","norma 2","norma 3"],"dependencias":["Oficina o área donde opera 1","área 2","área 3"],"dilemas":["situación dilemática concreta y realista que enfrenta este cargo 1","dilema concreto 2","dilema concreto 3"]}
-Solo JSON. Sin markdown.`
-          const pr = modelo === 'deepseek' ? await deepseekTexto(perfilPrompt) : await geminiTexto(perfilPrompt)
-          tokensIn  += pr.tokensIn  || 0
-          tokensOut += pr.tokensOut || 0
-          const m = pr.texto.match(/\{[\s\S]*\}/)
-          if (m) {
-            const p = JSON.parse(m[0])
-            cargoCtx = `
+      // Contexto de cargo: instrucciones estáticas enriquecidas (sin llamada extra a la API)
+      const cargoCtx = cargo ? `
 
-═══ CARGO OBJETIVO: ${cargo} ═══
-FUNCIONES ESPECÍFICAS DE ESTE CARGO: ${(p.funciones||[]).join(' · ')}
-SISTEMAS Y HERRAMIENTAS QUE MANEJA: ${(p.sistemas||[]).join(' · ')}
-NORMATIVA ESPECÍFICA APLICABLE: ${(p.normas||[]).join(' · ')}
-DEPENDENCIAS DONDE OPERA: ${(p.dependencias||[]).join(' · ')}
-SITUACIONES DILEMÁTICAS TÍPICAS DE ESTE CARGO:
-${(p.dilemas||[]).map((d,i)=>`  ${i+1}. ${d}`).join('\n')}
+CARGO OBJETIVO: ${cargo}
 
-⚠️ CADA pregunta DEBE situar al aspirante como "${cargo}" enfrentando una situación real de su cargo. Usa las funciones, sistemas y dependencias listadas. NUNCA situaciones genéricas.`
-          }
-        } catch { /* fallback al label simple */ }
-      }
+INSTRUCCIONES PARA ESTE CARGO:
+- Cada pregunta debe situar al aspirante como "${cargo}" ejerciendo sus funciones reales en una entidad del sector público colombiano.
+- Usa dependencias concretas: Oficina de Control Interno, Secretaría de Hacienda, Área de Contratación, División de Talento Humano, Oficina Jurídica, Subdirección de Gestión Documental, Área de TIC, Secretaría de Planeación, etc., según el perfil del cargo.
+- Usa sistemas reales: SECOP II, SIGEP, ORFEO, SIIF, MIPG, PQRSDF, SIA Observa, SIMAT, CHIP, SIMIT, acorde al cargo.
+- Menciona documentos y trámites reales: resoluciones, actos administrativos, pliegos de condiciones, estudios previos, contratos, informes de auditoría, PAA, planes de mejoramiento, nómina, certificados SIGEP, etc.
+- Las 4 opciones deben ser plausibles para quien no domina el tema. Aplica los roles psicométricos del prompt.
+- NUNCA generes situaciones genéricas — cada caso debe ser específico al cargo.` : ''
 
       // Distribución Prompt Maestro: 70% Funcionales / 30% Comportamentales
       function calcularLotes() {
