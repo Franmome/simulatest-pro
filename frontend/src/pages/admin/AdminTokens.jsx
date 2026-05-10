@@ -105,7 +105,7 @@ function ModalLimite({ usuario, onClose, onGuardado }) {
               {iniciales(usuario.full_name || usuario.email)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold truncate">{usuario.full_name || 'Sin nombre'}</p>
+              <p className="font-bold truncate">{usuario.full_name || usuario.email?.split('@')[0] || 'Usuario'}</p>
               <p className="text-[11px] text-white/60 truncate">{usuario.email}</p>
             </div>
             <button onClick={onClose}
@@ -185,11 +185,13 @@ export default function AdminTokens() {
 
       const userIds = [...new Set(tokens.map(t => t.user_id))]
 
-      // 2. Info de usuarios
-      const { data: users } = await supabase
+      // 2. Info de usuarios (select * para evitar error si alguna columna no existe)
+      const { data: users, error: usersErr } = await supabase
         .from('users')
-        .select('id, email, full_name, avatar_url')
+        .select('*')
         .in('id', userIds)
+
+      if (usersErr) console.warn('[AdminTokens] users query error:', usersErr.message)
 
       const usersMap = {}
       for (const u of users || []) usersMap[u.id] = u
@@ -212,19 +214,24 @@ export default function AdminTokens() {
       }
 
       // Combinar todo
-      const resultado = tokens.map(t => ({
+      const resultado = tokens.map(t => {
+        const u = usersMap[t.user_id] || {}
+        const email = u.email || u.user_email || ''
+        const full_name = u.full_name || u.name || u.display_name || ''
+        return {
         user_id:       t.user_id,
         purchase_id:   t.purchase_id,
-        email:         usersMap[t.user_id]?.email || '—',
-        full_name:     usersMap[t.user_id]?.full_name || '',
-        avatar_url:    usersMap[t.user_id]?.avatar_url || null,
+        email,
+        full_name,
+        avatar_url:    u.avatar_url || null,
         tokens_used:   t.tokens_used || 0,
         tokens_limit:  t.tokens_limit || 1_000_000,
         gemini:        byUser[t.user_id]?.gemini  || 0,
         deepseek:      byUser[t.user_id]?.deepseek || 0,
         tiene_registro: true,
         bloqueado:     (t.tokens_limit || 0) <= (t.tokens_used || 0) && (t.tokens_used || 0) > 0,
-      }))
+        }
+      })
 
       setUsuarios(resultado)
       setUltimaAct(new Date())
@@ -395,7 +402,7 @@ export default function AdminTokens() {
                               </div>
                           }
                           <div className="min-w-0">
-                            <p className="text-sm font-bold truncate max-w-[180px]">{u.full_name || 'Sin nombre'}</p>
+                            <p className="text-sm font-bold truncate max-w-[180px]">{u.full_name || u.email?.split('@')[0] || 'Usuario'}</p>
                             <p className="text-[10px] text-on-surface-variant truncate max-w-[180px]">{u.email}</p>
                           </div>
                         </div>
