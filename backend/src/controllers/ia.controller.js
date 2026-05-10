@@ -653,3 +653,106 @@ export async function getAdminUsers(req, res) {
     return res.status(500).json({ error: 'No se pudo obtener info de usuarios.' })
   }
 }
+
+// ── Endpoint: Análisis post-simulacro ────────────────────────────────────────
+
+export async function analizarResultadosSimulacro(req, res) {
+  try {
+    const userId = req.user.id
+    const { cargo, preguntas: preg, modelo = 'gemini' } = req.body
+
+    if (!Array.isArray(preg) || !preg.length)
+      return res.status(400).json({ error: 'Faltan datos de preguntas.' })
+
+    // Calcular métricas base
+    const total       = preg.length
+    const correctas   = preg.filter(p => p.es_correcta).length
+    const score       = Math.round((correctas / total) * 100)
+    const funcionales = preg.filter(p => p.tipo === 'funcional')
+    const comportament= preg.filter(p => p.tipo === 'comportamental')
+    const corrFunc    = funcionales.filter(p => p.es_correcta).length
+    const corrComp    = comportament.filter(p => p.es_correcta).length
+
+    // Analizar patrones de distractor
+    const errores = preg.filter(p => !p.es_correcta && p.opcion_elegida)
+    const distractorCounts = { A: 0, B: 0, C: 0, D: 0 }
+    errores.forEach(p => { if (p.opcion_elegida) distractorCounts[p.opcion_elegida]++ })
+
+    // Áreas con más errores
+    const errorsPorArea = {}
+    preg.filter(p => !p.es_correcta).forEach(p => {
+      const a = p.area || 'General'
+      errorsPorArea[a] = (errorsPorArea[a] || 0) + 1
+    })
+
+    // Tiempos
+    const tiempos = preg.map(p => p.tiempo_segundos).filter(Boolean)
+    const tiempoPromedio = tiempos.length ? Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length) : null
+    const preguntasLentas = preg
+      .filter(p => p.tiempo_segundos && tiempoPromedio && p.tiempo_segundos > tiempoPromedio * 1.8)
+      .map(p => p.area || 'General')
+
+    const resumenDatos = `
+CARGO OBJETIVO: ${cargo || 'No especificado'}
+RESULTADO GLOBAL: ${score}% (${correctas}/${total} correctas)
+FUNCIONALES: ${corrFunc}/${funcionales.length} correctas (${funcionales.length ? Math.round(corrFunc/funcionales.length*100) : 0}%)
+COMPORTAMENTALES: ${corrComp}/${comportament.length} correctas (${comportament.length ? Math.round(corrComp/comportament.length*100) : 0}%)
+OPCIONES ELEGIDAS EN ERROR: A=${distractorCounts.A} B=${distractorCounts.B} C=${distractorCounts.C} D=${distractorCounts.D}
+ÁREAS CON MÁS ERRORES: ${Object.entries(errorsPorArea).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k}(${v})`).join(', ') || 'Ninguna'}
+TIEMPO PROMEDIO POR PREGUNTA: ${tiempoPromedio ? `${tiempoPromedio}s` : 'No medido'}
+ÁREAS LENTAS: ${[...new Set(preguntasLentas)].join(', ') || 'Ninguna'}
+
+DETALLE POR PREGUNTA (solo errores):
+${preg.filter(p=>!p.es_correcta).slice(0,8).map((p,i)=>`- ${p.area||'General'} | Eligió ${p.opcion_elegida||'sin resp'} | Correcta ${p.opcion_correcta} | ${p.dificultad||'medio'}`).join('\n')}`
+
+    const systemPrompt = `Eres un psicómetra y coach de carrera administrativa del sector público colombiano. Analizas resultados de simulacros de pruebas de juicio situado (OPEC) y generas retroalimentación profesional, honesta y motivadora en español colombiano natural.
+
+Recibirás métricas de rendimiento de un aspirante y deberás generar un análisis COMPLETO en formato JSON. El análisis debe ser específico, no genérico: menciona competencias reales, normas específicas si aplica, y da consejos accionables.
+
+La arquitectura de distractores del simulacro es:
+- A = Respuesta correcta
+- B = Distractor sentido común (actúa bien pero sin procedimiento formal)
+- C = Distractor procedimiento erróneo (usa norma o trámite real, mal aplicado)
+- D = Distractor exceso (se extralimita en funciones o autoridad)
+
+Devuelve ÚNICAMENTE este JSON sin markdown:
+{
+  "nivel_preparacion": "inicial|básico|intermedio|avanzado|experto",
+  "resumen": "2-3 oraciones directas sobre el desempeño general del aspirante",
+  "fortalezas": ["fortaleza concreta 1", "fortaleza concreta 2"],
+  "areas_mejora": ["área de mejora concreta 1", "área de mejora concreta 2"],
+  "patron_error": "descripción del patrón de error más frecuente (sentido común, exceso de poder, norma mal aplicada, etc.)",
+  "tipo_distractor_frecuente": "A|B|C|D",
+  "significado_distractor": "qué revela ese distractor sobre el pensamiento del aspirante",
+  "recomendaciones": ["recomendación accionable 1", "recomendación accionable 2", "recomendación accionable 3"],
+  "temas_criticos": ["tema que debe reforzar 1", "tema que debe reforzar 2"],
+  "analisis_tiempo": "análisis breve de la gestión del tiempo (si hay datos)",
+  "mensaje_motivacional": "mensaje cálido y personal de máximo 2 oraciones, sin clichés"
+}`
+
+    const prompt = `${systemPrompt}\n\nDATOS DEL ASPIRANTE:\n${resumenDatos}`
+
+    const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
+      ? await deepseekTexto(prompt) : await geminiTexto(prompt)
+
+    // Extraer JSON de la respuesta
+    let analisis
+    try {
+      const match = texto.match(/\{[\s\S]*\}/)
+      analisis = match ? JSON.parse(match[0]) : null
+    } catch { analisis = null }
+
+    if (!analisis) return res.status(500).json({ error: 'El modelo no pudo generar el análisis.' })
+
+    // Registro soft de tokens
+    const compra = await getActivePurchase(userId).catch(() => null)
+    if (compra?.id)
+      recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'analisis', modelo }).catch(() => {})
+
+    return res.json({ analisis })
+
+  } catch (err) {
+    console.error('[IA] analizarResultadosSimulacro:', err)
+    return res.status(500).json({ error: 'No se pudo generar el análisis.' })
+  }
+}

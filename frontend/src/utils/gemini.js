@@ -82,6 +82,19 @@ export async function verificarOpec({ cargo }) {
   return json.verificacion || null
 }
 
+// POST /api/ia/analisis-resultado — análisis psicométrico post-simulacro
+export async function analizarResultadoSimulacro({ cargo, preguntas, modelo = 'gemini' }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/analisis-resultado`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cargo, preguntas, modelo }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Error generando análisis.')
+  return json.analisis
+}
+
 // GET /api/ia/admin-users?ids=uuid1,uuid2 — info de usuarios para panel admin
 export async function getAdminUsersInfo(userIds = []) {
   if (!userIds.length) return []

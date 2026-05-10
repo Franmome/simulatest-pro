@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
+import { analizarResultadoSimulacro } from '../utils/gemini'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,15 +78,55 @@ function ErrorScreen({ mensaje, onVolver }) {
 
 // ── Pantalla de resultados ────────────────────────────────────────────────────
 
-function ResultadosIA({ preguntas, seleccion, cargo, onRepetir, onVolver }) {
-  const total    = preguntas.length
+const NIVEL_CONFIG = {
+  inicial:     { color: 'bg-rose-100 text-rose-700',      label: 'Nivel Inicial',     icon: 'sentiment_very_dissatisfied' },
+  básico:      { color: 'bg-orange-100 text-orange-700',  label: 'Nivel Básico',      icon: 'sentiment_dissatisfied' },
+  basico:      { color: 'bg-orange-100 text-orange-700',  label: 'Nivel Básico',      icon: 'sentiment_dissatisfied' },
+  intermedio:  { color: 'bg-amber-100 text-amber-700',    label: 'Nivel Intermedio',  icon: 'sentiment_neutral' },
+  avanzado:    { color: 'bg-emerald-100 text-emerald-700',label: 'Nivel Avanzado',    icon: 'sentiment_satisfied' },
+  experto:     { color: 'bg-green-100 text-green-700',    label: 'Nivel Experto',     icon: 'military_tech' },
+}
+
+const DISTRACTOR_DESC = {
+  B: 'Sentido común sin procedimiento',
+  C: 'Norma o trámite mal aplicado',
+  D: 'Extralimitación de funciones',
+  A: 'Descartaste la respuesta correcta',
+}
+
+function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir, onVolver }) {
+  const total     = preguntas.length
   const correctas = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
-  const score    = total > 0 ? Math.round((correctas / total) * 100) : 0
-  const aprueba  = score >= 70
+  const score     = total > 0 ? Math.round((correctas / total) * 100) : 0
+  const aprueba   = score >= 70
+
   const [verDetalle, setVerDetalle] = useState(false)
+  const [analisis,   setAnalisis]   = useState(null)
+  const [cargandoIA, setCargandoIA] = useState(true)
+  const [errorIA,    setErrorIA]    = useState(null)
+
+  useEffect(() => {
+    const pregParaAnalisis = preguntas.map((p, i) => ({
+      area:           p.area || 'General',
+      tipo:           p.tipo || 'funcional',
+      dificultad:     p.dificultad || 'medio',
+      opcion_elegida: seleccion[i] || null,
+      opcion_correcta:p.correcta,
+      es_correcta:    seleccion[i] === p.correcta,
+      tiempo_segundos:tiempos?.[i] || null,
+    }))
+
+    analizarResultadoSimulacro({ cargo, preguntas: pregParaAnalisis, modelo: modelo || 'gemini' })
+      .then(a => setAnalisis(a))
+      .catch(e => setErrorIA(e.message))
+      .finally(() => setCargandoIA(false))
+  }, []) // eslint-disable-line
+
+  const nivel = analisis?.nivel_preparacion?.toLowerCase()
+  const nivelCfg = NIVEL_CONFIG[nivel] || NIVEL_CONFIG['intermedio']
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start py-10 px-4 pb-20">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start py-10 px-4 pb-24">
       <div className="w-full max-w-xl space-y-5">
 
         {/* Header resultado */}
@@ -104,9 +145,9 @@ function ResultadosIA({ preguntas, seleccion, cargo, onRepetir, onVolver }) {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { val: correctas, label: 'Correctas', color: 'text-secondary', bg: 'bg-secondary/10' },
-            { val: total - correctas, label: 'Incorrectas', color: 'text-error', bg: 'bg-error/10' },
-            { val: total, label: 'Total', color: 'text-primary', bg: 'bg-primary/10' },
+            { val: correctas,       label: 'Correctas',  color: 'text-secondary', bg: 'bg-secondary/10' },
+            { val: total-correctas, label: 'Incorrectas',color: 'text-error',     bg: 'bg-error/10' },
+            { val: total,           label: 'Total',       color: 'text-primary',  bg: 'bg-primary/10' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-2xl p-4 text-center`}>
               <p className={`text-3xl font-extrabold ${s.color}`}>{s.val}</p>
@@ -114,6 +155,141 @@ function ResultadosIA({ preguntas, seleccion, cargo, onRepetir, onVolver }) {
             </div>
           ))}
         </div>
+
+        {/* ── Análisis IA ── */}
+        {cargandoIA ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-4">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+            <div>
+              <p className="font-bold text-sm">Analizando tu desempeño...</p>
+              <p className="text-xs text-on-surface-variant mt-0.5">Praxia está generando tu retroalimentación personalizada</p>
+            </div>
+          </div>
+        ) : errorIA ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
+            No se pudo generar el análisis automático. Revisa tus respuestas abajo.
+          </div>
+        ) : analisis ? (
+          <div className="space-y-4">
+
+            {/* Nivel de preparación */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${nivelCfg.color}`}>
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{nivelCfg.icon}</span>
+                  {nivelCfg.label}
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-on-surface">{analisis.resumen}</p>
+            </div>
+
+            {/* Fortalezas y áreas de mejora */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-emerald-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>thumb_up</span>
+                  <p className="font-bold text-emerald-800 text-sm">Fortalezas</p>
+                </div>
+                <ul className="space-y-1.5">
+                  {(analisis.fortalezas || []).map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-emerald-800">
+                      <span className="material-symbols-outlined text-emerald-500 text-sm shrink-0 mt-0.5">check_circle</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-amber-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>priority_high</span>
+                  <p className="font-bold text-amber-800 text-sm">A mejorar</p>
+                </div>
+                <ul className="space-y-1.5">
+                  {(analisis.areas_mejora || []).map((a, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-amber-800">
+                      <span className="material-symbols-outlined text-amber-500 text-sm shrink-0 mt-0.5">warning</span>
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Patrón de error */}
+            {analisis.patron_error && (
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined text-rose-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>pattern</span>
+                  <p className="font-bold text-rose-800 text-sm">Patrón de error detectado</p>
+                </div>
+                <p className="text-xs text-rose-800 leading-relaxed mb-2">{analisis.patron_error}</p>
+                {analisis.tipo_distractor_frecuente && analisis.tipo_distractor_frecuente !== 'A' && (
+                  <div className="bg-rose-100 rounded-xl px-3 py-2 flex items-start gap-2">
+                    <span className="font-extrabold text-rose-700 text-sm shrink-0">Opción {analisis.tipo_distractor_frecuente}</span>
+                    <span className="text-xs text-rose-700">{DISTRACTOR_DESC[analisis.tipo_distractor_frecuente] || ''} — {analisis.significado_distractor || ''}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Recomendaciones */}
+            {(analisis.recomendaciones || []).length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>school</span>
+                  <p className="font-bold text-sm">Plan de estudio recomendado</p>
+                </div>
+                <ol className="space-y-2">
+                  {analisis.recomendaciones.map((r, i) => (
+                    <li key={i} className="flex items-start gap-3 text-xs text-on-surface-variant">
+                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                      {r}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Temas críticos */}
+            {(analisis.temas_criticos || []).length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined text-slate-500 text-lg">bookmark</span>
+                  <p className="font-bold text-sm text-slate-700">Temas que debes reforzar</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {analisis.temas_criticos.map((t, i) => (
+                    <span key={i} className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs font-semibold text-slate-700">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tiempo */}
+            {analisis.analisis_tiempo && analisis.analisis_tiempo !== 'No medido' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-blue-600 text-lg">timer</span>
+                  <p className="font-bold text-blue-800 text-sm">Gestión del tiempo</p>
+                </div>
+                <p className="text-xs text-blue-800 leading-relaxed">{analisis.analisis_tiempo}</p>
+              </div>
+            )}
+
+            {/* Mensaje motivacional */}
+            {analisis.mensaje_motivacional && (
+              <div className={`rounded-2xl p-5 text-white text-center ${aprueba ? 'bg-gradient-to-br from-secondary to-[#1a5c20]' : 'bg-gradient-to-br from-primary to-primary-container'}`}>
+                <span className="material-symbols-outlined text-white/70 text-3xl mb-2 block" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                <p className="text-sm font-medium leading-relaxed italic">"{analisis.mensaje_motivacional}"</p>
+                <p className="text-white/50 text-xs mt-2">— Praxia</p>
+              </div>
+            )}
+
+          </div>
+        ) : null}
 
         {/* Detalle de preguntas */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -131,9 +307,9 @@ function ResultadosIA({ preguntas, seleccion, cargo, onRepetir, onVolver }) {
           {verDetalle && (
             <div className="divide-y divide-slate-100">
               {preguntas.map((p, i) => {
-                const resp     = seleccion[i]
-                const esCor    = resp === p.correcta
-                const sinResp  = !resp
+                const resp    = seleccion[i]
+                const esCor   = resp === p.correcta
+                const sinResp = !resp
                 return (
                   <div key={i} className="px-5 py-4">
                     <div className="flex items-start gap-3 mb-2">
@@ -380,7 +556,9 @@ export default function SimulacroIA() {
     <ResultadosIA
       preguntas={preguntas}
       seleccion={seleccion}
+      tiempos={tiemposPregRef.current}
       cargo={cargo}
+      modelo="gemini"
       onRepetir={repetir}
       onVolver={() => navigate(-1)}
     />

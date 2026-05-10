@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { authMiddleware } from '../middleware/auth.middleware.js'
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -14,5 +14,6 @@ router.post('/sala',            authMiddleware, analizarSala)
 router.post('/verificar-opec',  authMiddleware, verificarOpec)
 router.get('/tokens',           authMiddleware, getTokens)
 router.get('/admin-users',      authMiddleware, getAdminUsers)
+router.post('/analisis-resultado', authMiddleware, analizarResultadosSimulacro)
 
 export default router
