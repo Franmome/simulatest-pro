@@ -56,9 +56,8 @@ const TIPS_CARGA = [
   { icon: 'psychology', texto: 'La IA aplica criterios psicométricos certificados para que cada pregunta sea clara y sin ambigüedades.' },
 ]
 const MODULOS_OPEC = [
-  { label: 'Funcionales',      pct: 65 },
-  { label: 'Comportamentales', pct: 25 },
-  { label: 'Básicos',          pct: 10 },
+  { label: 'Funcionales',      pct: 70 },
+  { label: 'Comportamentales', pct: 30 },
 ]
 
 function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
@@ -455,15 +454,14 @@ export default function DetallePrueba() {
     const waves      = Math.ceil(batches / 3)
     const expectedMs = (waves * 14 + 3) * 1000
 
-    const funcBatches = Math.ceil(Math.round(n * 0.65) / 20)
+    const funcBatches = Math.ceil(Math.round(n * 0.70) / 20)
     const funcWaves   = Math.ceil(funcBatches / 3)
     const stages = [
       'Verificando tu saldo y perfil…',
       ...Array.from({ length: funcWaves }, (_, i) =>
         `Generando preguntas funcionales — bloque ${i + 1}/${funcWaves}…`),
-      'Generando preguntas comportamentales…',
-      'Generando conocimientos básicos…',
-      'Revisando calidad y coherencia…',
+      'Generando preguntas comportamentales (Decreto 815)…',
+      'Verificando calidad psicométrica de los ítems…',
       '¡Casi listo…',
     ]
 
@@ -747,7 +745,7 @@ export default function DetallePrueba() {
                 </div>
                 <div className="flex-1">
                   <p className="font-extrabold text-white text-sm">Simulacro personalizado IA</p>
-                  <p className="text-white/60 text-xs">Hasta 150 preguntas · Sigue el prompt OPEC maestro</p>
+                  <p className="text-white/60 text-xs">160-200 preguntas · Juicio situado · 4 opciones psicométricas</p>
                 </div>
                 <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
               </div>
@@ -1342,16 +1340,14 @@ export default function DetallePrueba() {
 
             ) : generandoIA ? (() => {
                 const n  = configIA.cantidad
-                const f  = Math.round(n * 0.65)
-                const c  = Math.round(n * 0.25)
-                const b  = n - f - c
+                const f  = Math.round(n * 0.70)
+                const c  = n - f
                 const segs = Math.round((Math.ceil(Math.ceil(n / 20) / 3) * 14 + 3))
                 const milestones = [
                   { pct: 3,  label: 'Verificando créditos y perfil' },
-                  { pct: 18, label: `${f} preguntas funcionales` },
-                  { pct: 73, label: `${c} preguntas comportamentales` },
-                  { pct: 87, label: `${b} preguntas de conocimientos básicos` },
-                  { pct: 93, label: 'Revisando calidad y coherencia' },
+                  { pct: 15, label: `${f} preguntas funcionales (casuística real de cargo)` },
+                  { pct: 82, label: `${c} preguntas comportamentales (Decreto 815/2018)` },
+                  { pct: 93, label: 'Revisando calidad psicométrica y coherencia' },
                 ]
                 const tip = TIPS_CARGA[Math.floor((loadingProgress / 100) * TIPS_CARGA.length) % TIPS_CARGA.length]
                 return (

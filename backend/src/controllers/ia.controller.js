@@ -19,38 +19,77 @@ const deepseek = new OpenAI({
 
 // ── Prompt base ───────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Eres un psicómetra experto en evaluaciones de selección de personal para el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
+const SYSTEM_PROMPT = `Eres un experto psicómetra senior en diseño de pruebas de juicio situado para concursos de méritos del sector público colombiano (CNSC, Contraloría General, Fiscalía, DIAN, Procuraduría, alcaldías, gobernaciones y entidades nacionales y territoriales).
 
-CONTEXTO DEL SISTEMA OPEC COLOMBIANO:
-Las pruebas de conocimientos para cargos públicos en Colombia son elaboradas según perfiles de competencias definidos en el Manual de Funciones. Generalmente contienen entre 160 y 250 preguntas distribuidas en módulos:
-- Competencias Funcionales (60-70%): conocimiento técnico del área de desempeño, normativa aplicable, procedimientos específicos del cargo, legislación sectorial.
-- Competencias Comportamentales (20-30%): ética del servidor público, trabajo en equipo, orientación al logro, compromiso institucional, relaciones interpersonales.
-- Conocimientos Básicos (10%): Constitución Política, Ley 909/2004, Ley 734/2002 (Código Disciplinario), Ley 1437/2011 (CPACA), principios de administración pública.
+Tu misión es transformar OPEC, manuales de funciones y convocatorias en preguntas de JUICIO SITUADO de alta fidelidad. No evalúas memorización, evalúas la capacidad real del aspirante para tomar decisiones correctas bajo presión, con criterio técnico, legal, ético y administrativo.
 
-CRITERIOS DE CALIDAD PARA CADA PREGUNTA:
-- El enunciado debe ser claro, preciso y plantear UNA sola situación o concepto.
-- Las opciones incorrectas (distractores) deben ser plausibles y bien construidas, no obviamente erróneas.
-- El enunciado NUNCA debe revelar ni insinuar la respuesta correcta.
-- Priorizar preguntas situacionales ("En su rol como... ¿qué haría?") sobre preguntas de memorización pura.
-- La explicación debe citar el artículo, norma o principio exacto que fundamenta la respuesta.
-- Varía el nivel cognitivo: comprensión, aplicación, análisis (no solo memorización).
+═══ CASUÍSTICA REAL DE OFICINA PÚBLICA ═══
+Cada pregunta debe ser una situación concreta y realista con tensión administrativa. NUNCA uses narraciones genéricas.
 
-FORMATO OBLIGATORIO:
-- Exactamente 3 opciones por pregunta: A, B, C (NUNCA D ni más).
-- "correcta": A, B o C (mayúscula).
-- "dificultad": exactamente facil, medio o dificil.
-- "area": nombre del módulo o competencia (ej: "Control Fiscal", "Ética Pública", "Gestión Documental").
+❌ MAL: "Un servidor público recibe una solicitud de un ciudadano."
+✅ BIEN: "En la Secretaría de Planeación de un municipio de sexta categoría, una veeduría ciudadana radica por Orfeo una solicitud para consultar los soportes técnicos de una obra financiada con regalías que aparece reportada como ejecutada, aunque la comunidad afirma que no presta el servicio. El jefe de dependencia indica al servidor que no entregue los documentos hasta que el alcalde autorice."
+
+El CONTEXTO (100-150 palabras) debe incluir SIEMPRE:
+- Dependencia específica real (Oficina de Control Interno, Secretaría de Hacienda, Área de Contratación, División de Fiscalización...)
+- Sistema o herramienta real (SECOP II, Orfeo, SIIF, SIGEP, SIMAT, MIPG, PQRSDF, SIA Observa...)
+- Un dilema técnico, legal o ético concreto
+- Una presión o restricción (término legal próximo, presión jerárquica, hallazgo de auditoría, urgencia ciudadana)
+- El riesgo explícito de actuar incorrectamente (daño fiscal, sanción disciplinaria, vulneración de derechos, pérdida de trazabilidad)
+
+El ENUNCIADO debe formularse como pregunta de acción directa: "¿Cuál es la actuación correcta?", "¿Cómo debe proceder el servidor?", "¿Qué decisión se ajusta al marco normativo del cargo?"
+
+═══ ARQUITECTURA PSICOMÉTRICA DE 4 OPCIONES (OBLIGATORIO) ═══
+Cada pregunta tiene EXACTAMENTE 4 opciones con roles psicométricos específicos:
+
+A = CORRECTA: Única opción legal, técnica y funcionalmente válida. Respeta la competencia del cargo, sigue el procedimiento, protege la trazabilidad, evita omisión y extralimitación, y está respaldada por norma o jurisprudencia.
+
+B = DISTRACTOR DE SENTIDO COMÚN (atractor ético): Suena amable, colaborativa o prudente, pero falla porque omite el procedimiento formal, no deja evidencia, resuelve informalmente un asunto que exige trámite reglado, o prioriza la buena intención sobre la legalidad.
+
+C = DISTRACTOR DE PROCEDIMIENTO ERRÓNEO (atractor técnico): Usa norma, trámite o sistema REAL pero aplicado incorrectamente — norma que no corresponde, trámite fuera de término, dependencia equivocada, o figura legal usada en momento procesal incorrecto.
+
+D = DISTRACTOR DE EXCESO (atractor de poder): El servidor se extralimita — ordena lo que no puede ordenar, sanciona sin competencia, decide por el ordenador del gasto, el comité, el supervisor u otra autoridad, o asume funciones de control o mando que no le corresponden.
+
+REGLA CRÍTICA: Las 4 opciones deben ser homogéneas en extensión y tono. Ninguna debe ser absurda ni evidentemente incorrecta. Todas deben parecer plausibles para quien no domina el tema.
+
+═══ DISTRIBUCIÓN 70/30 ═══
+- 70% PREGUNTAS FUNCIONALES: Evalúan el saber hacer técnico y legal. Situaciones donde una mala decisión genera riesgo disciplinario, fiscal, contractual, reputacional o vulneración de derechos ciudadanos.
+- 30% PREGUNTAS COMPORTAMENTALES: Evalúan competencias del Decreto 815/2018 — aprendizaje continuo, orientación a resultados, orientación al ciudadano, compromiso institucional, trabajo en equipo, adaptación al cambio, transparencia, integridad, liderazgo, toma de decisiones.
+
+═══ EJES TRANSVERSALES (al menos uno por pregunta) ═══
+MIPG · Ley 1712/2014 (transparencia y acceso a información) · Código de Integridad del Servicio Público · Régimen disciplinario (Ley 1952/2019 y Ley 2094/2021) · Derecho de petición (Ley 1755/2015) · Gestión documental y trazabilidad · Control interno y mejora continua · Anticorrupción · Responsabilidad fiscal · Servicio al ciudadano
+
+═══ NORMATIVA BASE ═══
+Constitución Política · CPACA (Ley 1437/2011) · Ley 80/1993 · Ley 1150/2007 · Ley 1474/2011 · Ley 1712/2014 · Ley 1755/2015 · Decreto 1083/2015 · Decreto 815/2018 · Ley 1952/2019 · Ley 2094/2021 · normativa sectorial específica del cargo. NO inventes normas, sentencias ni hallazgos.
+
+═══ NIVELES DE COMPLEJIDAD (Bloom adaptado) ═══
+Nivel I (básico): reconocimiento normativo — cargos asistenciales y técnicos
+Nivel II (medio): aplicación en situación concreta con presión moderada — técnicos y profesionales
+Nivel III (alto analítico): decisión en escenario ambiguo con tensión entre legalidad, presión y riesgo — profesionales, asesores, directivos
+
+═══ CONTROL DE CALIDAD POR ÍTEM ═══
+✓ El caso menciona dependencia, sistema o documento específico — NO es genérico
+✓ La opción A es la única correcta legal y técnicamente
+✓ B suena bien pero falla técnicamente (sentido común sin soporte procedimental)
+✓ C usa herramienta o norma real, pero mal aplicada
+✓ D implica extralimitación de funciones
+✓ El eje transversal afecta directamente la decisión correcta
+✓ La pregunta evalúa juicio situado, no memorización mecánica
+✓ El enunciado NO revela ni insinúa la respuesta correcta
+✓ La explicacion cita la norma, artículo o principio que respalda la opción correcta
 
 Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
-[{"area":"...","dificultad":"...","enunciado":"...","A":"...","B":"...","C":"...","correcta":"...","explicacion":"..."}]`
+[{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","explicacion":"..."}]`
 
 // Siempre se añade al final del SP para garantizar el formato aunque el admin haya modificado el prompt
 const FORMAT_ENFORCER = `
 
 ⚠️ REGLA CRÍTICA DE SALIDA (NO NEGOCIABLE):
 Devuelve ÚNICAMENTE el array JSON. Sin texto antes ni después. Sin bloques de código markdown.
-Cada objeto: {"area":"...","dificultad":"facil|medio|dificil","enunciado":"...","A":"...","B":"...","C":"...","correcta":"A|B|C","explicacion":"..."}
-"correcta" debe ser EXACTAMENTE "A", "B" o "C" (mayúscula, sin puntos, sin nada más). Sin opción D.`
+Cada objeto DEBE tener exactamente estas propiedades:
+{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","explicacion":"..."}
+- SIEMPRE 4 opciones: A, B, C y D. NUNCA menos de 4.
+- "correcta" debe ser EXACTAMENTE "A", "B", "C" o "D" (mayúscula, sin puntos, sin nada más).
+- "tipo" debe ser exactamente "funcional" o "comportamental".`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -115,7 +154,9 @@ function validarPreguntas(arr) {
   if (!Array.isArray(arr) || !arr.length) throw new Error('El modelo devolvió un array vacío.')
   for (const [i, p] of arr.entries()) {
     if (!p.enunciado?.trim()) throw new Error(`Pregunta ${i + 1}: enunciado vacío.`)
-    if (!['A','B','C'].includes(p.correcta?.toUpperCase?.())) throw new Error(`Pregunta ${i + 1}: correcta debe ser A, B o C.`)
+    if (!['A','B','C','D'].includes(p.correcta?.toUpperCase?.())) throw new Error(`Pregunta ${i + 1}: correcta debe ser A, B, C o D.`)
+    // Normalizar tipo si no viene
+    if (!p.tipo) p.tipo = 'funcional'
   }
   return arr.map(p => ({ ...p, correcta: p.correcta.toUpperCase() }))
 }
@@ -355,34 +396,33 @@ export async function generarSimulacroPersonal(req, res) {
       const pdfPart = file && modelo !== 'deepseek'
         ? { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } } : null
 
-      // Distribución OPEC para lotes (65% Funcionales / 25% Comportamentales / 10% Básicos)
+      // Distribución Prompt Maestro: 70% Funcionales / 30% Comportamentales
       function calcularLotes() {
-        const f = Math.round(cantidadTarget * 0.65)
-        const c = Math.round(cantidadTarget * 0.25)
-        const b = cantidadTarget - f - c
+        const f = Math.round(cantidadTarget * 0.70)
+        const c = cantidadTarget - f
         const lotes = []
         for (let r = f; r > 0; r -= BATCH) lotes.push({ n: Math.min(BATCH, r),
+          tipo: 'funcional',
           area: 'Competencias Funcionales',
-          instrArea: 'conocimiento técnico del cargo, normativa aplicable, procedimientos y legislación sectorial específica.' })
+          instrArea: 'conocimiento técnico del cargo, normativa aplicable, procedimientos, legislación sectorial específica y situaciones donde una mala decisión genera riesgo disciplinario, fiscal, contractual o reputacional. "tipo":"funcional"' })
         for (let r = c; r > 0; r -= BATCH) lotes.push({ n: Math.min(BATCH, r),
+          tipo: 'comportamental',
           area: 'Competencias Comportamentales',
-          instrArea: 'ética pública, trabajo en equipo, orientación al logro, compromiso institucional y relaciones interpersonales.' })
-        if (b > 0) lotes.push({ n: b,
-          area: 'Conocimientos Básicos',
-          instrArea: 'Constitución Política, Ley 909/2004, Ley 734/2002 (Código Disciplinario), Ley 1437/2011 (CPACA) y principios de administración pública.' })
+          instrArea: 'competencias del Decreto 815/2018: aprendizaje continuo, orientación a resultados, orientación al ciudadano, compromiso institucional, trabajo en equipo, adaptación al cambio, transparencia, integridad, liderazgo, toma de decisiones. "tipo":"comportamental"' })
         return lotes
       }
 
       async function generarLote(lote) {
         const instr = [
           `- Genera EXACTAMENTE ${lote.n} preguntas.`,
-          `- ÁREA EXCLUSIVA: "${lote.area}". Tema: ${lote.instrArea}`,
-          dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '',
+          `- TIPO EXCLUSIVO de este lote: "${lote.tipo}". Área: "${lote.area}". Enfócate en: ${lote.instrArea}`,
+          dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '- Varía la dificultad: mezcla facil, medio y dificil de forma equilibrada.',
         ].filter(Boolean).join('\n')
         const prompt = `${SP}\n\n${instr}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
         if (modelo === 'deepseek') {
           const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
-          return deepseekGenerar(full, lote.n * 320 + 512)
+          // 4 opciones + contexto rico necesita más tokens por pregunta
+          return deepseekGenerar(full, lote.n * 500 + 512)
         }
         return geminiGenerar(pdfPart ? [prompt, pdfPart] : [prompt])
       }

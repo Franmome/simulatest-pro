@@ -26,13 +26,23 @@ function formatTimer(s) {
 }
 
 // Convierte el formato JSON de IA al formato de opciones del renderer
+// Soporta preguntas con 3 opciones (legacy) y 4 opciones (Prompt Maestro)
 function parsearPregunta(p, idx) {
-  const opciones = ['A', 'B', 'C'].filter(l => p[l]?.trim()).map(l => ({
+  const opciones = ['A', 'B', 'C', 'D'].filter(l => p[l]?.trim()).map(l => ({
     letter: l,
     text: p[l].trim(),
     is_correct: l === p.correcta?.toUpperCase(),
   }))
-  return { idx, enunciado: p.enunciado, area: p.area || '', dificultad: p.dificultad || 'medio', explicacion: p.explicacion || '', correcta: p.correcta?.toUpperCase(), opciones }
+  return {
+    idx,
+    enunciado:  p.enunciado,
+    area:       p.area || '',
+    tipo:       p.tipo || 'funcional',
+    dificultad: p.dificultad || 'medio',
+    explicacion:p.explicacion || '',
+    correcta:   p.correcta?.toUpperCase(),
+    opciones,
+  }
 }
 
 // ── Pantallas auxiliares ──────────────────────────────────────────────────────
@@ -419,7 +429,12 @@ export default function SimulacroIA() {
             ${{ facil: 'bg-secondary/10 text-secondary', medio: 'bg-amber-100 text-amber-700', dificil: 'bg-error/10 text-error' }[pActual.dificultad] || 'bg-slate-100 text-slate-500'}`}>
             {pActual.dificultad}
           </span>
-          {pActual.area && (
+          {pActual.tipo && (
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${pActual.tipo === 'comportamental' ? 'bg-violet-100 text-violet-700' : 'bg-primary/10 text-primary'}`}>
+              {pActual.tipo}
+            </span>
+          )}
+          {pActual.area && !pActual.tipo && (
             <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-full">{pActual.area}</span>
           )}
           {marcadas.includes(pregActual) && (
