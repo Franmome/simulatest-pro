@@ -11,6 +11,7 @@ const navItems = [
   { to: '/admin/editor',       icon: 'edit_note',      label: 'Editor de Página',  hint: 'Textos visibles' },
   { to: '/admin/errores',      icon: 'report_problem', label: 'Errores del Sistema', hint: 'Monitoreo técnico' },
   { to: '/admin/ia-training',  icon: 'model_training',  label: 'Entrenamiento IA',    hint: 'Prompts y cerebros' },
+  { to: '/admin/tokens',       icon: 'monitoring',      label: 'Consumo de Tokens',   hint: 'Gemini · DeepSeek' },
 ]
 
 function QuickChip({ children, tone = 'default' }) {

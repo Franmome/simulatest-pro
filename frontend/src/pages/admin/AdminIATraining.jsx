@@ -1,81 +1,25 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../utils/supabase'
 
-// ── Definición de endpoints (metadatos estáticos + prompt editable de DB) ──────
+// ── Módulos entrenables ───────────────────────────────────────────────────────
 
-const ENDPOINTS_META = [
+const MODULOS = [
   {
     key: 'opec_maestro',
-    nombre: 'OPEC Maestro',
-    descripcion: 'El cerebro principal de generación de preguntas. Controla cómo se distribuyen, redactan y califican todas las preguntas de simulacros personalizados y bancos de preguntas.',
+    nombre: 'Generador de Preguntas',
+    emoji: '📝',
     icono: 'quiz',
-    color: 'from-blue-600 to-blue-800',
-    colorLight: 'bg-blue-50 border-blue-200 text-blue-700',
-    rutas: ['POST /api/ia/simulacro', 'POST /api/ia/generar'],
-    modelos: ['gemini-2.0-flash', 'deepseek-chat'],
-    placeholder: '{{CARGO}} — no aplica en este prompt. Escribe el prompt maestro directamente.',
-    tips: [
-      'Define el rol del modelo (psicómetra, experto, etc.)',
-      'Especifica el formato de salida JSON obligatorio',
-      'Incluye criterios de calidad para las preguntas',
-      'Describe la distribución de módulos OPEC (65/25/10)',
-    ],
-  },
-  {
-    key: 'chat_praxia',
-    nombre: 'Chat Praxia',
-    descripcion: 'Personalidad y rol de la asistente Praxia. Define su tono, cómo se presenta, cómo motiva al usuario y cómo responde según el contexto del examen.',
-    icono: 'chat',
-    color: 'from-violet-600 to-violet-800',
-    colorLight: 'bg-violet-50 border-violet-200 text-violet-700',
-    rutas: ['POST /api/ia/chat'],
-    modelos: ['gemini-2.0-flash-lite', 'deepseek-chat'],
-    placeholder: 'Usa {{EXAMEN}} para insertar el nombre del examen dinámicamente. Ejemplo: "Eres Praxia, asistente para el examen {{EXAMEN}}..."',
-    tips: [
-      'Usa {{EXAMEN}} donde quieras que aparezca el nombre del examen',
-      'Define el tono (cálido, motivador, cercano)',
-      'Indica cómo saludar al usuario por primera vez',
-      'Especifica el idioma y estilo (español colombiano)',
-    ],
-  },
-  {
-    key: 'sala_analisis',
-    nombre: 'Análisis de Sala',
-    descripcion: 'Instrucciones de comportamiento para el análisis de resultados de salas competitivas. Si está vacío, se usa el prompt base que genera análisis motivacionales.',
-    icono: 'leaderboard',
-    color: 'from-emerald-600 to-emerald-800',
-    colorLight: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    rutas: ['POST /api/ia/sala'],
-    modelos: ['gemini-2.0-flash-lite', 'deepseek-chat'],
-    placeholder: 'Sistema de instrucciones para el análisis de resultados. Si se deja vacío, se usa el comportamiento por defecto.',
-    tips: [
-      'Define el tono del análisis (motivador, técnico, etc.)',
-      'Indica si debe incluir recomendaciones personalizadas',
-      'Especifica el máximo de palabras sugerido',
-      'Opcional: instrucciones de formato de respuesta',
-    ],
-  },
-  {
-    key: 'verificar_opec',
-    nombre: 'Verificador OPEC',
-    descripcion: 'Prompt para buscar información real de convocatorias OPEC usando Google Search integrado. Controla qué datos se extraen y en qué formato se devuelven.',
-    icono: 'travel_explore',
-    color: 'from-amber-600 to-amber-800',
-    colorLight: 'bg-amber-50 border-amber-200 text-amber-700',
-    rutas: ['POST /api/ia/verificar-opec'],
-    modelos: ['gemini-2.0-flash (Google Search)'],
-    placeholder: 'Usa {{CARGO}} donde quieras insertar el cargo a buscar. Incluye el formato JSON esperado en el prompt.',
-    tips: [
-      'Usa {{CARGO}} donde debe ir el nombre del cargo',
-      'Define el formato JSON de respuesta esperado',
-      'Incluye instrucciones de qué hacer si no hay datos',
-      'Solo compatible con Gemini (usa Google Search)',
-    ],
-  },
-]
-
-const DEFAULT_PROMPTS = {
-  opec_maestro: `Eres un psicómetra experto en evaluaciones de selección de personal para el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
+    color: 'blue',
+    bg: 'bg-blue-600',
+    bgLight: 'bg-blue-50',
+    border: 'border-blue-200',
+    text: 'text-blue-700',
+    rutas: ['Simulacro IA', 'Banco de preguntas'],
+    cerebros: ['Gemini', 'DeepSeek'],
+    queSabe: 'Este módulo controla cómo la IA crea las preguntas del simulacro. Aquí le enseñas cuántas opciones poner, qué nivel de dificultad, qué tipo de preguntas hacer y cómo calificar las respuestas.',
+    ejemploUso: 'Cuando un usuario genera un simulacro OPEC, la IA usa estas instrucciones para crear las preguntas.',
+    variables: [],
+    defaultPrompt: `Eres un psicómetra experto en evaluaciones de selección de personal para el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
 
 CONTEXTO DEL SISTEMA OPEC COLOMBIANO:
 Las pruebas de conocimientos para cargos públicos en Colombia son elaboradas según perfiles de competencias definidos en el Manual de Funciones. Generalmente contienen entre 160 y 250 preguntas distribuidas en módulos:
@@ -99,133 +43,129 @@ FORMATO OBLIGATORIO:
 
 Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
 [{"area":"...","dificultad":"...","enunciado":"...","A":"...","B":"...","C":"...","correcta":"...","explicacion":"..."}]`,
-
-  chat_praxia: `Eres Praxia, la asistente de estudio personal del usuario para el examen "{{EXAMEN}}". Tienes un tono cálido, cercano y motivador — como una tutora o compañera de estudio que de verdad quiere que el usuario salga adelante. Si es la primera vez que alguien te habla (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale en qué lo puedes ayudar hoy. En las demás respuestas, sé natural y directa sin necesidad de presentarte de nuevo. Nunca respondas de forma fría o robótica. Usa lenguaje natural en español colombiano, con energía positiva. Ayuda con temas del examen, explica conceptos difíciles con ejemplos, da estrategias de estudio y motiva cuando el usuario se sienta frustrado.`,
-
-  sala_analisis: ``,
-
-  verificar_opec: `Busca en internet información ACTUAL sobre la prueba de conocimientos (OPEC) para el cargo "{{CARGO}}" en el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
+  },
+  {
+    key: 'chat_praxia',
+    nombre: 'Asistente Praxia',
+    emoji: '💬',
+    icono: 'chat',
+    color: 'violet',
+    bg: 'bg-violet-600',
+    bgLight: 'bg-violet-50',
+    border: 'border-violet-200',
+    text: 'text-violet-700',
+    rutas: ['Chat de estudio'],
+    cerebros: ['Gemini', 'DeepSeek'],
+    queSabe: 'Aquí le enseñas a Praxia cómo hablar con los usuarios. Puedes definir su personalidad, su nombre, su tono (amigable, formal, motivador), cómo saluda y cómo ayuda con el estudio.',
+    ejemploUso: 'Cuando el usuario abre el chat de estudio y le habla a Praxia, ella usa estas instrucciones para responder.',
+    variables: [{ llave: '{{EXAMEN}}', desc: 'Se reemplaza automáticamente con el nombre del examen que estudia el usuario' }],
+    defaultPrompt: `Eres Praxia, la asistente de estudio personal del usuario para el examen "{{EXAMEN}}". Tienes un tono cálido, cercano y motivador — como una tutora o compañera de estudio que de verdad quiere que el usuario salga adelante. Si es la primera vez que alguien te habla (historial vacío), salúdalo con entusiasmo, preséntate brevemente como Praxia y pregúntale en qué lo puedes ayudar hoy. En las demás respuestas, sé natural y directa sin necesidad de presentarte de nuevo. Nunca respondas de forma fría o robótica. Usa lenguaje natural en español colombiano, con energía positiva. Ayuda con temas del examen, explica conceptos difíciles con ejemplos, da estrategias de estudio y motiva cuando el usuario se sienta frustrado.`,
+  },
+  {
+    key: 'sala_analisis',
+    nombre: 'Análisis de Sala',
+    emoji: '🏆',
+    icono: 'leaderboard',
+    color: 'emerald',
+    bg: 'bg-emerald-600',
+    bgLight: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    text: 'text-emerald-700',
+    rutas: ['Salas competitivas'],
+    cerebros: ['Gemini', 'DeepSeek'],
+    queSabe: 'Después de que los usuarios terminan una sala de competencia, la IA analiza los resultados. Aquí le enseñas qué tono usar, qué decir de los ganadores y cómo motivar a los que no ganaron.',
+    ejemploUso: 'Cuando termina una sala de juego, la IA genera un análisis de los resultados con este comportamiento.',
+    variables: [],
+    defaultPrompt: ``,
+  },
+  {
+    key: 'verificar_opec',
+    nombre: 'Buscador de Datos OPEC',
+    emoji: '🔍',
+    icono: 'travel_explore',
+    color: 'amber',
+    bg: 'bg-amber-600',
+    bgLight: 'bg-amber-50',
+    border: 'border-amber-200',
+    text: 'text-amber-700',
+    rutas: ['Verificar cargo OPEC'],
+    cerebros: ['Gemini + Google Search'],
+    queSabe: 'Cuando el usuario escribe el nombre de su cargo, la IA busca en Google información real sobre esa prueba OPEC (cuántas preguntas tiene, cuánto dura, qué módulos). Aquí defines qué buscar y cómo devolver esos datos.',
+    ejemploUso: 'Cuando el usuario escribe "Profesional Universitario DIAN" y hace clic en Verificar.',
+    variables: [{ llave: '{{CARGO}}', desc: 'Se reemplaza con el nombre del cargo que escribe el usuario' }],
+    defaultPrompt: `Busca en internet información ACTUAL sobre la prueba de conocimientos (OPEC) para el cargo "{{CARGO}}" en el sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría, etc.).
 
 Responde EXCLUSIVAMENTE con este JSON (sin markdown, sin texto adicional):
 {"encontrado":true,"entidad":"nombre de la entidad","total_preguntas":número,"duracion_minutos":número_o_null,"modulos":[{"nombre":"nombre del módulo","porcentaje":número}],"año_info":"2024 o 2025","nota":"observación relevante o null"}
 
 Si no encuentras información específica para ese cargo, responde exactamente:
 {"encontrado":false,"entidad":null,"total_preguntas":null,"duracion_minutos":null,"modulos":[],"año_info":null,"nota":null}`,
+  },
+]
+
+const COLOR_BTN = {
+  blue:   'bg-blue-600   hover:bg-blue-700   text-white',
+  violet: 'bg-violet-600 hover:bg-violet-700 text-white',
+  emerald:'bg-emerald-600 hover:bg-emerald-700 text-white',
+  amber:  'bg-amber-600  hover:bg-amber-700  text-white',
 }
 
-// ── Componente tarjeta de endpoint ────────────────────────────────────────────
+// ── Pantalla principal ────────────────────────────────────────────────────────
 
-function EndpointCard({ meta, record, onEntrenar }) {
-  const modificado = record && record.system_prompt !== DEFAULT_PROMPTS[meta.key]
-  const chars      = record?.system_prompt?.length || 0
-  const updatedAt  = record?.updated_at
-    ? new Date(record.updated_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
-    : null
+export default function AdminIATraining() {
+  const [moduloActivo, setModuloActivo] = useState(MODULOS[0])
+  const [records,      setRecords]      = useState({})
+  const [instrucciones,setInstrucciones]= useState('')
+  const [notas,        setNotas]        = useState('')
+  const [loading,      setLoading]      = useState(true)
+  const [saving,       setSaving]       = useState(false)
+  const [savedOk,      setSavedOk]      = useState(false)
+  const [resetting,    setResetting]    = useState(false)
 
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden group">
-      {/* Franja de color */}
-      <div className={`bg-gradient-to-r ${meta.color} p-4 flex items-center gap-3`}>
-        <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-          <span className="material-symbols-outlined text-white text-xl"
-            style={{ fontVariationSettings: "'FILL' 1" }}>{meta.icono}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-extrabold text-white text-base">{meta.nombre}</h3>
-          <div className="flex gap-1.5 flex-wrap mt-1">
-            {meta.rutas.map(r => (
-              <span key={r} className="text-[9px] font-bold bg-white/15 text-white px-2 py-0.5 rounded-full font-mono">
-                {r}
-              </span>
-            ))}
-          </div>
-        </div>
-        {modificado && (
-          <span className="shrink-0 text-[9px] font-black bg-amber-400 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-widest">
-            Modificado
-          </span>
-        )}
-      </div>
+  const fetchAll = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('ai_system_prompts').select('*')
+    const map = {}
+    for (const r of data || []) map[r.endpoint_key] = r
+    setRecords(map)
+    setLoading(false)
+  }
 
-      {/* Cuerpo */}
-      <div className="p-5">
-        <p className="text-sm text-on-surface-variant leading-relaxed mb-4">{meta.descripcion}</p>
+  useEffect(() => { fetchAll() }, [])
 
-        {/* Modelos */}
-        <div className="flex gap-1.5 flex-wrap mb-4">
-          {meta.modelos.map(m => (
-            <span key={m} className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${meta.colorLight}`}>
-              {m}
-            </span>
-          ))}
-        </div>
+  useEffect(() => {
+    const r = records[moduloActivo.key]
+    setInstrucciones(r?.system_prompt ?? moduloActivo.defaultPrompt ?? '')
+    setNotas(r?.notas_admin ?? '')
+    setSavedOk(false)
+  }, [moduloActivo, records])
 
-        {/* Preview del prompt */}
-        {record?.system_prompt && (
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 mb-4 font-mono text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-            {record.system_prompt.slice(0, 120)}{record.system_prompt.length > 120 ? '…' : ''}
-          </div>
-        )}
+  const guardadoEnDB    = records[moduloActivo.key]?.system_prompt ?? null
+  const esDefault       = instrucciones === moduloActivo.defaultPrompt
+  const hayCambios      = instrucciones !== (guardadoEnDB ?? moduloActivo.defaultPrompt) ||
+                          notas         !== (records[moduloActivo.key]?.notas_admin ?? '')
 
-        {/* Meta info */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-3 text-[10px] text-on-surface-variant">
-            {chars > 0 && <span>{chars.toLocaleString()} chars</span>}
-            {updatedAt && <span>· Actualizado {updatedAt}</span>}
-          </div>
-          <button
-            onClick={() => onEntrenar(meta, record)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all active:scale-95
-              bg-gradient-to-r ${meta.color} text-white shadow-sm hover:shadow-md`}>
-            <span className="material-symbols-outlined text-sm"
-              style={{ fontVariationSettings: "'FILL' 1" }}>model_training</span>
-            Entrenar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Panel editor ───────────────────────────────────────────────────────────────
-
-function EditorPanel({ meta, record, onClose, onSaved }) {
-  const [prompt,    setPrompt]    = useState(record?.system_prompt ?? DEFAULT_PROMPTS[meta.key] ?? '')
-  const [notas,     setNotas]     = useState(record?.notas_admin ?? '')
-  const [saving,    setSaving]    = useState(false)
-  const [resetting, setResetting] = useState(false)
-  const [saved,     setSaved]     = useState(false)
-  const textareaRef = useRef(null)
-
-  const isDefault  = prompt === (DEFAULT_PROMPTS[meta.key] ?? '')
-  const hasChanges = prompt !== (record?.system_prompt ?? DEFAULT_PROMPTS[meta.key] ?? '') ||
-                     notas  !== (record?.notas_admin ?? '')
-  const lines = prompt.split('\n').length
-  const chars = prompt.length
-
-  const handleSave = async () => {
-    if (!prompt.trim() && meta.key !== 'sala_analisis') return
+  const handleGuardar = async () => {
     setSaving(true)
     try {
       const { error } = await supabase
         .from('ai_system_prompts')
         .upsert({
-          endpoint_key:  meta.key,
-          nombre:        meta.nombre,
-          descripcion:   meta.descripcion,
-          icono:         meta.icono,
-          rutas:         meta.rutas,
-          modelos:       meta.modelos,
-          system_prompt: prompt,
-          default_prompt: DEFAULT_PROMPTS[meta.key] ?? '',
-          notas_admin:   notas,
-          updated_at:    new Date().toISOString(),
+          endpoint_key:   moduloActivo.key,
+          nombre:         moduloActivo.nombre,
+          descripcion:    moduloActivo.queSabe,
+          icono:          moduloActivo.icono,
+          rutas:          moduloActivo.rutas,
+          modelos:        moduloActivo.cerebros,
+          system_prompt:  instrucciones,
+          default_prompt: moduloActivo.defaultPrompt ?? '',
+          notas_admin:    notas,
+          updated_at:     new Date().toISOString(),
         }, { onConflict: 'endpoint_key' })
-
       if (error) throw error
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-      onSaved()
+      await fetchAll()
+      setSavedOk(true)
+      setTimeout(() => setSavedOk(false), 3000)
     } catch (e) {
       alert('Error al guardar: ' + e.message)
     } finally {
@@ -233,294 +173,220 @@ function EditorPanel({ meta, record, onClose, onSaved }) {
     }
   }
 
-  const handleReset = async () => {
-    if (!window.confirm('¿Restablecer al prompt por defecto? Se perderán los cambios guardados.')) return
+  const handleRestablecer = async () => {
+    if (!window.confirm('¿Regresar a las instrucciones originales? Se perderán los cambios guardados.')) return
     setResetting(true)
-    const def = DEFAULT_PROMPTS[meta.key] ?? ''
+    const def = moduloActivo.defaultPrompt ?? ''
     try {
-      await supabase
-        .from('ai_system_prompts')
-        .upsert({
-          endpoint_key:   meta.key,
-          nombre:         meta.nombre,
-          descripcion:    meta.descripcion,
-          icono:          meta.icono,
-          rutas:          meta.rutas,
-          modelos:        meta.modelos,
-          system_prompt:  def,
-          default_prompt: def,
-          notas_admin:    '',
-          updated_at:     new Date().toISOString(),
-        }, { onConflict: 'endpoint_key' })
-      setPrompt(def)
-      setNotas('')
-      onSaved()
+      await supabase.from('ai_system_prompts').upsert({
+        endpoint_key:   moduloActivo.key,
+        nombre:         moduloActivo.nombre,
+        descripcion:    moduloActivo.queSabe,
+        icono:          moduloActivo.icono,
+        rutas:          moduloActivo.rutas,
+        modelos:        moduloActivo.cerebros,
+        system_prompt:  def,
+        default_prompt: def,
+        notas_admin:    '',
+        updated_at:     new Date().toISOString(),
+      }, { onConflict: 'endpoint_key' })
+      await fetchAll()
     } catch (e) {
-      alert('Error al restablecer: ' + e.message)
+      alert('Error: ' + e.message)
     } finally {
       setResetting(false)
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-stretch md:items-center justify-center p-0 md:p-4">
-      <div className="bg-white w-full md:max-w-5xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden max-h-screen md:max-h-[92vh]">
-
-        {/* Header */}
-        <div className={`bg-gradient-to-r ${meta.color} px-6 py-4 flex items-center gap-4 shrink-0`}>
-          <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-white text-xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}>{meta.icono}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">Entrenamiento IA</p>
-            <h2 className="font-extrabold text-white text-lg leading-snug">{meta.nombre}</h2>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {!isDefault && (
-              <button onClick={handleReset} disabled={resetting}
-                className="px-3 py-1.5 rounded-full bg-white/15 text-white text-xs font-bold hover:bg-white/25 transition-all disabled:opacity-50 flex items-center gap-1.5">
-                {resetting
-                  ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <span className="material-symbols-outlined text-sm">restart_alt</span>}
-                Restablecer
-              </button>
-            )}
-            <button onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center hover:bg-white/25 transition-all">
-              <span className="material-symbols-outlined text-white text-sm">close</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-
-          {/* Panel info + notas */}
-          <div className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-5 space-y-5">
-
-            {/* Rutas */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Rutas que usan este prompt</p>
-              <div className="space-y-1">
-                {meta.rutas.map(r => (
-                  <div key={r} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
-                    <span className="material-symbols-outlined text-slate-400 text-sm">api</span>
-                    <code className="text-[10px] text-slate-600 font-mono">{r}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Modelos */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Modelos IA</p>
-              <div className="space-y-1">
-                {meta.modelos.map(m => (
-                  <div key={m} className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border ${meta.colorLight} flex items-center gap-1.5`}>
-                    <span className="material-symbols-outlined text-sm">memory</span>
-                    {m}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tips */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Guía de entrenamiento</p>
-              <ul className="space-y-1.5">
-                {meta.tips.map((tip, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[11px] text-on-surface-variant leading-relaxed">
-                    <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">
-                      {i + 1}
-                    </span>
-                    {tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Placeholder info */}
-            {meta.placeholder && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-amber-700 mb-1">Variables disponibles</p>
-                <p className="text-[10px] text-amber-600 leading-relaxed">{meta.placeholder}</p>
-              </div>
-            )}
-
-            {/* Notas admin */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Notas del administrador</p>
-              <textarea
-                value={notas}
-                onChange={e => setNotas(e.target.value)}
-                placeholder="Agrega notas sobre los cambios realizados, razones, versiones..."
-                rows={3}
-                className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Editor */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0">
-              <div className="flex items-center gap-3 text-[10px] text-on-surface-variant font-mono">
-                <span>{chars.toLocaleString()} chars</span>
-                <span>·</span>
-                <span>{lines} líneas</span>
-                {hasChanges && <span className="text-amber-600 font-bold">· Cambios sin guardar</span>}
-                {isDefault && <span className="text-emerald-600 font-bold">· Prompt por defecto</span>}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={onClose}
-                  className="px-3 py-1 rounded-full border border-slate-300 text-xs font-bold text-on-surface-variant hover:bg-slate-100 transition-all">
-                  Cancelar
-                </button>
-                <button onClick={handleSave} disabled={saving || !hasChanges}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5
-                    ${saved ? 'bg-emerald-500 text-white' : `bg-gradient-to-r ${meta.color} text-white shadow-sm`}
-                    disabled:opacity-40 disabled:cursor-not-allowed`}>
-                  {saving
-                    ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    : <span className="material-symbols-outlined text-sm"
-                        style={{ fontVariationSettings: "'FILL' 1" }}>
-                        {saved ? 'check_circle' : 'save'}
-                      </span>}
-                  {saved ? '¡Guardado!' : 'Guardar'}
-                </button>
-              </div>
-            </div>
-
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              spellCheck={false}
-              placeholder={`Escribe el system prompt para "${meta.nombre}"...`}
-              className="flex-1 w-full p-5 font-mono text-xs text-slate-700 bg-slate-900 resize-none focus:outline-none leading-relaxed"
-              style={{ color: '#e2e8f0', caretColor: '#60a5fa' }}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Página principal ──────────────────────────────────────────────────────────
-
-export default function AdminIATraining() {
-  const [records,  setRecords]  = useState({})
-  const [loading,  setLoading]  = useState(true)
-  const [editing,  setEditing]  = useState(null) // { meta, record }
-
-  const fetchRecords = async () => {
-    setLoading(true)
-    const { data } = await supabase
-      .from('ai_system_prompts')
-      .select('*')
-    const map = {}
-    for (const r of data || []) map[r.endpoint_key] = r
-    setRecords(map)
-    setLoading(false)
-  }
-
-  useEffect(() => { fetchRecords() }, [])
-
-  const abrirEditor = (meta, record) => setEditing({ meta, record })
-  const cerrarEditor = () => setEditing(null)
-  const onSaved = () => { fetchRecords(); }
-
-  const totalModificados = ENDPOINTS_META.filter(m => {
-    const r = records[m.key]
-    return r && r.system_prompt !== DEFAULT_PROMPTS[m.key]
-  }).length
+  const m = moduloActivo
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4 space-y-8">
+    <div className="max-w-6xl mx-auto py-8 px-4">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shadow-lg">
-              <span className="material-symbols-outlined text-white text-2xl"
-                style={{ fontVariationSettings: "'FILL' 1" }}>model_training</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">Entrenamiento IA</h1>
-              <p className="text-xs text-on-surface-variant">Personaliza las instrucciones de cada módulo del sistema</p>
-            </div>
+      {/* ── Header ── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shadow-lg">
+            <span className="material-symbols-outlined text-white text-2xl"
+              style={{ fontVariationSettings: "'FILL' 1" }}>model_training</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">Entrenamiento IA</h1>
+            <p className="text-sm text-on-surface-variant">Enséñale a la IA cómo debe responder y comportarse</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          {totalModificados > 0 && (
-            <span className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200">
-              {totalModificados} módulo{totalModificados > 1 ? 's' : ''} modificado{totalModificados > 1 ? 's' : ''}
-            </span>
-          )}
-          <button onClick={fetchRecords}
-            className="px-3 py-1.5 rounded-full border border-slate-200 text-xs font-bold text-on-surface-variant hover:bg-slate-50 transition-all flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-sm">refresh</span>
-            Recargar
-          </button>
-        </div>
-      </div>
-
-      {/* Callout */}
-      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-        <span className="material-symbols-outlined text-blue-600 text-xl shrink-0 mt-0.5"
-          style={{ fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
-        <div className="text-sm">
-          <p className="font-bold text-blue-800 mb-1">¿Cómo funciona el entrenamiento?</p>
-          <p className="text-blue-700 leading-relaxed">
-            Cada módulo tiene su propio <strong>system prompt</strong> — las instrucciones que recibe la IA antes de generar cualquier respuesta.
-            Edita el prompt de cada módulo para cambiar su comportamiento, personalidad, formato de salida o criterios de calidad.
-            Los cambios se aplican inmediatamente (caché de 5 minutos en el servidor).
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+          <span className="material-symbols-outlined text-blue-600 text-xl shrink-0 mt-0.5"
+            style={{ fontVariationSettings: "'FILL' 1" }}>tips_and_updates</span>
+          <p className="text-sm text-blue-700 leading-relaxed">
+            Aquí defines <strong>cómo piensa y responde la IA</strong> en cada parte de la app. Escribe instrucciones en español normal, como si le estuvieras explicando a una persona. Los cambios se aplican en máximo 5 minutos.
           </p>
         </div>
       </div>
 
-      {/* Grid de endpoints */}
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-64 bg-slate-100 rounded-2xl animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {ENDPOINTS_META.map(meta => (
-            <EndpointCard
-              key={meta.key}
-              meta={meta}
-              record={records[meta.key]}
-              onEntrenar={abrirEditor}
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-      {/* Nota técnica */}
-      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-        <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Nota técnica</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-on-surface-variant leading-relaxed">
-          <p>⚡ Los prompts se cachean en el servidor por <strong>5 minutos</strong>. Los cambios se propagan automáticamente.</p>
-          <p>🔄 Para forzar actualización inmediata, reinicia el servidor desde Railway.</p>
-          <p>📦 La tabla <code className="bg-slate-200 px-1 rounded font-mono text-[10px]">ai_system_prompts</code> en Supabase almacena todos los prompts.</p>
-          <p>🔐 Solo administradores pueden ver y editar esta sección.</p>
+        {/* ── Selector de módulo ── */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1 mb-3">
+            ¿Qué quieres enseñar?
+          </p>
+          {MODULOS.map(mod => {
+            const rec = records[mod.key]
+            const modificado = rec && rec.system_prompt !== mod.defaultPrompt
+            const activo = mod.key === m.key
+            return (
+              <button key={mod.key} onClick={() => setModuloActivo(mod)}
+                className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3
+                  ${activo
+                    ? `${mod.bgLight} ${mod.border} shadow-sm`
+                    : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50'}`}>
+                <span className="text-2xl shrink-0">{mod.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-bold ${activo ? mod.text : 'text-on-surface'}`}>{mod.nombre}</p>
+                  <p className="text-[10px] text-on-surface-variant truncate">{mod.rutas.join(' · ')}</p>
+                </div>
+                {modificado && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Modificado" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* ── Editor principal ── */}
+        <div className="lg:col-span-3 space-y-5">
+
+          {/* Info del módulo */}
+          <div className={`p-5 ${m.bgLight} border ${m.border} rounded-2xl`}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`material-symbols-outlined ${m.text} text-xl`}
+                style={{ fontVariationSettings: "'FILL' 1" }}>{m.icono}</span>
+              <h2 className={`font-extrabold text-lg ${m.text}`}>{m.nombre}</h2>
+              {/* Estado */}
+              {loading
+                ? null
+                : records[m.key] && records[m.key].system_prompt !== m.defaultPrompt
+                  ? <span className="ml-auto text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full">Instrucciones personalizadas</span>
+                  : <span className="ml-auto text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-full">Usando instrucciones originales</span>}
+            </div>
+            <p className="text-sm text-on-surface-variant leading-relaxed mb-3">{m.queSabe}</p>
+            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="material-symbols-outlined text-sm">alt_route</span>
+              <span className="font-semibold">Se usa en:</span>
+              {m.rutas.map(r => (
+                <span key={r} className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${m.border} ${m.text} bg-white`}>{r}</span>
+              ))}
+              <span className="ml-2 font-semibold">Cerebro:</span>
+              {m.cerebros.map(c => (
+                <span key={c} className="text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full">{c}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Variables disponibles */}
+          {m.variables.length > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+              <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">code</span>
+                Variables que puedes usar en las instrucciones
+              </p>
+              {m.variables.map(v => (
+                <div key={v.llave} className="flex items-start gap-3">
+                  <code className="text-xs font-mono font-black bg-amber-100 text-amber-800 px-2 py-1 rounded-lg border border-amber-300 shrink-0">
+                    {v.llave}
+                  </code>
+                  <p className="text-xs text-amber-700 leading-relaxed mt-0.5">{v.desc}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Área de instrucciones */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-on-surface-variant">edit_note</span>
+                Instrucciones para la IA
+              </label>
+              <span className="text-[10px] text-on-surface-variant font-mono">
+                {instrucciones.length.toLocaleString()} caracteres · {instrucciones.split('\n').length} líneas
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="h-64 bg-slate-100 rounded-2xl animate-pulse" />
+            ) : (
+              <textarea
+                value={instrucciones}
+                onChange={e => { setInstrucciones(e.target.value); setSavedOk(false) }}
+                rows={14}
+                placeholder={
+                  m.key === 'sala_analisis'
+                    ? 'Opcional: escribe instrucciones sobre cómo debe analizar los resultados de la sala. Si lo dejas vacío, la IA usará su comportamiento por defecto.'
+                    : `Escribe aquí cómo debe comportarse la IA en "${m.nombre}"...`
+                }
+                className="w-full px-4 py-4 text-sm bg-white border-2 border-slate-200 rounded-2xl resize-none focus:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all font-mono leading-relaxed"
+                spellCheck={false}
+              />
+            )}
+
+            <p className="text-[11px] text-on-surface-variant mt-1.5 leading-relaxed">
+              Escribe las instrucciones como si le estuvieras explicando a una persona cómo comportarse. No necesitas saber código.
+            </p>
+          </div>
+
+          {/* Notas del admin */}
+          <div>
+            <label className="text-sm font-bold text-on-surface mb-2 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base text-on-surface-variant">sticky_note_2</span>
+              Notas del cambio
+              <span className="text-[10px] font-normal text-on-surface-variant ml-1">(opcional)</span>
+            </label>
+            <textarea
+              value={notas}
+              onChange={e => setNotas(e.target.value)}
+              rows={2}
+              placeholder="Ej: 'Ajusté el tono de Praxia para que sea más formal con usuarios nuevos' — para recordar por qué se cambió..."
+              className="w-full px-4 py-3 text-sm bg-white border-2 border-slate-200 rounded-2xl resize-none focus:outline-none focus:border-slate-400 transition-all"
+            />
+          </div>
+
+          {/* Acciones */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-1">
+            {!esDefault && (
+              <button onClick={handleRestablecer} disabled={resetting}
+                className="sm:w-auto px-4 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {resetting
+                  ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  : <span className="material-symbols-outlined text-base">restart_alt</span>}
+                Regresar a las originales
+              </button>
+            )}
+
+            <button onClick={handleGuardar} disabled={saving || !hayCambios}
+              className={`flex-1 sm:flex-none py-3 px-6 rounded-full text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm
+                ${savedOk
+                  ? 'bg-emerald-500 text-white'
+                  : `${COLOR_BTN[m.color]} disabled:opacity-40 disabled:cursor-not-allowed`}`}>
+              {saving
+                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <span className="material-symbols-outlined text-base"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {savedOk ? 'check_circle' : 'save'}
+                  </span>}
+              {saving ? 'Guardando...' : savedOk ? '¡Instrucciones guardadas!' : 'Guardar instrucciones'}
+            </button>
+          </div>
+
+          {/* Fecha última actualización */}
+          {records[m.key]?.updated_at && (
+            <p className="text-[11px] text-on-surface-variant text-center">
+              Última actualización: {new Date(records[m.key].updated_at).toLocaleString('es-CO')}
+            </p>
+          )}
         </div>
       </div>
-
-      {/* Panel editor */}
-      {editing && (
-        <EditorPanel
-          meta={editing.meta}
-          record={editing.record}
-          onClose={cerrarEditor}
-          onSaved={onSaved}
-        />
-      )}
     </div>
   )
 }

@@ -34,6 +34,7 @@ import AdminTesoreria from './pages/admin/AdminTesoreria'
 import AdminEditor from './pages/admin/AdminEditor'
 import AdminErrores from './pages/admin/AdminErrores'
 import AdminIATraining from './pages/admin/AdminIATraining'
+import AdminTokens from './pages/admin/AdminTokens'
 import EvaluacionesList from './pages/admin/EvaluacionesList'
 import EvaluacionForm from './pages/admin/EvaluacionForm'
 
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="editor"                  element={<AdminEditor />} />
             <Route path="errores"                 element={<AdminErrores />} />
             <Route path="ia-training"             element={<AdminIATraining />} />
+            <Route path="tokens"                  element={<AdminTokens />} />
           </Route>
 
           {/* 🔄 Redirección por defecto (por si acaso) */}
