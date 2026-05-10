@@ -396,6 +396,38 @@ export async function generarSimulacroPersonal(req, res) {
       const pdfPart = file && modelo !== 'deepseek'
         ? { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } } : null
 
+      // ── Perfil específico del cargo (mejora drástica de calidad) ─────────────
+      // Hace UNA llamada rápida para saber qué hace este cargo en la práctica:
+      // funciones reales, sistemas, normativa, dependencias y dilemas típicos.
+      // Ese contexto se inyecta en CADA llamada de generación para que el modelo
+      // NO genere situaciones genéricas sino casos 100% propios del cargo.
+      let cargoCtx = cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''
+      if (cargo?.trim()) {
+        try {
+          const perfilPrompt = `Eres un experto en administración pública colombiana. Para el cargo "${cargo}" en el sector público colombiano, responde en JSON:
+{"funciones":["acción concreta 1 que realiza este cargo","acción concreta 2","acción concreta 3","acción concreta 4"],"sistemas":["sistema o herramienta real 1","sistema 2","sistema 3"],"normas":["norma específica aplicable 1","norma 2","norma 3"],"dependencias":["Oficina o área donde opera 1","área 2","área 3"],"dilemas":["situación dilemática concreta y realista que enfrenta este cargo 1","dilema concreto 2","dilema concreto 3"]}
+Solo JSON. Sin markdown.`
+          const pr = modelo === 'deepseek' ? await deepseekTexto(perfilPrompt) : await geminiTexto(perfilPrompt)
+          tokensIn  += pr.tokensIn  || 0
+          tokensOut += pr.tokensOut || 0
+          const m = pr.texto.match(/\{[\s\S]*\}/)
+          if (m) {
+            const p = JSON.parse(m[0])
+            cargoCtx = `
+
+═══ CARGO OBJETIVO: ${cargo} ═══
+FUNCIONES ESPECÍFICAS DE ESTE CARGO: ${(p.funciones||[]).join(' · ')}
+SISTEMAS Y HERRAMIENTAS QUE MANEJA: ${(p.sistemas||[]).join(' · ')}
+NORMATIVA ESPECÍFICA APLICABLE: ${(p.normas||[]).join(' · ')}
+DEPENDENCIAS DONDE OPERA: ${(p.dependencias||[]).join(' · ')}
+SITUACIONES DILEMÁTICAS TÍPICAS DE ESTE CARGO:
+${(p.dilemas||[]).map((d,i)=>`  ${i+1}. ${d}`).join('\n')}
+
+⚠️ CADA pregunta DEBE situar al aspirante como "${cargo}" enfrentando una situación real de su cargo. Usa las funciones, sistemas y dependencias listadas. NUNCA situaciones genéricas.`
+          }
+        } catch { /* fallback al label simple */ }
+      }
+
       // Distribución Prompt Maestro: 70% Funcionales / 30% Comportamentales
       function calcularLotes() {
         const f = Math.round(cantidadTarget * 0.70)
@@ -418,7 +450,7 @@ export async function generarSimulacroPersonal(req, res) {
           `- TIPO EXCLUSIVO de este lote: "${lote.tipo}". Área: "${lote.area}". Enfócate en: ${lote.instrArea}`,
           dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '- Varía la dificultad: mezcla facil, medio y dificil de forma equilibrada.',
         ].filter(Boolean).join('\n')
-        const prompt = `${SP}\n\n${instr}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
+        const prompt = `${SP}\n\n${instr}${cargoCtx}`
         if (modelo === 'deepseek') {
           const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
           // 4 opciones + contexto rico necesita más tokens por pregunta
@@ -430,16 +462,16 @@ export async function generarSimulacroPersonal(req, res) {
       if (cantidadTarget <= BATCH) {
         // ── Llamada única ──────────────────────────────────────────────────────
         let result
-        const sp = `${promptBase}${cargo ? `\n\nCARGO OBJETIVO (OPEC): ${cargo}` : ''}`
+        const sp = `${promptBase}${cargoCtx}`
         if (file) {
           if (modelo === 'deepseek') {
-            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 320 + 512)
+            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 500 + 512)
           } else {
             result = await geminiGenerar([`${sp}\n\nAnaliza el material y genera exactamente ${cantidadTarget} preguntas.`, pdfPart])
           }
         } else {
-          const p = `${sp}\n\nGenera exactamente ${cantidadTarget} preguntas típicas para este cargo en el sector público colombiano.`
-          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 320 + 512) : await geminiGenerar(p)
+          const p = `${sp}\n\nGenera exactamente ${cantidadTarget} preguntas de juicio situado para este cargo.`
+          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 500 + 512) : await geminiGenerar(p)
         }
         preguntas = validarPreguntas(extraerArrayJSON(result.texto))
         tokensIn = result.tokensIn; tokensOut = result.tokensOut
