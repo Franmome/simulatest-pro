@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../utils/supabase'
+import { getAdminUsersInfo } from '../../utils/gemini'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -185,16 +186,14 @@ export default function AdminTokens() {
 
       const userIds = [...new Set(tokens.map(t => t.user_id))]
 
-      // 2. Info de usuarios (select * para evitar error si alguna columna no existe)
-      const { data: users, error: usersErr } = await supabase
-        .from('users')
-        .select('*')
-        .in('id', userIds)
-
-      if (usersErr) console.warn('[AdminTokens] users query error:', usersErr.message)
+      // 2. Info de usuarios vía backend (usa service role → lee auth.users, incluye Google OAuth)
+      const users = await getAdminUsersInfo(userIds).catch(e => {
+        console.warn('[AdminTokens] getAdminUsersInfo error:', e.message)
+        return []
+      })
 
       const usersMap = {}
-      for (const u of users || []) usersMap[u.id] = u
+      for (const u of users) usersMap[u.id] = u
 
       // 3. Consumo por modelo este mes
       const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()

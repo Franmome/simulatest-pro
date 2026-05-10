@@ -82,6 +82,15 @@ export async function verificarOpec({ cargo }) {
   return json.verificacion || null
 }
 
+// GET /api/ia/admin-users?ids=uuid1,uuid2 — info de usuarios para panel admin
+export async function getAdminUsersInfo(userIds = []) {
+  if (!userIds.length) return []
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/admin-users?ids=${userIds.join(',')}`, { headers })
+  if (!res.ok) return []
+  return res.json()
+}
+
 // POST /api/ia/generar (multipart con PDF opcional)
 export async function generarBancoDesdeIA({ pdf, evaluacion_id, nivel_id, cargo, modelo = 'gemini' }) {
   const headers = await authHeaders()

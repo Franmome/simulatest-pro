@@ -44,6 +44,14 @@ FORMATO OBLIGATORIO:
 Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
 [{"area":"...","dificultad":"...","enunciado":"...","A":"...","B":"...","C":"...","correcta":"...","explicacion":"..."}]`
 
+// Siempre se añade al final del SP para garantizar el formato aunque el admin haya modificado el prompt
+const FORMAT_ENFORCER = `
+
+⚠️ REGLA CRÍTICA DE SALIDA (NO NEGOCIABLE):
+Devuelve ÚNICAMENTE el array JSON. Sin texto antes ni después. Sin bloques de código markdown.
+Cada objeto: {"area":"...","dificultad":"facil|medio|dificil","enunciado":"...","A":"...","B":"...","C":"...","correcta":"A|B|C","explicacion":"..."}
+"correcta" debe ser EXACTAMENTE "A", "B" o "C" (mayúscula, sin puntos, sin nada más). Sin opción D.`
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function hashBuffer(b) { return crypto.createHash('sha256').update(b).digest('hex') }
@@ -229,7 +237,7 @@ export async function generarBanco(req, res) {
     const userId = req.user.id
     const { evaluacion_id, nivel_id, cargo, modelo = 'gemini' } = req.body
     const file   = req.file
-    const SP = await getPrompt('opec_maestro', SYSTEM_PROMPT)
+    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT)) + FORMAT_ENFORCER
 
     const compra = await getActivePurchase(userId)
     if (!compra?.packages?.has_ai_chat)
@@ -297,7 +305,7 @@ export async function generarSimulacroPersonal(req, res) {
     const userId = req.user.id
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
-    const SP = await getPrompt('opec_maestro', SYSTEM_PROMPT)
+    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT)) + FORMAT_ENFORCER
 
     const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 160, 5), 250)
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
@@ -574,5 +582,34 @@ Si no encuentras información específica para ese cargo, responde exactamente:
   } catch (e) {
     console.error('[IA] verificarOpec:', e.message)
     return res.json({ verificacion: VERIFICACION_FALLBACK })
+  }
+}
+
+// ── Endpoint: Info de usuarios para panel admin ───────────────────────────────
+// Usa el service role key para leer auth.users (incluye usuarios de Google OAuth)
+
+export async function getAdminUsers(req, res) {
+  try {
+    const { ids } = req.query
+    const userIds = typeof ids === 'string' ? ids.split(',').filter(Boolean) : []
+    if (!userIds.length) return res.json([])
+
+    // listUsers pagina de a 1000 — suficiente para este proyecto
+    const { data: authData, error } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+    if (error) return res.status(500).json({ error: error.message })
+
+    const result = (authData?.users || [])
+      .filter(u => userIds.includes(u.id))
+      .map(u => ({
+        id:         u.id,
+        email:      u.email || '',
+        full_name:  u.user_metadata?.full_name || u.user_metadata?.name || '',
+        avatar_url: u.user_metadata?.avatar_url || u.user_metadata?.picture || null,
+      }))
+
+    return res.json(result)
+  } catch (err) {
+    console.error('[admin] getAdminUsers:', err)
+    return res.status(500).json({ error: 'No se pudo obtener info de usuarios.' })
   }
 }

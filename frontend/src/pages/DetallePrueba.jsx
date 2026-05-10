@@ -48,6 +48,13 @@ function colorMaterial(t) {
 // ── Tab Simulacros IA ─────────────────────────────────────────────────────────
 
 const LABEL_DIF = { mixta: 'Mixta', facil: 'Fácil', medio: 'Medio', dificil: 'Difícil' }
+const TIPS_CARGA = [
+  { icon: 'library_books', texto: 'Cada pregunta cita el artículo o norma exacta que respalda la respuesta correcta.' },
+  { icon: 'account_balance', texto: 'Las preguntas siguen el Manual de Funciones real del cargo en el sector público colombiano.' },
+  { icon: 'groups', texto: 'El 65% de las preguntas son funcionales, enfocadas en el área técnica específica del cargo.' },
+  { icon: 'verified', texto: 'Los distractores se construyen igual que en el examen real: plausibles, nunca obviamente erróneos.' },
+  { icon: 'psychology', texto: 'La IA aplica criterios psicométricos certificados para que cada pregunta sea clara y sin ambigüedades.' },
+]
 const MODULOS_OPEC = [
   { label: 'Funcionales',      pct: 65 },
   { label: 'Comportamentales', pct: 25 },
@@ -1317,36 +1324,86 @@ export default function DetallePrueba() {
                 </div>
               </div>
 
-            ) : generandoIA ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-5">
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-white text-4xl animate-pulse"
-                      style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                  </div>
-                  <div className="absolute -inset-2 rounded-[24px] border-2 border-primary/30 animate-ping" />
-                </div>
-                <div className="text-center px-4 w-full">
-                  <p className="font-extrabold text-lg mb-1">Generando tu simulacro</p>
-                  <p className="text-sm text-on-surface-variant min-h-[20px] transition-all duration-500 mb-4">{loadingMsg}</p>
-                  <div className="w-full max-w-xs mx-auto">
-                    <div className="flex justify-between items-center text-[10px] text-on-surface-variant mb-1.5">
-                      <span>Progreso</span>
-                      <span className="font-bold tabular-nums">{loadingProgress}%</span>
+            ) : generandoIA ? (() => {
+                const n  = configIA.cantidad
+                const f  = Math.round(n * 0.65)
+                const c  = Math.round(n * 0.25)
+                const b  = n - f - c
+                const segs = Math.round((Math.ceil(Math.ceil(n / 20) / 3) * 14 + 3))
+                const milestones = [
+                  { pct: 3,  label: 'Verificando créditos y perfil' },
+                  { pct: 18, label: `${f} preguntas funcionales` },
+                  { pct: 73, label: `${c} preguntas comportamentales` },
+                  { pct: 87, label: `${b} preguntas de conocimientos básicos` },
+                  { pct: 93, label: 'Revisando calidad y coherencia' },
+                ]
+                const tip = TIPS_CARGA[Math.floor((loadingProgress / 100) * TIPS_CARGA.length) % TIPS_CARGA.length]
+                return (
+                  <div className="flex flex-col overflow-hidden rounded-2xl">
+                    {/* Header oscuro */}
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-5 text-white rounded-t-2xl">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="relative shrink-0">
+                          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center">
+                            <span className="material-symbols-outlined text-white text-2xl animate-pulse"
+                              style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                          </div>
+                          <div className="absolute -inset-1 rounded-[14px] border border-white/20 animate-ping opacity-60" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-extrabold text-base">Praxia está generando tu prueba</p>
+                          <p className="text-white/50 text-[11px] truncate mt-0.5">{cargo}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[10px] text-white/50 font-semibold">
+                          <span className="truncate max-w-[75%]">{loadingMsg || 'Iniciando…'}</span>
+                          <span className="tabular-nums shrink-0 ml-2">{loadingProgress}%</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${loadingProgress}%` }} />
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-slate-700 to-slate-500 rounded-full transition-all duration-300 ease-out"
-                        style={{ width: `${loadingProgress}%` }}
-                      />
+
+                    {/* Milestones */}
+                    <div className="px-5 pt-4 pb-3 space-y-3">
+                      {milestones.map((m, i) => {
+                        const done   = loadingProgress > m.pct + 8
+                        const active = !done && loadingProgress >= m.pct - 3
+                        return (
+                          <div key={i} className={`flex items-center gap-3 transition-all duration-500 ${done || active ? 'opacity-100' : 'opacity-25'}`}>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all duration-300
+                              ${done ? 'bg-emerald-500' : active ? 'bg-primary' : 'bg-slate-200'}`}>
+                              {done
+                                ? <span className="material-symbols-outlined text-white" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>check</span>
+                                : active
+                                ? <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                : null}
+                            </div>
+                            <span className={`text-xs flex-1 transition-colors duration-300 ${done ? 'text-emerald-700 font-semibold' : active ? 'text-on-surface font-bold' : 'text-on-surface-variant'}`}>
+                              {m.label}
+                            </span>
+                            {done && <span className="text-[10px] text-emerald-500 font-bold">✓</span>}
+                          </div>
+                        )
+                      })}
                     </div>
+
+                    {/* Tip rotativo */}
+                    <div className="mx-5 mb-4 p-3 bg-primary/5 border border-primary/15 rounded-xl flex items-start gap-2">
+                      <span className="material-symbols-outlined text-primary text-sm shrink-0 mt-0.5"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>{tip.icon}</span>
+                      <p className="text-[11px] text-on-surface-variant leading-relaxed">{tip.texto}</p>
+                    </div>
+
+                    <p className="text-center text-[10px] text-on-surface-variant/40 pb-4 px-5">
+                      {n} preguntas en paralelo · ~{segs}s estimados
+                    </p>
                   </div>
-                </div>
-                <p className="text-[10px] text-on-surface-variant/60 text-center px-4">
-                  {`Generando ${configIA.cantidad} preguntas en lotes — puede tomar ~${Math.round((Math.ceil(Math.ceil(configIA.cantidad / 20) / 3) * 14 + 3))} segundos`}
-                </p>
-              </div>
-            ) : (
+                )
+              })() : (
               <>
                 {/* Header */}
                 <div className="flex items-center gap-3 mb-5">
