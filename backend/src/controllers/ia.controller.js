@@ -226,7 +226,7 @@ async function geminiChat(systemCtx, historial, mensaje) {
 
 async function deepseekGenerar(prompt, maxTokens = 8192) {
   const r = await deepseek.chat.completions.create({
-    model:      'deepseek-v4-pro',
+    model:      'deepseek-chat',
     messages:   [
       { role: 'system', content: 'Eres un experto generador de preguntas para el sector público colombiano. Devuelves ÚNICAMENTE JSON válido, sin texto adicional, sin markdown.' },
       { role: 'user',   content: prompt },
@@ -705,7 +705,7 @@ export async function testGenerador(req, res) {
         ? `${instrucciones}\n\nMATERIAL OPEC (PDF adjunto):\n${pdfText.slice(0, 10000)}`
         : instrucciones
       const r = await deepseek.chat.completions.create({
-        model: 'deepseek-v4-pro',
+        model: 'deepseek-chat',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userMsg },

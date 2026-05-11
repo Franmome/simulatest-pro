@@ -61,7 +61,7 @@ const MODULOS_OPEC = [
   { label: 'Comportamentales', pct: 30 },
 ]
 
-function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
+function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = false, progFondo = 0, msgFondo = '', cargoFondo = '' }) {
   const navigate = useNavigate()
   const [sims,             setSims]             = useState([])
   const [loading,          setLoading]          = useState(true)
@@ -105,7 +105,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
     </div>
   )
 
-  if (!sims.length) return (
+  if (!sims.length && !generandoEnFondo) return (
     <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
       <span className="material-symbols-outlined text-slate-300 text-5xl"
         style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
@@ -123,6 +123,54 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
 
   return (
     <>
+      {/* ── Tarjeta generación en curso ── */}
+      {generandoEnFondo && (
+        <div className="relative mb-3 rounded-2xl overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 shadow-lg">
+          {/* Barra de progreso superior */}
+          <div className="h-1 bg-white/10 w-full">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-300 ease-out"
+              style={{ width: `${progFondo}%` }}
+            />
+          </div>
+
+          <div className="flex items-center gap-4 px-4 py-3.5">
+            {/* Ícono animado */}
+            <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+              <span
+                className="material-symbols-outlined text-emerald-400 text-xl"
+                style={{ fontVariationSettings: "'FILL' 1", animation: 'spin 2s linear infinite' }}
+              >auto_awesome</span>
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-white truncate">
+                {cargoFondo || 'Generando prueba IA…'}
+              </p>
+              <div className="flex items-center justify-between mt-1.5">
+                <p className="text-[11px] text-white/60 truncate max-w-[80%]">
+                  {msgFondo || 'Procesando…'}
+                </p>
+                <span className="text-[11px] font-extrabold text-emerald-400 tabular-nums shrink-0 ml-2">
+                  {progFondo}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Shimmer animado de fondo */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%)',
+              animation: 'shimmer 2s infinite',
+              backgroundSize: '200% 100%',
+            }}
+          />
+        </div>
+      )}
+
       <div className="space-y-3">
         {sims.map(s => (
           <div key={s.id}
@@ -440,11 +488,13 @@ export default function DetallePrueba() {
   const [modeloIA,       setModeloIA]       = useState('gemini')
   const [configIA,       setConfigIA]       = useState({ cantidad: 160, tiempo: 0, dificultad: 'mixta' })
   const [simulacroCreado,setSimulacroCreado]= useState(null)
-  const [loadingMsg,      setLoadingMsg]      = useState('')
-  const [loadingProgress, setLoadingProgress] = useState(0)
-  const [recargarSims,    setRecargarSims]    = useState(0)
-  const [verificacion,   setVerificacion]   = useState(null) // resultado Google Search
-  const [verificando,    setVerificando]    = useState(false)
+  const [loadingMsg,        setLoadingMsg]        = useState('')
+  const [loadingProgress,   setLoadingProgress]   = useState(0)
+  const [recargarSims,      setRecargarSims]      = useState(0)
+  const [verificacion,      setVerificacion]      = useState(null)
+  const [verificando,       setVerificando]       = useState(false)
+  const [generandoEnFondo,  setGenerandoEnFondo]  = useState(false)
+  const cargoFondoRef      = useRef('')
   const segundoPlanoNotifIdRef = useRef(null)
 
   useEffect(() => {
@@ -532,6 +582,7 @@ export default function DetallePrueba() {
       }
     } finally {
       setGenerandoIA(false)
+      setGenerandoEnFondo(false)
     }
   }
 
@@ -543,6 +594,8 @@ export default function DetallePrueba() {
       icon:   'auto_awesome',
     })
     segundoPlanoNotifIdRef.current = notifId
+    cargoFondoRef.current = cargo
+    setGenerandoEnFondo(true)
     setModalIA(false)
   }
 
@@ -989,6 +1042,10 @@ export default function DetallePrueba() {
                     evaluacionId={id}
                     userId={user?.id}
                     recargar={recargarSims}
+                    generandoEnFondo={generandoEnFondo}
+                    progFondo={loadingProgress}
+                    msgFondo={loadingMsg}
+                    cargoFondo={cargoFondoRef.current}
                   />
                 </div>
 
