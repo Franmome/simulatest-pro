@@ -4,6 +4,7 @@ import { NotificationsProvider } from './context/NotificationsContext'
 import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
+import DeployWatcher from './components/DeployWatcher'
 
 // Páginas públicas
 import InicioPublico from './pages/InicioPublico'  // ✅ Landing pública
@@ -44,6 +45,7 @@ export default function App() {
     <AuthProvider>
       <NotificationsProvider>
       <BrowserRouter>
+        <DeployWatcher />
         <Routes>
           {/* 🏠 Ruta pública principal (landing) sin Layout */}
           <Route path="/" element={<InicioPublico />} />

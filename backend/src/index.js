@@ -34,6 +34,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', app: 'SimulaTest Pro API', version: '0.1.0' })
 })
 
+// ─── Build version (para detección de deploy en frontend) ─
+const BUILD_VERSION = process.env.RAILWAY_DEPLOYMENT_ID || `dev-${Date.now()}`
+app.get('/api/version', (_req, res) => {
+  res.json({ version: BUILD_VERSION })
+})
+
 // ─── Manejo de errores global ─────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error(err.stack)
