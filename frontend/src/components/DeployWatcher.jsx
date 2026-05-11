@@ -5,7 +5,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const BASE           = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+// Si VITE_BACKEND_URL no está seteado en Railway, usa la misma origin del frontend
+// (funciona cuando Express sirve el build de Vite en el mismo servicio)
+function resolveBase() {
+  const env = import.meta.env.VITE_BACKEND_URL
+  if (env && !env.includes('localhost')) return env
+  if (!window.location.hostname.includes('localhost')) return window.location.origin
+  return 'http://localhost:3000'
+}
+const BASE = resolveBase()
 const POLL_INTERVAL  = 30_000   // chequear cada 30s
 const COUNTDOWN_SECS = 300      // 5 minutos para que el usuario termine
 

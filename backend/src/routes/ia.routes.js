@@ -15,6 +15,6 @@ router.post('/verificar-opec',  authMiddleware, verificarOpec)
 router.get('/tokens',           authMiddleware, getTokens)
 router.get('/admin-users',      authMiddleware, getAdminUsers)
 router.post('/analisis-resultado', authMiddleware, analizarResultadosSimulacro)
-router.post('/test-generador',     authMiddleware, testGenerador)
+router.post('/test-generador',     authMiddleware, upload.single('pdf'), testGenerador)
 
 export default router

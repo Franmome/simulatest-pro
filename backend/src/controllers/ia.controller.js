@@ -675,13 +675,13 @@ export async function getAdminUsers(req, res) {
 
 export async function testGenerador(req, res) {
   try {
-    // Verificar que el usuario es admin o tiene modo_pruebas activo
     const { data: userRow } = await supabase.from('users').select('role, modo_pruebas').eq('id', req.user.id).maybeSingle()
     if (!userRow || (userRow.role !== 'admin' && !userRow.modo_pruebas))
       return res.status(403).json({ error: 'No tienes acceso al modo de pruebas.' })
 
     const { custom_prompt, modelo = 'gemini', cantidad = 5, cargo, dificultad = 'mixta' } = req.body
-    const cantidadSafe   = Math.min(Math.max(parseInt(cantidad) || 5, 1), 20)
+    const file          = req.file
+    const cantidadSafe  = Math.min(Math.max(parseInt(cantidad) || 5, 1), 20)
     const dificultadSafe = ['mixta','facil','medio','dificil'].includes(dificultad) ? dificultad : 'mixta'
 
     const basePrompt = custom_prompt?.trim()
@@ -700,18 +700,24 @@ export async function testGenerador(req, res) {
 
     let result
     if (modelo === 'deepseek') {
+      const pdfText = file ? await extractPdfText(file.buffer) : null
+      const userMsg = pdfText
+        ? `${instrucciones}\n\nMATERIAL OPEC (PDF adjunto):\n${pdfText.slice(0, 10000)}`
+        : instrucciones
       const r = await deepseek.chat.completions.create({
         model: 'deepseek-v4-pro',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user',   content: instrucciones },
+          { role: 'user',   content: userMsg },
         ],
         temperature: 0.7,
         max_tokens: cantidadSafe * 600 + 512,
       })
       result = { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
     } else {
-      result = await geminiGenerar(`${systemPrompt}\n\n${instrucciones}`)
+      const parts = [`${systemPrompt}\n\n${instrucciones}`]
+      if (file) parts.push({ inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } })
+      result = await geminiGenerar(parts)
     }
 
     const preguntas = validarPreguntas(extraerArrayJSON(result.texto))
