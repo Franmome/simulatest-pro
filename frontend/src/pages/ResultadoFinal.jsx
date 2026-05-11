@@ -275,7 +275,7 @@ export default function ResultadoFinal() {
     : listaBase
 
   function copiarResumen() {
-    const texto = `SimulaTest Pro — ${evalTitulo}${nivelNombre ? ` · ${nivelNombre}` : ''}
+    const texto = `Praxia — ${evalTitulo}${nivelNombre ? ` · ${nivelNombre}` : ''}
 Score: ${score}% (${aprueba ? 'Aprobado ✓' : 'No aprobó ✗'})
 Correctas: ${correctas}/${total}
 ${duracion ? `Tiempo: ${duracion}` : ''}`

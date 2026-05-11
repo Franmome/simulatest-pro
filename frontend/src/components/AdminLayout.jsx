@@ -78,7 +78,7 @@ export default function AdminLayout() {
 
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-primary leading-none truncate">
-            SimulaTest Pro
+            Praxia
           </p>
           <p className="text-[10px] text-on-surface-variant mt-1 uppercase tracking-widest font-bold">
             Consola Admin

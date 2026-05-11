@@ -56,7 +56,7 @@ export default function App() {
           <Route path="/registro" element={<Register />} />
 
           {/* 📚 Catálogo público (con Layout compartido) */}
-          <Route element={<Layout title="SimulaTest Pro" />}>
+          <Route element={<Layout title="Praxia" />}>
             <Route path="/catalogo"       element={<Catalogo />} />
             <Route path="/prueba/:id"     element={<DetallePrueba />} />
             <Route path="/pago-resultado" element={<PagoResultado />} />

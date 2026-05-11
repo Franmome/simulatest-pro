@@ -109,7 +109,7 @@ export default function DeployWatcher() {
 
           <h3 className="font-extrabold text-xl mb-1">Nueva versión disponible</h3>
           <p className="text-sm text-on-surface-variant leading-relaxed mb-4">
-            SimulaTest Pro acaba de actualizarse. Por favor recarga la página para continuar.
+            Praxia acaba de actualizarse. Por favor recarga la página para continuar.
             Tu sesión se cerrará automáticamente.
           </p>
 

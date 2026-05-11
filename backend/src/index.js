@@ -31,7 +31,7 @@ app.use('/api/ia',         iaRoutes)
 
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'SimulaTest Pro API', version: '0.1.0' })
+  res.json({ status: 'ok', app: 'Praxia API', version: '0.1.0' })
 })
 
 // ─── Build version (para detección de deploy en frontend) ─
@@ -63,5 +63,5 @@ if (SELF_URL) {
 }
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 SimulaTest Pro API corriendo en http://localhost:${PORT}\n`)
+  console.log(`\n🚀 Praxia API corriendo en http://localhost:${PORT}\n`)
 })

@@ -24,7 +24,7 @@ const DEFAULTS = {
   config: {
     whatsapp_numero: '573000000000',
     email_contacto: 'soporte@simulatest.co',
-    nombre_app: 'SimulaTest Pro',
+    nombre_app: 'Praxia',
   },
 }
 

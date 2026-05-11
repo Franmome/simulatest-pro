@@ -551,7 +551,7 @@ export default function AdminPaquetes() {
     const blob = new Blob([PLANTILLA_CSV], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = 'plantilla_preguntas_simulatest.csv'; a.click()
+    a.href = url; a.download = 'plantilla_preguntas_praxia.csv'; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -559,7 +559,7 @@ export default function AdminPaquetes() {
     const blob = new Blob([PLANTILLA_JSON], { type: 'application/json;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = 'plantilla_preguntas_simulatest.json'; a.click()
+    a.href = url; a.download = 'plantilla_preguntas_praxia.json'; a.click()
     URL.revokeObjectURL(url)
   }
 
