@@ -671,6 +671,58 @@ export async function getAdminUsers(req, res) {
   }
 }
 
+// ── Endpoint: Test Generador (Modo Pruebas sandbox) ──────────────────────────
+
+export async function testGenerador(req, res) {
+  try {
+    // Verificar que el usuario es admin o tiene modo_pruebas activo
+    const { data: userRow } = await supabase.from('users').select('role, modo_pruebas').eq('id', req.user.id).maybeSingle()
+    if (!userRow || (userRow.role !== 'admin' && !userRow.modo_pruebas))
+      return res.status(403).json({ error: 'No tienes acceso al modo de pruebas.' })
+
+    const { custom_prompt, modelo = 'gemini', cantidad = 5, cargo, dificultad = 'mixta' } = req.body
+    const cantidadSafe   = Math.min(Math.max(parseInt(cantidad) || 5, 1), 20)
+    const dificultadSafe = ['mixta','facil','medio','dificil'].includes(dificultad) ? dificultad : 'mixta'
+
+    const basePrompt = custom_prompt?.trim()
+      ? custom_prompt.trim()
+      : (await getPrompt('opec_maestro', SYSTEM_PROMPT))
+
+    const systemPrompt = basePrompt + FORMAT_ENFORCER
+
+    const instrucciones = [
+      `Genera EXACTAMENTE ${cantidadSafe} preguntas.`,
+      cargo?.trim() ? `CARGO OBJETIVO: ${cargo.trim()}` : '',
+      dificultadSafe !== 'mixta'
+        ? `TODAS las preguntas deben ser de dificultad "${dificultadSafe}".`
+        : 'Varía la dificultad: mezcla facil, medio y dificil de forma equilibrada.',
+    ].filter(Boolean).join('\n')
+
+    let result
+    if (modelo === 'deepseek') {
+      const r = await deepseek.chat.completions.create({
+        model: 'deepseek-v4-pro',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: instrucciones },
+        ],
+        temperature: 0.7,
+        max_tokens: cantidadSafe * 600 + 512,
+      })
+      result = { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
+    } else {
+      result = await geminiGenerar(`${systemPrompt}\n\n${instrucciones}`)
+    }
+
+    const preguntas = validarPreguntas(extraerArrayJSON(result.texto))
+    return res.json({ preguntas, tokensIn: result.tokensIn, tokensOut: result.tokensOut })
+
+  } catch (err) {
+    console.error('[IA] testGenerador:', err)
+    return res.status(500).json({ error: formatError(err) })
+  }
+}
+
 // ── Endpoint: Análisis post-simulacro ────────────────────────────────────────
 
 export async function analizarResultadosSimulacro(req, res) {

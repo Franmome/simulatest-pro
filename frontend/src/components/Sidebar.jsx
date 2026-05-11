@@ -158,6 +158,30 @@ export default function Sidebar({ expanded, setExpanded }) {
           )
         })}
 
+        {/* Modo Pruebas */}
+        {(esAdmin || user?.modo_pruebas) && (
+          <button
+            onClick={() => navigate('/modo-pruebas')}
+            title={!expanded ? 'Modo Pruebas' : undefined}
+            className={`flex items-start gap-3 px-3 py-3 rounded-2xl transition-all duration-150 text-left w-full mt-1 ${
+              isActive('/modo-pruebas')
+                ? 'bg-tertiary/10 text-tertiary'
+                : 'text-tertiary/70 hover:bg-tertiary/10 hover:text-tertiary'
+            }`}
+          >
+            <span
+              className="material-symbols-outlined text-xl flex-shrink-0 mt-0.5"
+              style={{ fontVariationSettings: isActive('/modo-pruebas') ? "'FILL' 1" : "'FILL' 0" }}
+            >
+              science
+            </span>
+            <div className={`min-w-0 transition-all duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+              <p className="text-sm font-bold whitespace-nowrap">Modo Pruebas</p>
+              <p className="text-[10px] whitespace-nowrap opacity-80">Sandbox de IA</p>
+            </div>
+          </button>
+        )}
+
         {/* Admin */}
         {esAdmin && (
           <button

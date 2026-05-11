@@ -24,6 +24,7 @@ import Suscripciones from './pages/Suscripciones'
 import Perfil from './pages/Perfil'
 import Estudio from './pages/Estudio'
 import Configuracion from './pages/Configuracion'
+import ModoPruebas from './pages/ModoPruebas'
 import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/perfil"          element={<Perfil />} />
             <Route path="/estudio"         element={<Estudio />} />
             <Route path="/configuracion"   element={<Configuracion />} />
+            <Route path="/modo-pruebas"    element={<ModoPruebas />} />
             <Route path="/salas"           element={<Salas />} />
             <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
             <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />

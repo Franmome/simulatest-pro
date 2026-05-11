@@ -46,27 +46,27 @@ export const AuthProvider = ({ children }) => {
   }
 
   const fetchUserRole = async (userId) => {
-    if (!userId) return 'estudiante'
+    if (!userId) return { role: 'estudiante', modo_pruebas: false }
     if (roleCache.current[userId]) return roleCache.current[userId]
 
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('role')
+        .select('role, modo_pruebas')
         .eq('id', userId)
         .maybeSingle()
 
       if (error) {
         console.warn('[Auth] fetchUserRole error:', error.message)
-        return 'estudiante'
+        return { role: 'estudiante', modo_pruebas: false }
       }
 
-      const role = data?.role ?? 'estudiante'
-      roleCache.current[userId] = role
-      return role
+      const result = { role: data?.role ?? 'estudiante', modo_pruebas: data?.modo_pruebas ?? false }
+      roleCache.current[userId] = result
+      return result
     } catch (err) {
       console.warn('[Auth] fetchUserRole exception:', err?.message || err)
-      return 'estudiante'
+      return { role: 'estudiante', modo_pruebas: false }
     }
   }
 
@@ -75,13 +75,13 @@ export const AuthProvider = ({ children }) => {
 
     try {
       await ensureUserExists(authUser)
-      const role = await fetchUserRole(authUser.id)
+      const userData = await fetchUserRole(authUser.id)
 
       if (!isMountedRef.current) return
 
       setUser((prev) => {
         if (!prev || prev.id !== authUser.id) return prev
-        return { ...prev, role }
+        return { ...prev, role: userData.role, modo_pruebas: userData.modo_pruebas }
       })
     } catch (err) {
       console.warn('[Auth] syncUserRoleInBackground error:', err?.message || err)

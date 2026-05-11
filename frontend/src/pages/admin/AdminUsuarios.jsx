@@ -150,6 +150,7 @@ export default function AdminUsuarios() {
     let query = supabase
       .from('users')
       .select('*', { count: 'exact' })
+      .order('role', { ascending: true })         // admin < user alfabéticamente → admins primero
       .order('created_at', { ascending: false })
       .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1)
 
@@ -246,6 +247,12 @@ export default function AdminUsuarios() {
     await supabase.from('users').update({ role: nuevoRol }).eq('id', u.id)
     cargarUsuarios()
     cargarStats()
+  }
+
+  async function toggleModoPruebas(u) {
+    const nuevo = !u.modo_pruebas
+    await supabase.from('users').update({ modo_pruebas: nuevo }).eq('id', u.id)
+    cargarUsuarios()
   }
 
   async function regalarPaquete(u) {
@@ -536,7 +543,7 @@ export default function AdminUsuarios() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-surface-container-low/50">
-                      {['Usuario', 'Rol', 'Estado', 'Intentos', 'Progreso', 'Registro', ''].map(h => (
+                      {['Usuario', 'Rol', 'Estado', 'Intentos', 'Progreso', 'Registro', 'Modo Test', ''].map(h => (
                         <th
                           key={h}
                           className={`px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider ${
@@ -553,7 +560,7 @@ export default function AdminUsuarios() {
                     {cargando ? (
                       Array.from({ length: 5 }).map((_, i) => (
                         <tr key={i}>
-                          {Array.from({ length: 7 }).map((__, j) => (
+                          {Array.from({ length: 8 }).map((__, j) => (
                             <td key={j} className="px-6 py-4">
                               <div className="h-4 bg-surface-container rounded animate-pulse" />
                             </td>
@@ -562,7 +569,7 @@ export default function AdminUsuarios() {
                       ))
                     ) : usuarios.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-16 text-center text-on-surface-variant text-sm">
+                        <td colSpan={8} className="px-6 py-16 text-center text-on-surface-variant text-sm">
                           <span className="material-symbols-outlined text-4xl opacity-30 mb-2 block">
                             group
                           </span>
@@ -630,6 +637,21 @@ export default function AdminUsuarios() {
                             <p className="text-xs text-on-surface-variant">
                               {tiempoRelativo(u.created_at)}
                             </p>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => toggleModoPruebas(u)}
+                              title={u.modo_pruebas ? 'Desactivar modo pruebas' : 'Activar modo pruebas'}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${
+                                u.modo_pruebas
+                                  ? 'bg-tertiary-fixed text-tertiary hover:bg-tertiary/20'
+                                  : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: u.modo_pruebas ? "'FILL' 1" : "'FILL' 0" }}>science</span>
+                              {u.modo_pruebas ? 'Activo' : 'Off'}
+                            </button>
                           </td>
 
                           <td className="px-6 py-4 text-right">
