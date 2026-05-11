@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { NotificationsProvider } from './context/NotificationsContext'
 import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
@@ -41,6 +42,7 @@ import EvaluacionForm from './pages/admin/EvaluacionForm'
 export default function App() {
   return (
     <AuthProvider>
+      <NotificationsProvider>
       <BrowserRouter>
         <Routes>
           {/* 🏠 Ruta pública principal (landing) sin Layout */}
@@ -92,6 +94,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </NotificationsProvider>
     </AuthProvider>
   )
 }

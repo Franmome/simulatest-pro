@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useNotifications } from '../context/NotificationsContext'
 import { useFetch } from '../hooks/useFetch'
 import IAPraxia, { ModelSelector } from '../components/IAPraxia'
 import { generarSimulacroPersonal, verificarOpec } from '../utils/gemini'
@@ -128,20 +129,12 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
             className="group relative flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
             onClick={() => abrirPreStart(s)}>
 
-            {/* Botón borrar — visible al hover */}
-            <button
-              onClick={e => borrar(e, s.id)}
-              title="Borrar simulacro"
-              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 transition-all z-10">
-              <span className="material-symbols-outlined text-slate-500 hover:text-red-600" style={{ fontSize: '13px' }}>close</span>
-            </button>
-
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0 shadow-sm">
               <span className="material-symbols-outlined text-white text-lg"
                 style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm truncate group-hover:text-primary transition-colors pr-4">
+              <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">
                 {s.cargo || 'Simulacro IA'}
               </p>
               <div className="flex items-center gap-1.5 flex-wrap mt-1">
@@ -158,7 +151,13 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar }) {
                 )}
               </div>
             </div>
-            <div className="shrink-0 flex flex-col items-end gap-1">
+            <div className="shrink-0 flex flex-col items-end gap-1.5">
+              <button
+                onClick={e => borrar(e, s.id)}
+                title="Borrar simulacro"
+                className="w-7 h-7 rounded-xl bg-rose-50 hover:bg-rose-100 flex items-center justify-center transition-colors">
+                <span className="material-symbols-outlined text-rose-400" style={{ fontSize: '16px' }}>delete</span>
+              </button>
               <span className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all
                 ${s.completado
                   ? 'bg-slate-200 text-slate-700 group-hover:bg-primary group-hover:text-white'
@@ -417,6 +416,7 @@ export default function DetallePrueba() {
   const navigate = useNavigate()
   const { id }   = useParams()
   const { user } = useAuth()
+  const { addNotif, updateNotif } = useNotifications()
 
   const [tabActiva,         setTabActiva]         = useState('simulacro')
   const [nivelSeleccionado, setNivelSeleccionado] = useState(null)
@@ -445,6 +445,7 @@ export default function DetallePrueba() {
   const [recargarSims,    setRecargarSims]    = useState(0)
   const [verificacion,   setVerificacion]   = useState(null) // resultado Google Search
   const [verificando,    setVerificando]    = useState(false)
+  const segundoPlanoNotifIdRef = useRef(null)
 
   useEffect(() => {
     if (!generandoIA) { setLoadingMsg(''); setLoadingProgress(0); return }
@@ -482,6 +483,7 @@ export default function DetallePrueba() {
 
   async function lanzarSimulacroIA() {
     if (!cargo.trim()) { setErrorIA('Escribe el nombre del OPEC o cargo.'); return }
+    segundoPlanoNotifIdRef.current = null
     setGenerandoIA(true)
     setErrorIA(null)
     try {
@@ -495,19 +497,53 @@ export default function DetallePrueba() {
         dificultad_config:   configIA.dificultad,
       })
       setLoadingProgress(100)
-      setSimulacroCreado({
-        simulacro_id,
-        cargo:     cargo.trim(),
-        cantidad:  total || configIA.cantidad,
-        dificultad:configIA.dificultad,
-        tiempo:    configIA.tiempo,
-      })
       setRecargarSims(v => v + 1)
+      if (segundoPlanoNotifIdRef.current) {
+        updateNotif(segundoPlanoNotifIdRef.current, {
+          tipo:  'completado',
+          titulo: '¡Prueba lista!',
+          cuerpo: cargo.trim(),
+          icon:  'task_alt',
+          leida: false,
+          simulacro_id,
+        })
+        segundoPlanoNotifIdRef.current = null
+      } else {
+        setSimulacroCreado({
+          simulacro_id,
+          cargo:     cargo.trim(),
+          cantidad:  total || configIA.cantidad,
+          dificultad:configIA.dificultad,
+          tiempo:    configIA.tiempo,
+        })
+      }
     } catch (e) {
-      setErrorIA(e.message)
+      if (segundoPlanoNotifIdRef.current) {
+        updateNotif(segundoPlanoNotifIdRef.current, {
+          tipo:  'error',
+          titulo: 'Error al generar prueba',
+          cuerpo: e.message,
+          icon:  'error',
+          leida: false,
+        })
+        segundoPlanoNotifIdRef.current = null
+      } else {
+        setErrorIA(e.message)
+      }
     } finally {
       setGenerandoIA(false)
     }
+  }
+
+  function ejecutarEnSegundoPlano() {
+    const notifId = addNotif({
+      tipo:   'generando',
+      titulo: 'Generando prueba IA…',
+      cuerpo: `${cargo} · ${configIA.cantidad} preguntas`,
+      icon:   'auto_awesome',
+    })
+    segundoPlanoNotifIdRef.current = notifId
+    setModalIA(false)
   }
 
   async function buscarDatosOpec() {
@@ -1410,6 +1446,13 @@ export default function DetallePrueba() {
                       <p className="text-[11px] text-on-surface-variant leading-relaxed">{tip.texto}</p>
                     </div>
 
+                    <div className="px-5 pb-3">
+                      <button onClick={ejecutarEnSegundoPlano}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-on-surface-variant hover:bg-slate-50 transition-colors">
+                        <span className="material-symbols-outlined text-sm">notifications</span>
+                        Ejecutar en segundo plano
+                      </button>
+                    </div>
                     <p className="text-center text-[10px] text-on-surface-variant/40 pb-4 px-5">
                       {n} preguntas en paralelo · ~{segs}s estimados
                     </p>

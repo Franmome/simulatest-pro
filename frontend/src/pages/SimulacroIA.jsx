@@ -3,7 +3,7 @@
 // Las preguntas vienen en formato JSON {area,dificultad,enunciado,A,B,C,correcta,explicacion}.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 import { analizarResultadoSimulacro } from '../utils/gemini'
@@ -364,6 +364,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir,
 export default function SimulacroIA() {
   const navigate    = useNavigate()
   const { id }      = useParams()
+  const location    = useLocation()
   const { user }    = useAuth()
 
   const [loading,   setLoading]   = useState(true)
@@ -406,11 +407,15 @@ export default function SimulacroIA() {
       if (!data) throw new Error('Simulacro no encontrado o no te pertenece.')
       if (!data.preguntas?.length) throw new Error('Este simulacro no tiene preguntas.')
 
-      const tpp  = data.tiempo_por_pregunta || 0
+      const preStart = location.state?.preStartConfig
+      const tpp = (preStart?.tiempo > 0) ? preStart.tiempo : (data.tiempo_por_pregunta || 0)
       tppRef.current = tpp
       setTiempoPorPregunta(tpp)
 
-      const lista = shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
+      let lista = shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
+      if (preStart?.cantidad > 0 && preStart.cantidad < lista.length) {
+        lista = lista.slice(0, preStart.cantidad)
+      }
       setPreguntas(lista)
       setCargo(data.cargo || '')
       tiempoInicioPregRef.current = Date.now()
