@@ -958,9 +958,8 @@ export default function DetallePrueba() {
           {/* Tabs */}
           <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl">
             {[
-              { key: 'simulacro', icon: 'quiz',         label: 'Simulacros' },
-              { key: 'ia',        icon: 'auto_awesome',  label: 'Mis IA' },
-              { key: 'material',  icon: 'menu_book',     label: 'Material' },
+              { key: 'simulacro', icon: 'quiz',      label: 'Simulacros' },
+              { key: 'material',  icon: 'menu_book', label: 'Material' },
             ].map(t => (
               <button key={t.key} onClick={() => setTabActiva(t.key)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all
@@ -976,28 +975,39 @@ export default function DetallePrueba() {
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm min-h-32">
             {tabActiva === 'material' ? (
               <TabMaterial packageId={packageId} tienePlan={tienePlan} evaluacionId={id} userId={user?.id} />
-            ) : tabActiva === 'ia' ? (
-              <TabSimulacrosIA
-                evaluacionId={id}
-                userId={user?.id}
-                recargar={recargarSims}
-              />
             ) : (
-              <div>
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-4">
-                  Selecciona tu modo de práctica
-                </p>
-                {/* Modo cards en MOBILE (ocultas en desktop donde van al sidebar) */}
-                <div className="lg:hidden">
-                  <ModeCards />
-                </div>
-                {/* En desktop, el sidebar tiene los mode cards. Aquí mostramos un recordatorio */}
-                <div className="hidden lg:flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10">
-                  <span className="material-symbols-outlined text-primary text-xl">arrow_circle_right</span>
-                  <p className="text-sm text-primary font-semibold">
-                    Selecciona un modo en el panel derecho para comenzar tu práctica.
+              <div className="space-y-5">
+
+                {/* ── Simulacros IA personalizados ── */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-primary"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                    Simulacros IA personalizados
                   </p>
+                  <TabSimulacrosIA
+                    evaluacionId={id}
+                    userId={user?.id}
+                    recargar={recargarSims}
+                  />
                 </div>
+
+                {/* ── Modos de práctica ── */}
+                <div className="border-t border-slate-100 pt-5">
+                  <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-4">
+                    Modos de práctica
+                  </p>
+                  <div className="lg:hidden">
+                    <ModeCards />
+                  </div>
+                  <div className="hidden lg:flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10">
+                    <span className="material-symbols-outlined text-primary text-xl">arrow_circle_right</span>
+                    <p className="text-sm text-primary font-semibold">
+                      Selecciona un modo en el panel derecho para comenzar tu práctica.
+                    </p>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>
@@ -1364,7 +1374,7 @@ export default function DetallePrueba() {
                 <div className="p-5 flex gap-3">
                   <button onClick={() => { setModalIA(false); setSimulacroCreado(null) }}
                     className="flex-1 py-3 rounded-full border-2 border-slate-200 font-bold text-sm hover:bg-slate-50 transition-all text-on-surface-variant">
-                    Ver en Mis IA
+                    Ver simulacros
                   </button>
                   <button onClick={() => navigate(`/simulacro-ia/${simulacroCreado.simulacro_id}`)}
                     className="flex-[2] py-3 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">

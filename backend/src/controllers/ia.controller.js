@@ -183,7 +183,7 @@ function formatError(err) {
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
 async function geminiGenerar(parts) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
   const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
   const usage  = result.response.usageMetadata
   return {
@@ -194,7 +194,7 @@ async function geminiGenerar(parts) {
 }
 
 async function geminiTexto(prompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
   const result = await model.generateContent(prompt)
   const usage  = result.response.usageMetadata
   return {
@@ -226,7 +226,7 @@ async function geminiChat(systemCtx, historial, mensaje) {
 
 async function deepseekGenerar(prompt, maxTokens = 8192) {
   const r = await deepseek.chat.completions.create({
-    model:      'deepseek-chat',
+    model:      'deepseek-v4-pro',
     messages:   [
       { role: 'system', content: 'Eres un experto generador de preguntas para el sector público colombiano. Devuelves ÚNICAMENTE JSON válido, sin texto adicional, sin markdown.' },
       { role: 'user',   content: prompt },
@@ -612,7 +612,7 @@ export async function verificarOpec(req, res) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-flash-lite',
       tools: [{ googleSearch: {} }],
     })
 
