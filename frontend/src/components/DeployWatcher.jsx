@@ -5,15 +5,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-// Si VITE_BACKEND_URL no está seteado en Railway, usa la misma origin del frontend
-// (funciona cuando Express sirve el build de Vite en el mismo servicio)
-function resolveBase() {
-  const env = import.meta.env.VITE_BACKEND_URL
-  if (env && !env.includes('localhost')) return env
-  if (!window.location.hostname.includes('localhost')) return window.location.origin
-  return 'http://localhost:3000'
-}
-const BASE = resolveBase()
+const VITE_BASE = import.meta.env.VITE_BACKEND_URL || ''
+// En producción sin VITE_BACKEND_URL configurado, desactivar el watcher
+// para evitar spam de ERR_CONNECTION_REFUSED en consola.
+// Solución permanente: agregar VITE_BACKEND_URL en Railway → Variables del servicio frontend.
+const POLL_ENABLED = VITE_BASE
+  ? true
+  : window.location.hostname === 'localhost'
+const BASE = VITE_BASE || 'http://localhost:3000'
 const POLL_INTERVAL  = 30_000   // chequear cada 30s
 const COUNTDOWN_SECS = 300      // 5 minutos para que el usuario termine
 
@@ -24,7 +23,7 @@ export default function DeployWatcher() {
   const [seconds,     setSeconds]     = useState(COUNTDOWN_SECS)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !POLL_ENABLED) return
 
     let cancelled = false
 
