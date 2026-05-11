@@ -1,49 +1,66 @@
 // DeployWatcher.jsx
 // Detecta cuando Railway sube una nueva versión y avisa a todos los usuarios activos.
-// Muestra un modal con cuenta regresiva y luego cierra sesión + recarga.
+// Chequea cada 30s + al volver el foco a la pestaña. Muestra modal con cuenta regresiva.
 
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
-const POLL_INTERVAL  = 60_000  // chequear cada 60s
-const COUNTDOWN_SECS = 300     // 5 minutos para que el usuario termine lo que está haciendo
+const BASE           = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+const POLL_INTERVAL  = 30_000   // chequear cada 30s
+const COUNTDOWN_SECS = 300      // 5 minutos para que el usuario termine
 
 export default function DeployWatcher() {
   const { user, logout } = useAuth()
-  const initialVersion   = useRef(null)
+  const initialVersion = useRef(null)
   const [updateReady, setUpdateReady] = useState(false)
   const [seconds,     setSeconds]     = useState(COUNTDOWN_SECS)
 
-  // Polling de versión
   useEffect(() => {
-    if (!user) return  // solo para usuarios autenticados
+    if (!user) return
 
     let cancelled = false
 
     async function fetchVersion() {
+      if (cancelled) return
       try {
-        const res  = await fetch(`${BASE}/api/version`, { cache: 'no-store' })
-        if (!res.ok) return
+        const res = await fetch(`${BASE}/api/version`, { cache: 'no-store' })
+        if (!res.ok || cancelled) return
         const { version } = await res.json()
         if (!version || cancelled) return
 
         if (initialVersion.current === null) {
           initialVersion.current = version
-        } else if (version !== initialVersion.current && !updateReady) {
+          console.log('[DeployWatcher] versión inicial:', version.slice(0, 16))
+        } else if (version !== initialVersion.current) {
+          console.log('[DeployWatcher] nueva versión detectada:', version.slice(0, 16))
           setUpdateReady(true)
         }
       } catch {
-        // red no disponible — ignorar silenciosamente
+        // red no disponible — ignorar
       }
     }
 
+    // Chequeo inicial
     fetchVersion()
+
+    // Polling periódico
     const iv = setInterval(fetchVersion, POLL_INTERVAL)
-    return () => { cancelled = true; clearInterval(iv) }
+
+    // Chequeo inmediato al volver el foco a la pestaña
+    function onFocus() { fetchVersion() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') fetchVersion()
+    })
+
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [user]) // eslint-disable-line
 
-  // Cuenta regresiva cuando hay update
+  // Cuenta regresiva
   useEffect(() => {
     if (!updateReady) return
     const iv = setInterval(() => {
@@ -56,7 +73,7 @@ export default function DeployWatcher() {
   }, [updateReady]) // eslint-disable-line
 
   async function handleActualizar() {
-    try { await logout() } catch { /* no bloquear si falla */ }
+    try { await logout() } catch { /* no bloquear */ }
     window.location.reload()
   }
 
@@ -70,7 +87,6 @@ export default function DeployWatcher() {
     <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
 
-        {/* Barra de progreso */}
         <div className="h-1.5 bg-slate-100">
           <div
             className="h-full bg-gradient-to-r from-primary to-primary-container transition-all duration-1000 ease-linear"

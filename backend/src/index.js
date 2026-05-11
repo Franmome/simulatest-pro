@@ -35,7 +35,12 @@ app.get('/api/health', (_req, res) => {
 })
 
 // ─── Build version (para detección de deploy en frontend) ─
-const BUILD_VERSION = process.env.RAILWAY_DEPLOYMENT_ID || `dev-${Date.now()}`
+// Prioridad: git SHA (cambia siempre) > deployment ID > timestamp local
+const BUILD_VERSION =
+  process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.RAILWAY_DEPLOYMENT_ID  ||
+  `dev-${Date.now()}`
+console.log(`[version] BUILD_VERSION = ${BUILD_VERSION.slice(0, 16)}`)
 app.get('/api/version', (_req, res) => {
   res.json({ version: BUILD_VERSION })
 })
