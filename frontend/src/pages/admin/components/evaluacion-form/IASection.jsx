@@ -306,7 +306,7 @@ export default function IASection({ niveles, nivelActivo, setNivelActivo, setPre
                     {/* Opciones con análisis */}
                     <div className="space-y-1.5 pl-8" onClick={e => e.stopPropagation()}>
                       {p.options.map(opt => {
-                        const ad = p.analisis_distractores?.[opt.letter]
+                        const ad = p[`analisis_${opt.letter}`] || p.analisis_distractores?.[opt.letter]
                         return (
                           <div key={opt.letter} className={`rounded-xl border overflow-hidden ${
                             opt.is_correct ? 'border-secondary/40 bg-secondary/5' : 'border-outline-variant/20 bg-surface-container-lowest'

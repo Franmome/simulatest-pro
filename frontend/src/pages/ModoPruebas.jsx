@@ -106,7 +106,7 @@ function TarjetaPregunta({ pregunta, index }) {
           {/* Opciones */}
           {['A','B','C','D'].filter(l => pregunta[l]?.trim()).map(letra => {
             const esCorrecta = pregunta.correcta === letra
-            const analisis   = ad?.[letra]
+            const analisis   = pregunta[`analisis_${letra}`] || ad?.[letra]
             return (
               <div key={letra} className={`rounded-xl border overflow-hidden ${
                 esCorrecta ? 'border-secondary/40 bg-secondary/5' : 'border-slate-100 bg-slate-50'

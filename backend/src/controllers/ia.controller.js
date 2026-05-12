@@ -83,32 +83,33 @@ Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
 // Siempre se añade al final del SP para garantizar el formato aunque el admin haya modificado el prompt
 const FORMAT_ENFORCER = `
 
-⚠️ FORMATO DE SALIDA — REGLA NO NEGOCIABLE:
-Devuelve ÚNICAMENTE un array JSON válido. Sin texto antes ni después. Sin bloques de código markdown.
-Cada objeto del array debe tener EXACTAMENTE estas propiedades:
-{
-  "area": "nombre del área o competencia evaluada",
-  "tipo": "funcional|comportamental",
-  "dificultad": "facil|medio|dificil",
-  "bloom": "I|II|III",
-  "estado": "Nuevo|Adaptado|Recalibrado",
-  "contexto": "escenario narrativo de 130 a 180 palabras con dependencia específica, sistema institucional (SECOP II, SIGEP, Orfeo, SIIF, PQRSDF, etc.), dilema técnico o legal concreto, presión administrativa y riesgo de actuar incorrectamente",
-  "enunciado": "pregunta directa máximo 20 palabras — NO mencione el cargo ni la norma",
-  "A": "opción A entre 22 y 35 palabras",
-  "B": "opción B entre 22 y 35 palabras",
-  "C": "opción C entre 22 y 35 palabras",
-  "D": "opción D entre 22 y 35 palabras",
-  "correcta": "A|B|C|D",
-  "justificacion": "justificación técnica entre 80 y 130 palabras con fundamento normativo o procedimental concreto",
-  "analisis_distractores": {"A":"análisis 35-60 palabras","B":"análisis 35-60 palabras","C":"análisis 35-60 palabras","D":"análisis 35-60 palabras"},
-  "filtro_autonomia": "explicación de por qué la actuación correcta corresponde al nivel jerárquico del cargo"
-}
-REGLAS ESTRICTAS:
-- SIEMPRE 4 opciones: A, B, C y D. NUNCA menos.
-- "correcta" EXACTAMENTE "A", "B", "C" o "D".
-- "tipo" exactamente "funcional" o "comportamental".
-- "bloom" exactamente "I", "II" o "III".
-- "analisis_distractores" DEBE ser un objeto JSON con claves A, B, C, D — NUNCA texto plano.`
+===== ANULA CUALQUIER INSTRUCCIÓN DE FORMATO ANTERIOR =====
+IGNORA el formato CASO No. / DATOS TÉCNICOS descrito arriba.
+USA ÚNICAMENTE este formato de salida:
+
+Devuelve ÚNICAMENTE un array JSON válido. Cero texto antes ni después. Cero markdown.
+Cada objeto tiene estas propiedades planas (SIN objetos anidados):
+
+"area"            → competencia o módulo evaluado (string corto)
+"tipo"            → exactamente "funcional" o "comportamental"
+"dificultad"      → exactamente "facil", "medio" o "dificil"
+"bloom"           → exactamente "I", "II" o "III"
+"estado"          → exactamente "Nuevo", "Adaptado" o "Recalibrado"
+"contexto"        → escenario narrativo 120-160 palabras: dependencia real, sistema institucional, dilema y presión. USA comillas simples si debes citar algo dentro del texto.
+"enunciado"       → pregunta directa máximo 20 palabras
+"A"               → opción A (22-35 palabras)
+"B"               → opción B (22-35 palabras)
+"C"               → opción C (22-35 palabras)
+"D"               → opción D (22-35 palabras)
+"correcta"        → exactamente "A", "B", "C" o "D"
+"justificacion"   → fundamento técnico 70-110 palabras con norma o principio concreto
+"analisis_A"      → análisis de la opción A (30-50 palabras)
+"analisis_B"      → análisis de la opción B (30-50 palabras)
+"analisis_C"      → análisis de la opción C (30-50 palabras)
+"analisis_D"      → análisis de la opción D (30-50 palabras)
+"filtro_autonomia" → nivel jerárquico y límite de acción del cargo (25-40 palabras)
+
+CRÍTICO: NUNCA uses comillas dobles dentro de los valores string. El output completo debe ser JSON válido parseable con JSON.parse().`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -458,7 +459,7 @@ INSTRUCCIONES PARA ESTE CARGO:
         if (modelo === 'deepseek') {
           const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
           // 4 opciones + contexto rico necesita más tokens por pregunta
-          return deepseekGenerar(full, lote.n * 500 + 512)
+          return deepseekGenerar(full, lote.n * 1200 + 512)
         }
         return geminiGenerar(pdfPart ? [prompt, pdfPart] : [prompt])
       }
@@ -469,13 +470,13 @@ INSTRUCCIONES PARA ESTE CARGO:
         const sp = `${promptBase}${cargoCtx}`
         if (file) {
           if (modelo === 'deepseek') {
-            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 500 + 512)
+            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 1200 + 512)
           } else {
             result = await geminiGenerar([`${sp}\n\nAnaliza el material y genera exactamente ${cantidadTarget} preguntas.`, pdfPart])
           }
         } else {
           const p = `${sp}\n\nGenera exactamente ${cantidadTarget} preguntas de juicio situado para este cargo.`
-          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 500 + 512) : await geminiGenerar(p)
+          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 1200 + 512) : await geminiGenerar(p)
         }
         preguntas = validarPreguntas(extraerArrayJSON(result.texto))
         tokensIn = result.tokensIn; tokensOut = result.tokensOut
@@ -730,7 +731,7 @@ export async function testGenerador(req, res) {
           { role: 'user',   content: userMsg },
         ],
         temperature: 0.7,
-        max_tokens: cantidadSafe * 600 + 512,
+        max_tokens: cantidadSafe * 1200 + 512,
       })
       result = { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
     } else {
@@ -817,7 +818,7 @@ Genera EXACTAMENTE ${cantidadSafe} preguntas. Devuelve ÚNICAMENTE el array JSON
 
       let rawText
       if (modelo === 'deepseek') {
-        const { texto } = await deepseekGenerar(fullPrompt, cantidadSafe * 600 + 512)
+        const { texto } = await deepseekGenerar(fullPrompt, cantidadSafe * 1200 + 512)
         rawText = texto
       } else {
         const { texto } = await geminiTexto(fullPrompt)

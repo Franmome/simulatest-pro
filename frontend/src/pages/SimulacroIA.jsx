@@ -186,7 +186,7 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
             {p.opciones.map(op => {
               const esCorrecta = op.is_correct
               const esElegida  = resp === op.letter && !esCor
-              const analisis   = p.analisis_distractores?.[op.letter]
+              const analisis   = p[`analisis_${op.letter}`] || p.analisis_distractores?.[op.letter]
 
               return (
                 <div key={op.letter} className={`rounded-xl border overflow-hidden transition-all ${
