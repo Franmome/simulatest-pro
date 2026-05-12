@@ -43,6 +43,7 @@ import LevelsSection from './components/evaluacion-form/LevelsSection'
 import QuestionsSection from './components/evaluacion-form/QuestionsSection'
 import MaterialSection from './components/evaluacion-form/MaterialSection'
 import CsvImportSection from './components/evaluacion-form/CsvImportSection'
+import IASection from './components/evaluacion-form/IASection'
 
 // — Hooks de dominio
 import { useNivelesManager } from './components/evaluacion-form/hooks/useNivelesManager'
@@ -369,12 +370,28 @@ function EvaluacionFormContent() {
       // ETAPA 2: Guardar niveles y preguntas (protegido con timeout)
       setGuardadoStage('Guardando niveles y preguntas...')
       dbg('Iniciando etapa 2: saveAllLevels')
-      await withTimeout(
+      const { nivelesActualizados } = await withTimeout(
         saveAllLevels({ evalId, niveles, preguntas, isEdit }),
         90_000,
         'guardar niveles y preguntas'
       )
       dbg('OK etapa 2')
+
+      // Remap versiones: string level_id (temp) → real DB id ahora que los niveles están guardados
+      const tempToReal = {}
+      niveles.forEach((nv, i) => {
+        if (typeof nv._id === 'string' && nivelesActualizados?.[i]) {
+          tempToReal[nv._id] = nivelesActualizados[i]._id
+        }
+      })
+      const versionesParaGuardar = versiones.map(v => {
+        if (v.level_id && typeof v.level_id === 'string' && tempToReal[v.level_id]) {
+          return { ...v, level_id: tempToReal[v.level_id] }
+        }
+        return v
+      })
+      if (nivelesActualizados) setNiveles(nivelesActualizados)
+      setVersiones(versionesParaGuardar)
 
       // Las etapas 3-8 solo aplican si se está publicando (no borrador)
       if (form.is_active) {
@@ -392,7 +409,7 @@ function EvaluacionFormContent() {
 
         let packageId = packageIdInicial
 
-        const { packageId: pkgId } = await savePackage({ packageId, evalId, form, versiones, modoVersiones })
+        const { packageId: pkgId } = await savePackage({ packageId, evalId, form, versiones: versionesParaGuardar, modoVersiones })
         packageId = pkgId
         setSavedPkg(packageId)
         dbg('OK etapa 3', { packageId })
@@ -402,10 +419,10 @@ function EvaluacionFormContent() {
         // ======================================================================
         setGuardadoStage('Sincronizando versiones...')
         dbg('Iniciando etapa 4: syncPackageVersions')
-        const { versionesSincronizadas } = await syncPackageVersions({ packageId, versiones })
+        const { versionesSincronizadas } = await syncPackageVersions({ packageId, versiones: versionesParaGuardar })
 
         // 🔧 CAMBIO 2: Construir array local con IDs frescos (no depender del estado)
-        const versionesConIdsFrescos = versiones.map((v, i) => ({
+        const versionesConIdsFrescos = versionesParaGuardar.map((v, i) => ({
           ...v,
           id: versionesSincronizadas[i]?.id ?? v.id,
         }))
@@ -691,6 +708,7 @@ function EvaluacionFormContent() {
                 { key: 'profesiones', icon: 'people', label: labels.versiones },
                 { key: 'niveles', icon: 'layers', label: modoGuiado ? 'Bancos de preguntas' : 'Niveles' },
                 { key: 'preguntas', icon: 'quiz', label: 'Preguntas' },
+                { key: 'ia', icon: 'auto_awesome', label: 'Rellenar con IA' },
                 { key: 'material', icon: 'menu_book', label: labels.material },
                 { key: 'importar', icon: 'upload_file', label: 'Importar CSV' },
               ].map(t => {
@@ -900,6 +918,7 @@ function EvaluacionFormContent() {
                 id={id} pkgId={savedPkgId} versiones={versiones} niveles={niveles} profesiones={profesiones}
                 modoVersiones={modoVersiones} setModoVersiones={setModoVersiones}
                 modoGuiado={modoGuiado} labels={labels}
+                form={form} setForm={setForm}
                 showProfModal={showProfModal} setShowProfModal={setShowProfModal}
                 nuevaProfesion={nuevaProfesion} setNuevaProfesion={setNuevaProfesion}
                 onAgregarVersion={agregarVersion}
@@ -970,6 +989,16 @@ function EvaluacionFormContent() {
                 onCopiarInstrucciones={copiarInstruccionesExcel}
                 setImportError={setImportError}
                 setImportOk={setImportOk}
+              />
+            )}
+
+            {tab === 'ia' && (
+              <IASection
+                niveles={niveles}
+                nivelActivo={nivelActivo}
+                setNivelActivo={setNivelActivo}
+                setPreguntas={setPreguntas}
+                addToast={addToast}
               />
             )}
           </div>

@@ -109,7 +109,8 @@ export async function saveAllLevels({ evalId, niveles, preguntas, isEdit }) {
     )
   }
 
-  const nuevosNivelesIds = [] // IDs guardados en esta pasada
+  const nuevosNivelesIds = []   // IDs guardados en esta pasada
+  const nivelesActualizados = [] // niveles con _id real de BD (reemplaza strings temporales)
 
   // Procesar cada nivel secuencialmente (tienen dependencias entre sí)
   for (const [idx, nv] of niveles.entries()) {
@@ -167,6 +168,8 @@ export async function saveAllLevels({ evalId, niveles, preguntas, isEdit }) {
       nuevosNivelesIds.push(levelId)
     }
 
+    nivelesActualizados.push({ ...nv, _id: levelId })
+
     // Guardar las preguntas de este nivel
     await saveQuestionsForLevel({
       levelId,
@@ -204,7 +207,7 @@ export async function saveAllLevels({ evalId, niveles, preguntas, isEdit }) {
   }
 
   dbg('OK etapa: guardar niveles', nuevosNivelesIds)
-  return { nuevosNivelesIds }
+  return { nuevosNivelesIds, nivelesActualizados }
 }
 
 // ============================================================================

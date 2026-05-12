@@ -7,6 +7,7 @@ export default function VersionsSection({
   id, pkgId, versiones, niveles, profesiones,
   modoVersiones, setModoVersiones,
   modoGuiado, labels,
+  form, setForm,
   showProfModal, setShowProfModal,
   nuevaProfesion, setNuevaProfesion,
   onAgregarVersion,
@@ -55,6 +56,20 @@ export default function VersionsSection({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/10">
+          <div>
+            <p className="text-sm font-bold flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base text-primary">smart_toy</span>
+              Asistente Praxia IA
+            </p>
+            <p className="text-xs text-on-surface-variant">Incluye chat IA y generación de banco de preguntas desde PDF</p>
+          </div>
+          <button type="button" onClick={() => setForm(f => ({ ...f, has_ai_chat: !f.has_ai_chat }))}
+            className={`w-12 h-6 rounded-full transition-all relative ${form?.has_ai_chat ? 'bg-primary' : 'bg-outline-variant'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form?.has_ai_chat ? 'right-0.5' : 'left-0.5'}`} />
+          </button>
         </div>
       </div>
 

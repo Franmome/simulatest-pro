@@ -277,10 +277,10 @@ export function useVersionesManager({
     }
   }
 
-  // Solo acepta level_id si el nivel ya existe en BD (id numérico)
+  // Acepta cualquier nivel (guardado o nuevo); level_id puede ser string temporal
   function handleLevelDisplayChange(versionId, texto) {
     const match = niveles.find(n => n.name.toLowerCase() === texto.toLowerCase())
-    const levelId = match ? (typeof match._id === 'number' ? match._id : null) : null
+    const levelId = match ? match._id : null
     setVersiones(prev =>
       prev.map(v =>
         v.id === versionId ? { ...v, level_display: texto, level_id: levelId } : v
@@ -319,8 +319,7 @@ export function useVersionesManager({
     }
 
     const levelIdsUsados = new Set(versiones.map(v => v.level_id).filter(Boolean).map(String))
-    const nivelesConId = niveles.filter(n => typeof n._id === 'number')
-    const nivelesNoUsados = nivelesConId.filter(n => !levelIdsUsados.has(String(n._id)))
+    const nivelesNoUsados = niveles.filter(n => !levelIdsUsados.has(String(n._id)))
     if (nivelesNoUsados.length) {
       warns.push(
         `${nivelesNoUsados.length} nivel(es) no están asignados a ninguna versión: ` +

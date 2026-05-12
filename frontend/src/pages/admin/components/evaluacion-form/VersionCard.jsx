@@ -100,7 +100,7 @@ export default function VersionCard({
           list={`niveles-list-${version.id}`}
         />
         <datalist id={`niveles-list-${version.id}`}>
-          {niveles.filter(n => typeof n._id === 'number').map(n => <option key={n._id} value={n.name} />)}
+          {niveles.map(n => <option key={n._id} value={n.name} />)}
         </datalist>
         {levelSinResolver && (
           <p className="text-[10px] text-error flex items-center gap-1">
