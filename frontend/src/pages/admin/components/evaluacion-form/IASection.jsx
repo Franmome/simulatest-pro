@@ -8,11 +8,15 @@ const BASE_URL = import.meta.env.VITE_BACKEND_URL || ''
 function mapAIQuestionToLocal(q) {
   const correcta = q.correcta?.toUpperCase()
   return {
-    _id: Math.random().toString(36).slice(2),
-    text: q.enunciado || '',
-    explanation: q.explicacion || '',
-    difficulty: ['facil', 'medio', 'dificil'].includes(q.dificultad) ? q.dificultad : 'medio',
-    area: q.area || '',
+    _id:                   Math.random().toString(36).slice(2),
+    text:                  q.enunciado || '',
+    explanation:           q.justificacion || q.explicacion || '',
+    difficulty:            ['facil', 'medio', 'dificil'].includes(q.dificultad) ? q.dificultad : 'medio',
+    area:                  q.area || '',
+    bloom:                 q.bloom || null,
+    estado:                q.estado || null,
+    analisis_distractores: q.analisis_distractores || null,
+    filtro_autonomia:      q.filtro_autonomia || null,
     options: LETRAS.map(letter => ({
       letter,
       text: q[letter] || '',
@@ -262,41 +266,85 @@ export default function IASection({ niveles, nivelActivo, setNivelActivo, setPre
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
             {pregeneradas.map((item, idx) => {
               const p = item.pregunta
-              const correcta = p.options.find(o => o.is_correct)?.letter
+              const [verTec, setVerTec] = [false, () => {}] // solo lectura en preview
               return (
                 <div key={p._id}
-                  className={`rounded-xl border-2 p-4 space-y-3 transition-all cursor-pointer ${item.seleccionada ? 'border-primary/40 bg-primary/5' : 'border-outline-variant/20 opacity-60'}`}
+                  className={`rounded-2xl border-2 overflow-hidden transition-all cursor-pointer ${item.seleccionada ? 'border-primary/40' : 'border-outline-variant/20 opacity-60'}`}
                   onClick={() => toggleSeleccion(idx)}>
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${item.seleccionada ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
-                      {item.seleccionada && <span className="material-symbols-outlined text-xs text-white">check</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-container font-bold text-on-surface-variant">{idx + 1}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">{p.difficulty}</span>
-                        {p.area && <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 text-secondary font-bold truncate max-w-[120px]">{p.area}</span>}
-                      </div>
-                      <p className="text-sm font-medium text-on-surface leading-relaxed">{p.text}</p>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 gap-1.5 pl-8">
-                    {p.options.map(opt => (
-                      <div key={opt.letter}
-                        className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs ${opt.is_correct ? 'bg-secondary/10 border border-secondary/30 text-secondary font-bold' : 'text-on-surface-variant'}`}>
-                        <span className="font-bold flex-shrink-0">{opt.letter}.</span>
-                        <span>{opt.text}</span>
-                        {opt.is_correct && <span className="ml-auto material-symbols-outlined text-sm flex-shrink-0">check_circle</span>}
+                  {/* Header selección */}
+                  <div className={`p-4 space-y-2 ${item.seleccionada ? 'bg-primary/5' : 'bg-surface-container-lowest'}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${item.seleccionada ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
+                        {item.seleccionada && <span className="material-symbols-outlined text-xs text-white">check</span>}
                       </div>
-                    ))}
-                  </div>
-
-                  {p.explanation && (
-                    <div className="pl-8">
-                      <p className="text-[11px] text-on-surface-variant italic border-l-2 border-primary/30 pl-2">{p.explanation}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-container font-bold text-on-surface-variant">{idx + 1}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                            p.difficulty === 'facil' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : p.difficulty === 'dificil' ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>{p.difficulty}</span>
+                          {p.bloom && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-bold">Bloom {p.bloom}</span>}
+                          {p.area && <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 text-secondary font-bold truncate max-w-[120px]">{p.area}</span>}
+                          {p.estado && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-dashed border-slate-200">{p.estado}</span>}
+                        </div>
+                        <p className="text-sm font-medium text-on-surface leading-relaxed">{p.text}</p>
+                      </div>
                     </div>
-                  )}
+
+                    {/* Opciones con análisis */}
+                    <div className="space-y-1.5 pl-8" onClick={e => e.stopPropagation()}>
+                      {p.options.map(opt => {
+                        const ad = p.analisis_distractores?.[opt.letter]
+                        return (
+                          <div key={opt.letter} className={`rounded-xl border overflow-hidden ${
+                            opt.is_correct ? 'border-secondary/40 bg-secondary/5' : 'border-outline-variant/20 bg-surface-container-lowest'
+                          }`}>
+                            <div className={`flex items-start gap-2 px-3 py-2 text-xs ${opt.is_correct ? 'text-secondary font-bold' : 'text-on-surface-variant'}`}>
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-extrabold mt-0.5 ${
+                                opt.is_correct ? 'bg-secondary text-white' : 'bg-surface-container-high text-on-surface-variant'
+                              }`}>{opt.letter}</div>
+                              <span className="flex-1">{opt.text}</span>
+                              {opt.is_correct && <span className="material-symbols-outlined text-sm flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                            </div>
+                            {ad && (
+                              <p className={`px-3 pb-2 pl-9 text-[11px] leading-relaxed italic border-t ${
+                                opt.is_correct ? 'text-secondary/70 border-secondary/10' : 'text-slate-400 border-outline-variant/10'
+                              }`}>{ad}</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Fundamento técnico */}
+                    {p.explanation && (
+                      <div className="pl-8" onClick={e => e.stopPropagation()}>
+                        <div className="bg-primary/5 border border-primary/15 rounded-xl p-3">
+                          <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>gavel</span>
+                            Fundamento técnico
+                          </p>
+                          <p className="text-[11px] text-on-surface leading-relaxed">{p.explanation}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Filtro de autonomía */}
+                    {p.filtro_autonomia && (
+                      <div className="pl-8" onClick={e => e.stopPropagation()}>
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                          <p className="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px]">manage_accounts</span>
+                            Filtro de autonomía
+                          </p>
+                          <p className="text-[11px] text-amber-800 leading-relaxed">{p.filtro_autonomia}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })}

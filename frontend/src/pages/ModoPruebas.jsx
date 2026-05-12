@@ -25,22 +25,58 @@ const TIEMPOS = [
 
 function fmt(n) { return (n || 0).toLocaleString() }
 
+const DIF_CHIP_MP = {
+  facil:   'bg-emerald-50 text-emerald-700 border-emerald-200',
+  medio:   'bg-amber-50 text-amber-700 border-amber-200',
+  dificil: 'bg-rose-50 text-rose-700 border-rose-200',
+}
+const TIPO_CHIP_MP = {
+  funcional:      'bg-primary/5 text-primary border-primary/20',
+  comportamental: 'bg-tertiary/5 text-tertiary border-tertiary/20',
+}
+const BLOOM_LABEL_MP = { I: 'Bloom I', II: 'Bloom II', III: 'Bloom III' }
+
 function TarjetaPregunta({ pregunta, index }) {
   const [abierta, setAbierta] = useState(false)
-  const difColor = { facil: 'bg-green-100 text-green-700', medio: 'bg-yellow-100 text-yellow-700', dificil: 'bg-red-100 text-red-700' }[pregunta.dificultad] || 'bg-slate-100 text-slate-600'
-  const tipoColor = pregunta.tipo === 'funcional' ? 'bg-primary/10 text-primary' : 'bg-tertiary/10 text-tertiary'
+  const [verTecnico, setVerTecnico] = useState(false)
+
+  const difChip  = DIF_CHIP_MP[pregunta.dificultad]  || 'bg-slate-100 text-slate-600 border-slate-200'
+  const tipoChip = TIPO_CHIP_MP[pregunta.tipo] || 'bg-slate-100 text-slate-500 border-slate-200'
+
+  const ad = pregunta.analisis_distractores
 
   return (
-    <div className="border border-outline-variant/20 rounded-xl overflow-hidden bg-surface-container-lowest">
+    <div className="border border-outline-variant/20 rounded-2xl overflow-hidden bg-white shadow-sm">
+
+      {/* Header */}
       <button onClick={() => setAbierta(a => !a)}
-        className="w-full text-left p-3.5 flex items-start gap-3 hover:bg-surface-container/40 transition-colors">
-        <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-[11px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">
+        className="w-full text-left p-4 flex items-start gap-3 hover:bg-slate-50 transition-colors">
+        <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-[11px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">
           {index + 1}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1 mb-1">
-            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${difColor}`}>{pregunta.dificultad || 'medio'}</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${tipoColor}`}>{pregunta.tipo || 'funcional'}</span>
+          <div className="flex flex-wrap items-center gap-1 mb-1.5">
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${difChip}`}>
+              {pregunta.dificultad || 'medio'}
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${tipoChip}`}>
+              {pregunta.tipo || 'funcional'}
+            </span>
+            {pregunta.bloom && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200">
+                {BLOOM_LABEL_MP[pregunta.bloom] || pregunta.bloom}
+              </span>
+            )}
+            {pregunta.area && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] text-slate-400 bg-slate-50 border border-slate-100 max-w-[130px] truncate">
+                {pregunta.area}
+              </span>
+            )}
+            {pregunta.estado && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-slate-400 bg-slate-50 border border-dashed border-slate-200">
+                {pregunta.estado}
+              </span>
+            )}
           </div>
           <p className="text-sm text-on-surface leading-snug line-clamp-2">{pregunta.enunciado}</p>
         </div>
@@ -48,26 +84,76 @@ function TarjetaPregunta({ pregunta, index }) {
           style={{ transform: abierta ? 'rotate(180deg)' : 'rotate(0deg)' }}>expand_more</span>
       </button>
 
+      {/* Detalle */}
       {abierta && (
-        <div className="px-3.5 pb-3.5 space-y-1.5 border-t border-outline-variant/10 pt-3">
-          {['A','B','C','D'].map(letra => (
-            <div key={letra} className={`flex items-start gap-2 p-2.5 rounded-lg border text-sm ${
-              pregunta.correcta === letra
-                ? 'bg-green-50 border-green-300 text-green-800'
-                : 'bg-surface-container border-outline-variant/20 text-on-surface-variant'
-            }`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 ${
-                pregunta.correcta === letra ? 'bg-green-200 text-green-800' : 'bg-surface-container-high text-on-surface-variant'
-              }`}>{letra}</span>
-              <span className="leading-snug flex-1">{pregunta[letra]}</span>
-              {pregunta.correcta === letra && (
-                <span className="material-symbols-outlined text-green-600 text-base ml-auto flex-shrink-0"
-                  style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+        <div className="border-t border-outline-variant/10 p-4 space-y-2">
+
+          {/* Opciones */}
+          {['A','B','C','D'].filter(l => pregunta[l]?.trim()).map(letra => {
+            const esCorrecta = pregunta.correcta === letra
+            const analisis   = ad?.[letra]
+            return (
+              <div key={letra} className={`rounded-xl border overflow-hidden ${
+                esCorrecta ? 'border-secondary/40 bg-secondary/5' : 'border-slate-100 bg-slate-50'
+              }`}>
+                <div className="flex items-start gap-2 px-3 py-2.5">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-extrabold mt-0.5 ${
+                    esCorrecta ? 'bg-secondary text-white' : 'bg-slate-200 text-slate-500'
+                  }`}>{letra}</div>
+                  <span className={`text-sm leading-snug flex-1 ${esCorrecta ? 'text-secondary font-semibold' : 'text-on-surface-variant'}`}>
+                    {pregunta[letra]}
+                  </span>
+                  {esCorrecta && (
+                    <span className="material-symbols-outlined text-secondary text-base flex-shrink-0"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  )}
+                </div>
+                {analisis && (
+                  <p className={`px-3 pb-2.5 pl-11 text-[11px] leading-relaxed italic border-t ${
+                    esCorrecta ? 'text-secondary/70 border-secondary/10' : 'text-slate-400 border-slate-100'
+                  }`}>{analisis}</p>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Datos técnicos */}
+          {(pregunta.justificacion || pregunta.filtro_autonomia) && (
+            <div className="pt-1">
+              <button onClick={() => setVerTecnico(v => !v)}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-primary hover:underline mb-2">
+                <span className="material-symbols-outlined text-sm">analytics</span>
+                {verTecnico ? 'Ocultar datos técnicos' : 'Ver datos técnicos'}
+              </button>
+
+              {verTecnico && (
+                <div className="space-y-2">
+                  {pregunta.justificacion && (
+                    <div className="bg-primary/5 border border-primary/15 rounded-xl p-4">
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>gavel</span>
+                        Fundamento técnico
+                      </p>
+                      <p className="text-sm text-on-surface leading-relaxed">{pregunta.justificacion}</p>
+                    </div>
+                  )}
+                  {pregunta.filtro_autonomia && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                        Filtro de autonomía
+                      </p>
+                      <p className="text-xs text-amber-800 leading-relaxed">{pregunta.filtro_autonomia}</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          ))}
-          {pregunta.explicacion && (
-            <div className="mt-2 p-2.5 bg-primary/5 border border-primary/10 rounded-lg">
+          )}
+
+          {/* Fallback explicacion legacy */}
+          {!pregunta.justificacion && pregunta.explicacion && (
+            <div className="mt-1 p-3 bg-primary/5 border border-primary/10 rounded-xl">
               <p className="text-[9px] font-bold text-primary uppercase mb-1 flex items-center gap-1">
                 <span className="material-symbols-outlined text-[11px]">lightbulb</span>Explicación
               </p>

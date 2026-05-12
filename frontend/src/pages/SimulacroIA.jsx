@@ -27,21 +27,26 @@ function formatTimer(s) {
 }
 
 // Convierte el formato JSON de IA al formato de opciones del renderer
-// Soporta preguntas con 3 opciones (legacy) y 4 opciones (Prompt Maestro)
+// Soporta preguntas legacy (3 opciones / sin datos técnicos) y Prompt Maestro V5.8+
 function parsearPregunta(p, idx) {
+  const correcta = p.correcta?.toUpperCase()
   const opciones = ['A', 'B', 'C', 'D'].filter(l => p[l]?.trim()).map(l => ({
     letter: l,
     text: p[l].trim(),
-    is_correct: l === p.correcta?.toUpperCase(),
+    is_correct: l === correcta,
   }))
   return {
     idx,
-    enunciado:  p.enunciado,
-    area:       p.area || '',
-    tipo:       p.tipo || 'funcional',
-    dificultad: p.dificultad || 'medio',
-    explicacion:p.explicacion || '',
-    correcta:   p.correcta?.toUpperCase(),
+    enunciado:             p.enunciado,
+    area:                  p.area || '',
+    tipo:                  p.tipo || 'funcional',
+    dificultad:            p.dificultad || 'medio',
+    bloom:                 p.bloom || null,
+    estado:                p.estado || null,
+    justificacion:         p.justificacion || p.explicacion || '',
+    analisis_distractores: p.analisis_distractores || null,
+    filtro_autonomia:      p.filtro_autonomia || null,
+    correcta,
     opciones,
   }
 }
@@ -92,6 +97,148 @@ const DISTRACTOR_DESC = {
   C: 'Norma o trámite mal aplicado',
   D: 'Extralimitación de funciones',
   A: 'Descartaste la respuesta correcta',
+}
+
+// ── Tarjeta de revisión profesional ──────────────────────────────────────────
+
+const DIF_CHIP = {
+  facil:   'bg-emerald-50 text-emerald-700 border-emerald-200',
+  medio:   'bg-amber-50 text-amber-700 border-amber-200',
+  dificil: 'bg-rose-50 text-rose-700 border-rose-200',
+}
+const TIPO_CHIP = {
+  funcional:       'bg-primary/5 text-primary border-primary/20',
+  comportamental:  'bg-tertiary/5 text-tertiary border-tertiary/20',
+}
+const BLOOM_LABEL = { I: 'Bloom I — básico', II: 'Bloom II — aplicación', III: 'Bloom III — análisis' }
+
+function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
+  const [abierto, setAbierto] = useState(!esCor)
+
+  const borderColor = sinResp ? 'border-l-slate-300' : esCor ? 'border-l-secondary' : 'border-l-error'
+  const headerBg    = sinResp ? 'bg-slate-50' : esCor ? 'bg-secondary/5' : 'bg-error/5'
+  const iconBg      = sinResp ? 'bg-slate-300' : esCor ? 'bg-secondary' : 'bg-error'
+  const iconName    = sinResp ? 'remove' : esCor ? 'check' : 'close'
+
+  return (
+    <div className={`border-l-4 ${borderColor} rounded-r-2xl overflow-hidden bg-white shadow-sm`}>
+
+      {/* Header — siempre visible */}
+      <button onClick={() => setAbierto(a => !a)} className="w-full text-left">
+        <div className={`${headerBg} px-5 py-4 flex items-start gap-3 transition-colors hover:brightness-95`}>
+          <div className={`w-7 h-7 rounded-full ${iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
+            <span className="material-symbols-outlined text-white text-sm"
+              style={{ fontVariationSettings: "'FILL' 1" }}>{iconName}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${DIF_CHIP[p.dificultad] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                {p.dificultad}
+              </span>
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${TIPO_CHIP[p.tipo] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                {p.tipo}
+              </span>
+              {p.bloom && (
+                <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                  {BLOOM_LABEL[p.bloom] || `Bloom ${p.bloom}`}
+                </span>
+              )}
+              {p.area && (
+                <span className="text-[9px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full max-w-[140px] truncate">
+                  {p.area}
+                </span>
+              )}
+            </div>
+            <p className="text-sm font-medium text-on-surface leading-snug">
+              <span className="text-on-surface-variant mr-1">{idx + 1}.</span>{p.enunciado}
+            </p>
+          </div>
+          <span className="material-symbols-outlined text-on-surface-variant text-lg shrink-0 mt-1 transition-transform duration-200"
+            style={{ transform: abierto ? 'rotate(180deg)' : 'rotate(0deg)' }}>expand_more</span>
+        </div>
+      </button>
+
+      {/* Detalle desplegable */}
+      {abierto && (
+        <div className="px-5 pb-5 pt-4 border-t border-slate-100 space-y-3">
+
+          {/* Opciones con análisis de distractor */}
+          <div className="space-y-2">
+            {p.opciones.map(op => {
+              const esCorrecta = op.is_correct
+              const esElegida  = resp === op.letter && !esCor
+              const analisis   = p.analisis_distractores?.[op.letter]
+
+              return (
+                <div key={op.letter} className={`rounded-xl border overflow-hidden transition-all ${
+                  esCorrecta ? 'border-secondary/40 bg-secondary/5'
+                  : esElegida  ? 'border-error/30 bg-error/5'
+                  : 'border-slate-100 bg-slate-50/80'
+                }`}>
+                  <div className="flex items-start gap-3 px-3 py-2.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-extrabold mt-0.5 ${
+                      esCorrecta ? 'bg-secondary text-white'
+                      : esElegida  ? 'bg-error text-white'
+                      : 'bg-slate-200 text-slate-500'
+                    }`}>{op.letter}</div>
+                    <p className={`text-sm flex-1 leading-snug ${
+                      esCorrecta ? 'text-secondary font-semibold'
+                      : esElegida  ? 'text-error'
+                      : 'text-on-surface-variant'
+                    }`}>{op.text}</p>
+                    {esCorrecta && (
+                      <span className="material-symbols-outlined text-secondary text-base shrink-0"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    )}
+                    {esElegida && (
+                      <span className="material-symbols-outlined text-error text-base shrink-0"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>cancel</span>
+                    )}
+                  </div>
+                  {analisis && (
+                    <p className={`px-3 pb-2.5 pl-11 text-[11px] leading-relaxed italic border-t ${
+                      esCorrecta ? 'text-secondary/70 border-secondary/10'
+                      : esElegida  ? 'text-error/70 border-error/10'
+                      : 'text-slate-400 border-slate-100'
+                    }`}>{analisis}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Fundamento técnico */}
+          {p.justificacion && (
+            <div className="bg-primary/5 border border-primary/15 rounded-xl p-4">
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>gavel</span>
+                Fundamento técnico
+              </p>
+              <p className="text-sm text-on-surface leading-relaxed">{p.justificacion}</p>
+            </div>
+          )}
+
+          {/* Filtro de autonomía */}
+          {p.filtro_autonomia && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                Filtro de autonomía
+              </p>
+              <p className="text-xs text-amber-800 leading-relaxed">{p.filtro_autonomia}</p>
+            </div>
+          )}
+
+          {/* Fallback explicacion legacy */}
+          {!p.justificacion && !p.analisis_distractores && p.justificacion === '' && (
+            <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
+              <p className="text-xs text-on-surface-variant leading-relaxed">{p.justificacion}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir, onVolver }) {
@@ -305,37 +452,20 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir,
           </button>
 
           {verDetalle && (
-            <div className="divide-y divide-slate-100">
+            <div className="p-4 space-y-3">
               {preguntas.map((p, i) => {
                 const resp    = seleccion[i]
                 const esCor   = resp === p.correcta
                 const sinResp = !resp
                 return (
-                  <div key={i} className="px-5 py-4">
-                    <div className="flex items-start gap-3 mb-2">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${sinResp ? 'bg-slate-200' : esCor ? 'bg-secondary' : 'bg-error'}`}>
-                        <span className="material-symbols-outlined text-white text-sm"
-                          style={{ fontVariationSettings: "'FILL' 1" }}>
-                          {sinResp ? 'remove' : esCor ? 'check' : 'close'}
-                        </span>
-                      </div>
-                      <p className="text-sm font-medium leading-relaxed">{i + 1}. {p.enunciado}</p>
-                    </div>
-                    <div className="ml-9 space-y-1">
-                      {p.opciones.map(op => (
-                        <div key={op.letter} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg
-                          ${op.is_correct ? 'bg-secondary/10 text-secondary font-bold' : resp === op.letter && !esCor ? 'bg-error/10 text-error' : 'text-on-surface-variant'}`}>
-                          <span className="font-bold w-4">{op.letter}.</span>
-                          {op.text}
-                        </div>
-                      ))}
-                      {p.explicacion && (
-                        <p className="text-xs text-on-surface-variant italic mt-1 pl-1 leading-relaxed">
-                          {p.explicacion}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <TarjetaRevisionIA
+                    key={i}
+                    p={p}
+                    idx={i}
+                    resp={resp}
+                    esCor={esCor}
+                    sinResp={sinResp}
+                  />
                 )
               })}
             </div>

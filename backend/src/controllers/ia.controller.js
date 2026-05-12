@@ -83,13 +83,31 @@ Devuelve ÚNICAMENTE un arreglo JSON válido sin markdown ni texto adicional:
 // Siempre se añade al final del SP para garantizar el formato aunque el admin haya modificado el prompt
 const FORMAT_ENFORCER = `
 
-⚠️ REGLA CRÍTICA DE SALIDA (NO NEGOCIABLE):
-Devuelve ÚNICAMENTE el array JSON. Sin texto antes ni después. Sin bloques de código markdown.
-Cada objeto DEBE tener exactamente estas propiedades:
-{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","explicacion":"..."}
-- SIEMPRE 4 opciones: A, B, C y D. NUNCA menos de 4.
-- "correcta" debe ser EXACTAMENTE "A", "B", "C" o "D" (mayúscula, sin puntos, sin nada más).
-- "tipo" debe ser exactamente "funcional" o "comportamental".`
+⚠️ FORMATO DE SALIDA — REGLA NO NEGOCIABLE:
+Devuelve ÚNICAMENTE un array JSON válido. Sin texto antes ni después. Sin bloques de código markdown.
+Cada objeto del array debe tener EXACTAMENTE estas propiedades:
+{
+  "area": "nombre del área o competencia evaluada",
+  "tipo": "funcional|comportamental",
+  "dificultad": "facil|medio|dificil",
+  "bloom": "I|II|III",
+  "estado": "Nuevo|Adaptado|Recalibrado",
+  "enunciado": "pregunta directa máximo 20 palabras",
+  "A": "opción A entre 22 y 35 palabras",
+  "B": "opción B entre 22 y 35 palabras",
+  "C": "opción C entre 22 y 35 palabras",
+  "D": "opción D entre 22 y 35 palabras",
+  "correcta": "A|B|C|D",
+  "justificacion": "justificación técnica entre 80 y 130 palabras con fundamento normativo o procedimental concreto",
+  "analisis_distractores": {"A":"análisis 35-60 palabras","B":"análisis 35-60 palabras","C":"análisis 35-60 palabras","D":"análisis 35-60 palabras"},
+  "filtro_autonomia": "explicación de por qué la actuación correcta corresponde al nivel jerárquico del cargo"
+}
+REGLAS ESTRICTAS:
+- SIEMPRE 4 opciones: A, B, C y D. NUNCA menos.
+- "correcta" EXACTAMENTE "A", "B", "C" o "D".
+- "tipo" exactamente "funcional" o "comportamental".
+- "bloom" exactamente "I", "II" o "III".
+- "analisis_distractores" DEBE ser un objeto JSON con claves A, B, C, D — NUNCA texto plano.`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
