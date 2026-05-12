@@ -9,20 +9,26 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const _cache  = new Map()
 const TTL     = 5 * 60 * 1000 // 5 minutos
 
-export async function getPrompt(key, fallback = '') {
-  const hit = _cache.get(key)
+export async function getPrompt(key, fallback = '', cerebro = 'gemini') {
+  const cacheKey = `${key}:${cerebro}`
+  const hit = _cache.get(cacheKey)
   if (hit && Date.now() - hit.ts < TTL) return hit.prompt
 
   try {
     const { data } = await supabase
       .from('ai_system_prompts')
-      .select('system_prompt')
+      .select('system_prompt, system_prompt_deepseek')
       .eq('endpoint_key', key)
       .maybeSingle()
 
-    const prompt = data?.system_prompt ?? fallback
-    if (prompt) _cache.set(key, { prompt, ts: Date.now() })
-    return prompt || fallback
+    // DeepSeek usa su prompt específico si existe, si no cae al de Gemini
+    const prompt = cerebro === 'deepseek'
+      ? (data?.system_prompt_deepseek || data?.system_prompt || fallback)
+      : (data?.system_prompt ?? fallback)
+
+    const result = prompt || fallback
+    if (result) _cache.set(cacheKey, { prompt: result, ts: Date.now() })
+    return result
   } catch {
     return fallback
   }

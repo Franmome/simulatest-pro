@@ -282,7 +282,7 @@ export async function generarBanco(req, res) {
     const userId = req.user.id
     const { evaluacion_id, nivel_id, cargo, modelo = 'gemini' } = req.body
     const file   = req.file
-    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT)) + FORMAT_ENFORCER
+    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo)) + FORMAT_ENFORCER
 
     const compra = await getActivePurchase(userId)
     if (!compra?.packages?.has_ai_chat)
@@ -350,7 +350,7 @@ export async function generarSimulacroPersonal(req, res) {
     const userId = req.user.id
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
-    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT)) + FORMAT_ENFORCER
+    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo)) + FORMAT_ENFORCER
 
     const cantidadTarget   = Math.min(Math.max(parseInt(cantidad) || 160, 5), 250)
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
@@ -686,7 +686,7 @@ export async function testGenerador(req, res) {
 
     const basePrompt = custom_prompt?.trim()
       ? custom_prompt.trim()
-      : (await getPrompt('opec_maestro', SYSTEM_PROMPT))
+      : (await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo))
 
     const systemPrompt = basePrompt + FORMAT_ENFORCER
 
@@ -787,7 +787,8 @@ export async function generarPaqueteConIA(req, res) {
       if (levelErr) throw new Error(`Creando nivel ${niv.nombre}: ${levelErr.message}`)
       const levelId = levelData.id
 
-      const fullPrompt = `${SYSTEM_PROMPT}${FORMAT_ENFORCER}
+      const storedSP = await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo)
+      const fullPrompt = `${storedSP}${FORMAT_ENFORCER}
 
 Nivel de complejidad objetivo: ${bloom}
 Cargo / nivel profesional: ${niv.nombre}
