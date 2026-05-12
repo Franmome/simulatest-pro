@@ -19,11 +19,11 @@ function tiempoRelativo(fecha) {
 }
 
 const CATEGORIA_ESTILOS = {
-  'CNSC':         { gradient: 'from-primary to-primary-container',        icon: 'gavel',        badge: 'bg-primary/10 text-primary'     },
-  'ICFES':        { gradient: 'from-tertiary to-tertiary-container',      icon: 'school',       badge: 'bg-tertiary/10 text-tertiary'   },
-  'Procuraduría': { gradient: 'from-secondary to-on-secondary-container', icon: 'balance',      badge: 'bg-secondary/10 text-secondary' },
-  'Contraloría':  { gradient: 'from-primary to-primary-container',        icon: 'account_balance', badge: 'bg-primary/10 text-primary'  },
-  'default':      { gradient: 'from-primary to-primary-container',        icon: 'quiz',         badge: 'bg-primary/10 text-primary'     },
+  'CNSC':         { gradient: 'from-primary to-primary-container',        icon: 'gavel',           badge: 'bg-primary/10 text-primary'      },
+  'ICFES':        { gradient: 'from-tertiary to-tertiary-container',      icon: 'school',          badge: 'bg-tertiary/10 text-tertiary'    },
+  'Procuraduría': { gradient: 'from-secondary to-on-secondary-container', icon: 'balance',         badge: 'bg-secondary/10 text-secondary'  },
+  'Contraloría':  { gradient: 'from-primary to-primary-container',        icon: 'account_balance', badge: 'bg-primary/10 text-primary'      },
+  'default':      { gradient: 'from-primary to-primary-container',        icon: 'quiz',            badge: 'bg-primary/10 text-primary'      },
 }
 
 function getEstilo(categoria) {
@@ -46,27 +46,16 @@ export default function Dashboard() {
   const iniciales    = nombreCompleto.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
   const avatarUrl    = user?.user_metadata?.avatar_url || null
 
-  const [perfil,          setPerfil]          = useState({ role: 'user', level: 'Profesional Universitario' })
-  const [guardandoPerfil, setGuardandoPerfil] = useState(false)
+  const [filtroCategoria, setFiltroCategoria] = useState('Todos')
 
-  // ── Carga principal con useFetch ────────────────────────────────────────
   const { data, loading: cargando, error, retry } = useFetch(async () => {
     if (!user?.id) return null
 
-    // Perfil
-    const { data: perfilData } = await supabase
-      .from('users')
-      .select('role, level')
-      .eq('id', user.id)
-      .single()
-    if (perfilData) setPerfil(perfilData)
-
-    // Evaluaciones + una sola query para preguntas
     const { data: evals } = await supabase
       .from('evaluations')
       .select('id, title, description, categories(name), levels(id, name)')
       .eq('is_active', true)
-      .limit(4)
+      .limit(8)
 
     const todosLevelIds = (evals || []).flatMap(ev => ev.levels?.map(l => l.id) || [])
     let pregsPorLevel = {}
@@ -80,12 +69,11 @@ export default function Dashboard() {
 
     const evaluaciones = (evals || []).map(ev => ({
       ...ev,
-      categoria:  ev.categories?.name || 'General',
-      preguntas:  ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0,
-      niveles:    ev.levels?.length || 0,
+      categoria: ev.categories?.name || 'General',
+      preguntas: ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0,
+      niveles:   ev.levels?.length || 0,
     }))
 
-    // Intentos del usuario
     const { data: intentosData } = await supabase
       .from('attempts')
       .select('id, score, status, start_time, end_time, levels(name, time_limit)')
@@ -94,7 +82,6 @@ export default function Dashboard() {
       .limit(20)
     const intentos = intentosData || []
 
-    // Progreso
     const completados = intentos.filter(a => a.status === 'completed' && a.score != null)
     const pct = completados.length
       ? Math.round(completados.reduce((s, a) => s + a.score, 0) / completados.length)
@@ -111,7 +98,6 @@ export default function Dashboard() {
     }, 0)
     const horasSemana = Math.round(segundosSemana / 3600 * 10) / 10
 
-    // Plan activo
     const { count: planCount } = await supabase
       .from('purchases')
       .select('*', { count: 'exact', head: true })
@@ -132,46 +118,78 @@ export default function Dashboard() {
   const progreso     = data?.progreso     ?? { pct: 0, horasSemana: 0, metaSemana: 20 }
   const tienePlan    = data?.tienePlan    ?? false
 
-  async function guardarPerfil(campo, valor) {
-    const nuevo = { ...perfil, [campo]: valor }
-    setPerfil(nuevo)
-    setGuardandoPerfil(true)
-    await supabase.from('users').update({ [campo]: valor }).eq('id', user.id)
-    setGuardandoPerfil(false)
-  }
+  const categorias = ['Todos', ...new Set(evaluaciones.map(e => e.categoria))]
+  const evalsFiltradas = filtroCategoria === 'Todos'
+    ? evaluaciones
+    : evaluaciones.filter(e => e.categoria === filtroCategoria)
 
-  const radio     = 56
-  const circunf   = 2 * Math.PI * radio
-  const offset    = circunf - (progreso.pct / 100) * circunf
-  const pctSemana = Math.min((progreso.horasSemana / progreso.metaSemana) * 100, 100)
+  const radio   = 56
+  const circunf = 2 * Math.PI * radio
+  const offset  = circunf - (progreso.pct / 100) * circunf
+  const pctSem  = Math.min((progreso.horasSemana / progreso.metaSemana) * 100, 100)
+  const simsCom = intentos.filter(a => a.status === 'completed').length
 
   return (
     <div className="flex" style={{ paddingBottom: '3rem' }}>
       <section className="flex-1 p-8 overflow-y-auto">
 
-        {/* Saludo */}
-        <div className="mb-10 flex items-center justify-between">
+        {/* ── Saludo ── */}
+        <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-on-background mb-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-on-background mb-1">
               {getSaludo()}, {primerNombre}! 👋
             </h1>
-            <p className="text-on-surface-variant text-lg font-light">
-              Hoy es un excelente día para avanzar hacia tu meta profesional.
+            <p className="text-on-surface-variant text-sm">
+              Continúa preparándote para tu oposición
             </p>
           </div>
           <div className="shrink-0">
             {avatarUrl
               ? <img src={avatarUrl} alt={nombreCompleto}
-                     className="w-14 h-14 rounded-full object-cover ring-4 ring-primary/20" />
-              : <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center
-                                text-on-primary font-bold text-xl ring-4 ring-primary/20">
+                     className="w-12 h-12 rounded-full object-cover ring-4 ring-primary/20" />
+              : <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center
+                                text-on-primary font-bold text-lg ring-4 ring-primary/20">
                   {iniciales}
                 </div>
             }
           </div>
         </div>
 
-        {/* Error */}
+        {/* ── Stats rápidas ── */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          <div className="card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-primary text-lg"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+            </div>
+            <div>
+              <p className="text-xl font-extrabold text-on-background leading-none">{progreso.pct}%</p>
+              <p className="text-[10px] text-on-surface-variant font-medium mt-0.5">Promedio</p>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-secondary text-lg"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            </div>
+            <div>
+              <p className="text-xl font-extrabold text-on-background leading-none">{simsCom}</p>
+              <p className="text-[10px] text-on-surface-variant font-medium mt-0.5">Completados</p>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-tertiary/10 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-tertiary text-lg"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>schedule</span>
+            </div>
+            <div>
+              <p className="text-xl font-extrabold text-on-background leading-none">{progreso.horasSemana}h</p>
+              <p className="text-[10px] text-on-surface-variant font-medium mt-0.5">Esta semana</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Error ── */}
         {error && (
           <div className="mb-6 p-4 bg-error-container text-error rounded-xl flex items-center gap-3">
             <span className="material-symbols-outlined">error</span>
@@ -180,72 +198,67 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Configuración de perfil */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-12">
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-secondary">
-                Tipo de Candidato
-              </span>
-              <span className="material-symbols-outlined text-secondary">badge</span>
+        {/* ── Banner sin plan ── */}
+        {!tienePlan && !cargando && (
+          <div onClick={() => navigate('/planes')}
+               className="mb-8 cursor-pointer rounded-2xl p-5 flex items-center gap-4
+                          bg-gradient-to-r from-primary to-primary-container text-white
+                          hover:shadow-lg hover:-translate-y-0.5 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-2xl"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {['CNSC', 'ICFES', 'Saber Pro', 'Otro'].map(tipo => (
-                <button
-                  key={tipo}
-                  onClick={() => guardarPerfil('role', tipo)}
-                  className={`px-4 py-2 rounded-full text-xs font-bold transition-all
-                    ${perfil.role === tipo
-                      ? 'bg-primary text-white shadow-md'
-                      : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-variant'}`}>
-                  {tipo}
-                </button>
-              ))}
+            <div className="flex-1">
+              <p className="font-bold">Desbloquea todos los simulacros</p>
+              <p className="text-xs text-white/70 mt-0.5">Accede al catálogo completo con un plan Praxia</p>
             </div>
+            <span className="material-symbols-outlined text-white/60">chevron_right</span>
           </div>
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-tertiary">
-                Nivel de Aspiración
-              </span>
-              <span className="material-symbols-outlined text-tertiary">military_tech</span>
-            </div>
-            <select
-              value={perfil.level || 'Profesional Universitario'}
-              onChange={e => guardarPerfil('level', e.target.value)}
-              className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4
-                         text-sm font-semibold outline-none focus:ring-2 focus:ring-tertiary/30">
-              <option>Profesional Universitario</option>
-              <option>Directivo</option>
-              <option>Técnico</option>
-              <option>Auxiliar / Asistencial</option>
-            </select>
-          </div>
-        </div>
+        )}
 
-        {/* Simulacros disponibles */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold text-on-background">Simulacros disponibles</h3>
+        {/* ── Simulacros disponibles ── */}
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-on-background">Simulacros disponibles</h3>
             <button onClick={() => navigate('/catalogo')}
                     className="text-primary font-semibold text-sm hover:underline">
               Ver todo →
             </button>
           </div>
 
-          {cargando ? (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}
+          {/* Chips de filtro */}
+          {!cargando && categorias.length > 1 && (
+            <div className="flex gap-2 flex-wrap mb-5">
+              {categorias.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFiltroCategoria(cat)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all
+                    ${filtroCategoria === cat
+                      ? 'bg-primary text-on-primary shadow-md'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+                  {cat}
+                </button>
+              ))}
             </div>
-          ) : evaluaciones.length === 0 ? (
+          )}
+
+          {cargando ? (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
+            </div>
+          ) : evalsFiltradas.length === 0 ? (
             <div className="card p-10 text-center text-on-surface-variant">
-              <span className="material-symbols-outlined text-4xl opacity-40 mb-3 block">school</span>
-              <p className="font-semibold">No hay simulacros disponibles aún</p>
-              <p className="text-sm mt-1">El administrador está preparando el contenido</p>
+              <span className="material-symbols-outlined text-4xl opacity-40 mb-3 block">search_off</span>
+              <p className="font-semibold">Sin simulacros en esta categoría</p>
+              <button onClick={() => setFiltroCategoria('Todos')}
+                      className="mt-3 text-xs text-primary font-bold hover:underline">
+                Ver todos
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {evaluaciones.map(ev => {
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {evalsFiltradas.map(ev => {
                 const estilo = getEstilo(ev.categoria)
                 return (
                   <div key={ev.id}
@@ -258,12 +271,10 @@ export default function Dashboard() {
                             style={{ fontVariationSettings: "'FILL' 1" }}>{estilo.icon}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${estilo.badge}`}>
-                          {ev.categoria}
-                        </span>
-                      </div>
-                      <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${estilo.badge}`}>
+                        {ev.categoria}
+                      </span>
+                      <p className="font-bold text-sm truncate mt-1 group-hover:text-primary transition-colors">
                         {ev.title}
                       </p>
                       <p className="text-xs text-on-surface-variant">
@@ -271,48 +282,31 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <span className="material-symbols-outlined text-on-surface-variant
-                                     group-hover:text-primary transition-colors">
+                                     group-hover:text-primary transition-colors shrink-0">
                       chevron_right
                     </span>
                   </div>
                 )
               })}
-
-              {!tienePlan && (
-                <div onClick={() => navigate('/planes')}
-                     className="card p-5 cursor-pointer bg-gradient-to-br from-primary to-primary-container
-                                text-white hover:shadow-lg hover:-translate-y-0.5 transition-all
-                                flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-xl"
-                          style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-bold text-sm">Desbloquea todo</p>
-                    <p className="text-xs text-primary-fixed-dim">Ver planes disponibles →</p>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        {/* Últimos intentos */}
+        {/* ── Últimos simulacros ── */}
         {intentos.length > 0 && (
-          <div className="mb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-on-background">Últimos simulacros</h3>
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-on-background">Últimos simulacros</h3>
               <button onClick={() => navigate('/perfil')}
                       className="text-primary font-semibold text-sm hover:underline">
                 Ver historial →
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {intentos.slice(0, 3).map(intento => (
                 <div key={intento.id}
-                     className="bg-white p-4 rounded-xl flex items-center gap-4
-                                border border-outline-variant/15 hover:shadow-sm transition-shadow">
-                  <div className={`p-3 rounded-xl shrink-0
+                     className="card p-4 flex items-center gap-4">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0
                     ${intento.status === 'completed'
                       ? 'bg-secondary-container text-on-secondary-container'
                       : 'bg-surface-container text-on-surface-variant'}`}>
@@ -340,10 +334,11 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
       </section>
 
       {/* ── Sidebar derecho ── */}
-      <aside className="hidden xl:flex w-80 shrink-0 flex-col p-8 gap-6 border-l border-outline-variant/15">
+      <aside className="hidden xl:flex w-72 shrink-0 flex-col p-6 gap-6 border-l border-outline-variant/15">
 
         {/* Círculo de progreso */}
         <div className="card p-6 text-center">
@@ -369,7 +364,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 mb-5">
             <div className="flex justify-between text-xs">
               <span className="text-slate-500 font-medium">Meta semanal</span>
               <span className="text-on-background font-bold">
@@ -378,49 +373,50 @@ export default function Dashboard() {
             </div>
             <div className="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden">
               <div className="h-full bg-secondary rounded-full transition-all duration-700"
-                   style={{ width: `${pctSemana}%` }} />
+                   style={{ width: `${pctSem}%` }} />
             </div>
-            {intentos.length > 0 && (
+            {simsCom > 0 && (
               <p className="text-[10px] text-on-surface-variant">
-                {intentos.filter(a => a.status === 'completed').length} simulacros completados
+                {simsCom} simulacro{simsCom !== 1 ? 's' : ''} completado{simsCom !== 1 ? 's' : ''}
               </p>
             )}
           </div>
 
           <button onClick={() => navigate('/perfil')}
-                  className="mt-6 w-full py-3 bg-white border border-outline-variant/30 rounded-xl
+                  className="w-full py-2.5 bg-surface-container border border-outline-variant/30 rounded-xl
                              text-xs font-bold text-primary hover:bg-primary-fixed transition-colors">
-            VER HISTORIAL COMPLETO
+            Ver historial completo
           </button>
         </div>
 
         {/* Novedades */}
         <div>
-          <h4 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-tertiary">gavel</span>
+          <h4 className="font-bold text-base mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-tertiary text-lg">gavel</span>
             Novedades
           </h4>
-          <div className="space-y-6">
+          <div className="space-y-5">
             <article className="group cursor-pointer">
-              <p className="text-[10px] font-bold text-tertiary mb-1">DECRETO 452 - 2024</p>
+              <p className="text-[10px] font-bold text-tertiary mb-1">DECRETO 452 · 2024</p>
               <h5 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors">
-                Modificación en el régimen de carrera administrativa...
+                Modificación en el régimen de carrera administrativa
               </h5>
-              <p className="text-xs text-on-surface-variant mt-2 line-clamp-2">
+              <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">
                 Nuevas directrices para el proceso de selección en entidades territoriales.
               </p>
             </article>
             <article className="group cursor-pointer">
               <p className="text-[10px] font-bold text-tertiary mb-1">CIRCULAR CNSC</p>
               <h5 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors">
-                Nuevas fechas para convocatoria Territorial 8...
+                Nuevas fechas para convocatoria Territorial 8
               </h5>
-              <p className="text-xs text-on-surface-variant mt-2 line-clamp-2">
+              <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">
                 La CNSC anuncia ajustes en el cronograma de pruebas escritas.
               </p>
             </article>
           </div>
         </div>
+
       </aside>
     </div>
   )
