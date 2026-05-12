@@ -37,6 +37,7 @@ function parsearPregunta(p, idx) {
   }))
   return {
     idx,
+    contexto:              p.contexto || null,
     enunciado:             p.enunciado,
     area:                  p.area || '',
     tipo:                  p.tipo || 'funcional',
@@ -149,7 +150,10 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
                 </span>
               )}
             </div>
-            <p className="text-sm font-medium text-on-surface leading-snug">
+            {p.contexto && (
+              <p className="text-xs text-on-surface-variant leading-relaxed mb-1.5 line-clamp-2">{p.contexto}</p>
+            )}
+            <p className="text-sm font-semibold text-on-surface leading-snug">
               <span className="text-on-surface-variant mr-1">{idx + 1}.</span>{p.enunciado}
             </p>
           </div>
@@ -161,6 +165,21 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
       {/* Detalle desplegable */}
       {abierto && (
         <div className="px-5 pb-5 pt-4 border-t border-slate-100 space-y-3">
+
+          {/* Contexto completo */}
+          {p.contexto && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">description</span>
+                Caso
+              </p>
+              <p className="text-sm text-on-surface leading-relaxed">{p.contexto}</p>
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Pregunta</p>
+                <p className="text-sm font-bold text-on-surface">{p.enunciado}</p>
+              </div>
+            </div>
+          )}
 
           {/* Opciones con análisis de distractor */}
           <div className="space-y-2">
@@ -783,9 +802,23 @@ export default function SimulacroIA() {
           )}
         </div>
 
-        {/* Enunciado */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <p className="text-base font-semibold leading-relaxed">{pActual.enunciado}</p>
+        {/* Caso + enunciado */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {pActual.contexto && (
+            <div className="px-5 pt-5 pb-4 border-b border-slate-100">
+              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">description</span>
+                Caso
+              </p>
+              <p className="text-sm text-on-surface leading-relaxed">{pActual.contexto}</p>
+            </div>
+          )}
+          <div className={pActual.contexto ? 'px-5 py-4 bg-primary/5' : 'p-5'}>
+            {pActual.contexto && (
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-2">Pregunta</p>
+            )}
+            <p className="text-base font-bold leading-snug text-on-surface">{pActual.enunciado}</p>
+          </div>
         </div>
 
         {/* Opciones */}

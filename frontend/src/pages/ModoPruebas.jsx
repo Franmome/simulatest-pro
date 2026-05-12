@@ -88,6 +88,21 @@ function TarjetaPregunta({ pregunta, index }) {
       {abierta && (
         <div className="border-t border-outline-variant/10 p-4 space-y-2">
 
+          {/* Contexto del caso */}
+          {pregunta.contexto && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-1">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">description</span>
+                Caso
+              </p>
+              <p className="text-sm text-on-surface leading-relaxed">{pregunta.contexto}</p>
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Pregunta</p>
+                <p className="text-sm font-bold text-on-surface">{pregunta.enunciado}</p>
+              </div>
+            </div>
+          )}
+
           {/* Opciones */}
           {['A','B','C','D'].filter(l => pregunta[l]?.trim()).map(letra => {
             const esCorrecta = pregunta.correcta === letra

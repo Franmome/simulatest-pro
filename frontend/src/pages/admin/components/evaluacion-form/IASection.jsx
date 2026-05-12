@@ -9,7 +9,9 @@ function mapAIQuestionToLocal(q) {
   const correcta = q.correcta?.toUpperCase()
   return {
     _id:                   Math.random().toString(36).slice(2),
-    text:                  q.enunciado || '',
+    text:                  q.contexto ? `${q.contexto}\n\n${q.enunciado || ''}` : (q.enunciado || ''),
+    contexto:              q.contexto || null,
+    enunciado:             q.enunciado || '',
     explanation:           q.justificacion || q.explicacion || '',
     difficulty:            ['facil', 'medio', 'dificil'].includes(q.dificultad) ? q.dificultad : 'medio',
     area:                  q.area || '',
@@ -290,7 +292,14 @@ export default function IASection({ niveles, nivelActivo, setNivelActivo, setPre
                           {p.area && <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 text-secondary font-bold truncate max-w-[120px]">{p.area}</span>}
                           {p.estado && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-dashed border-slate-200">{p.estado}</span>}
                         </div>
-                        <p className="text-sm font-medium text-on-surface leading-relaxed">{p.text}</p>
+                        {p.contexto ? (
+                          <>
+                            <p className="text-sm text-on-surface-variant leading-relaxed mb-1">{p.contexto}</p>
+                            <p className="text-sm font-bold text-on-surface leading-snug border-t border-outline-variant/20 pt-1 mt-1">{p.enunciado}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-medium text-on-surface leading-relaxed">{p.text}</p>
+                        )}
                       </div>
                     </div>
 
