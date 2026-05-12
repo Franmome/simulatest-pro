@@ -644,22 +644,61 @@ export default function DetallePrueba() {
       ;(intentosData || []).forEach(i => { if (!intentosPorNivel[i.level_id]) intentosPorNivel[i.level_id] = i })
     }
 
-    let tienePlan = false, packageId = null, hasAiChat = false
+    let tienePlan = false, packageId = null, hasAiChat = false, versionNombre = null
     if (user?.id) {
-      const { data: compra } = await supabase
-        .from('purchases').select('package_id').eq('user_id', user.id)
-        .eq('status', 'active').gte('end_date', new Date().toISOString())
-        .order('end_date', { ascending: false }).limit(1).maybeSingle()
-      if (compra) {
+      const evalIdNum = parseInt(id, 10)
+
+      // Resolver paquetes que contienen esta evaluación
+      let evalPackageIds = []
+      const [{ data: evalVers }, { data: pkgDirect }] = await Promise.all([
+        supabase.from('evaluation_versions').select('package_version_id').eq('evaluation_id', evalIdNum),
+        supabase.from('packages').select('id').contains('evaluations_ids', [evalIdNum]),
+      ])
+      if (evalVers?.length) {
+        const { data: versData } = await supabase
+          .from('package_versions').select('package_id')
+          .in('id', evalVers.map(v => v.package_version_id))
+        evalPackageIds = versData?.map(v => v.package_id).filter(Boolean) || []
+      }
+      if (pkgDirect?.length) {
+        evalPackageIds = [...new Set([...evalPackageIds, ...pkgDirect.map(p => p.id)])]
+      }
+
+      // Admins tienen acceso libre a todo
+      const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
+      if (userRow?.role === 'admin') {
         tienePlan = true
-        packageId = compra.package_id
+        packageId = evalPackageIds[0] ?? null
+      } else if (evalPackageIds.length) {
+        // Usuario normal: verificar compra específica para este paquete
+        const { data: compra } = await supabase
+          .from('purchases').select('package_id, package_version_id')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .gte('end_date', new Date().toISOString())
+          .in('package_id', evalPackageIds)
+          .order('end_date', { ascending: false })
+          .limit(1).maybeSingle()
+        if (compra) {
+          tienePlan = true
+          packageId = compra.package_id
+          if (compra.package_version_id) {
+            const { data: ver } = await supabase
+              .from('package_versions').select('display_name')
+              .eq('id', compra.package_version_id).maybeSingle()
+            versionNombre = ver?.display_name ?? null
+          }
+        }
+      }
+
+      if (packageId) {
         const { data: pkg } = await supabase
           .from('packages').select('has_ai_chat').eq('id', packageId).maybeSingle()
         hasAiChat = pkg?.has_ai_chat ?? false
       }
     }
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -672,6 +711,7 @@ export default function DetallePrueba() {
   const tienePlan        = data?.tienePlan ?? false
   const packageId        = data?.packageId ?? null
   const hasAiChat        = data?.hasAiChat ?? false
+  const versionNombre    = data?.versionNombre ?? null
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -893,6 +933,12 @@ export default function DetallePrueba() {
                         <span className="material-symbols-outlined text-sm"
                           style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
                         Activo
+                      </span>
+                    )}
+                    {tienePlan && versionNombre && (
+                      <span className="flex items-center gap-1 bg-white/15 text-white/90 text-[10px] font-bold px-3 py-0.5 rounded-full">
+                        <span className="material-symbols-outlined text-sm">badge</span>
+                        Plan {versionNombre}
                       </span>
                     )}
                   </div>

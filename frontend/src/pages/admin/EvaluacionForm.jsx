@@ -178,15 +178,18 @@ function EvaluacionFormContent() {
   } = csvManager
 
   const draftManager = useEvaluacionDraft({
-  form,
-  versiones,
-  modoVersiones,
-  savedEvalId,
-  savedPkgId,        // ✅ NUEVO: pasar savedPkgId
-  setSavedEvalId,
-  setSavedPkg,
-  setErrorBloque,
-})
+    form,
+    niveles,
+    preguntas,
+    versiones,
+    modoVersiones,
+    savedEvalId,
+    savedPkgId,
+    setSavedEvalId,
+    setSavedPkg,
+    setNiveles,
+    setErrorBloque,
+  })
   const { guardandoBorrador, borradorGuardado, handleGuardarBorrador } = draftManager
 
   // ── Aviso al salir con cambios sin guardar ────────────────────────────────
