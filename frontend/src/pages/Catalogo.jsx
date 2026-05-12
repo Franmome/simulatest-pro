@@ -54,7 +54,6 @@ export default function Catalogo() {
   const { user }   = useAuth()
   const [filtro,   setFiltro]   = useState('Todos')
   const [busqueda, setBusqueda] = useState('')
-  const [tienePlan, setTienePlan] = useState(false)
 
   // ── Carga principal con useFetch ────────────────────────────────────────
   const { data, loading, error, retry } = useFetch(async () => {
@@ -94,23 +93,53 @@ export default function Catalogo() {
       totalPreguntas: ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0,
     }))
 
-    return { categorias: cats || [], evaluaciones: conPreguntas }
-  }, ['catalogo'])
+    // ── Resolver qué evaluaciones compró el usuario ────────────────────────
+    const evalIdsComprados = new Set()
+    let esAdmin = false
 
-  const categorias   = data?.categorias   ?? []
-  const evaluaciones = data?.evaluaciones ?? []
+    if (user?.id) {
+      const { data: userRow } = await supabase
+        .from('users').select('role').eq('id', user.id).maybeSingle()
+      esAdmin = userRow?.role === 'admin'
 
-  // ── Verificar plan activo ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!user?.id) return
-    supabase
-      .from('purchases')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .gte('end_date', new Date().toISOString())
-      .then(({ count }) => setTienePlan((count || 0) > 0))
-  }, [user?.id])
+      if (!esAdmin) {
+        const { data: compras } = await supabase
+          .from('purchases')
+          .select('package_id, package_version_id')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .gte('end_date', new Date().toISOString())
+
+        if (compras?.length) {
+          const pkgIds = [...new Set(compras.map(c => c.package_id).filter(Boolean))]
+          const verIds = compras.map(c => c.package_version_id).filter(Boolean)
+
+          // Via evaluation_versions → package_version_id
+          if (verIds.length) {
+            const { data: evVers } = await supabase
+              .from('evaluation_versions')
+              .select('evaluation_id')
+              .in('package_version_id', verIds)
+            evVers?.forEach(r => evalIdsComprados.add(r.evaluation_id))
+          }
+
+          // Via packages.evaluations_ids
+          if (pkgIds.length) {
+            const { data: pkgs } = await supabase
+              .from('packages').select('evaluations_ids').in('id', pkgIds)
+            pkgs?.forEach(p => p.evaluations_ids?.forEach(eid => evalIdsComprados.add(eid)))
+          }
+        }
+      }
+    }
+
+    return { categorias: cats || [], evaluaciones: conPreguntas, evalIdsComprados, esAdmin }
+  }, ['catalogo', user?.id])
+
+  const categorias      = data?.categorias      ?? []
+  const evaluaciones    = data?.evaluaciones    ?? []
+  const evalIdsComprados = data?.evalIdsComprados ?? new Set()
+  const esAdmin         = data?.esAdmin         ?? false
 
   // ── Filtrado + búsqueda ─────────────────────────────────────────────────
   const lista = evaluaciones
@@ -297,7 +326,7 @@ export default function Catalogo() {
                                 border-t border-outline-variant/15">
                   <span className="text-[10px] text-on-surface-variant font-medium">
                     {user
-                      ? (tienePlan ? '✓ Incluido en tu plan' : 'Requiere plan activo')
+                      ? ((esAdmin || evalIdsComprados.has(ev.id)) ? '✓ Incluido en tu plan' : 'Requiere plan activo')
                       : 'Inicia sesión para practicar'}
                   </span>
                   <button
