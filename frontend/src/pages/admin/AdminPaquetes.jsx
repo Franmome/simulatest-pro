@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../utils/supabase'
 import { deepseek } from '../../utils/deepseek'
+import { useAuth } from '../../context/AuthContext'
 
 const ICONOS_POR_TIPO = ['auto_stories', 'badge', 'gavel', 'psychology', 'history_edu', 'military_tech', 'balance', 'school']
 const COLORES = [
@@ -69,6 +70,293 @@ function getVisiblePages(current, total) {
   if (current <= 3) return [1, 2, 3, 4, 5]
   if (current >= total - 2) return [total - 4, total - 3, total - 2, total - 1, total]
   return [current - 2, current - 1, current, current + 1, current + 2]
+}
+
+const BASE_URL = (() => {
+  const env = import.meta.env.VITE_BACKEND_URL
+  if (env && !env.includes('localhost')) return env
+  if (!window.location.hostname.includes('localhost')) return window.location.origin
+  return 'http://localhost:3000'
+})()
+
+const NIVELES_PROFESION = [
+  { nombre: 'Auxiliar / Asistencial', bloom: 'Nivel I — básico' },
+  { nombre: 'Técnico',                bloom: 'Nivel I-II — básico a medio' },
+  { nombre: 'Tecnólogo',              bloom: 'Nivel II — medio' },
+  { nombre: 'Profesional',            bloom: 'Nivel II-III — medio a alto' },
+  { nombre: 'Directivo',              bloom: 'Nivel III — alto analítico' },
+]
+
+// ─── Modal: Generar paquete con IA ───────────────────────────────────────────
+function GenerarConIAModal({ onClose, onSuccess }) {
+  const { session } = useAuth()
+  const [paso, setPaso] = useState(1) // 1=config, 2=generando, 3=listo
+  const [nombre, setNombre] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [categoriaId, setCategoriaId] = useState('')
+  const [categorias, setCategorias] = useState([])
+  const [modelo, setModelo] = useState('gemini')
+  const [hasAiChat, setHasAiChat] = useState(true)
+  const [error, setError] = useState('')
+  const [resultado, setResultado] = useState(null)
+  const [nivelSel, setNivelSel] = useState({})
+  const [nivelConfig, setNivelConfig] = useState({})
+
+  useEffect(() => {
+    supabase.from('categories').select('id, name').order('name').then(({ data }) => setCategorias(data || []))
+    const defConfig = {}
+    NIVELES_PROFESION.forEach(n => { defConfig[n.nombre] = { cantidad: 20, precio: 0, tiempo: 60 } })
+    setNivelConfig(defConfig)
+  }, [])
+
+  function toggleNivel(nombre) {
+    setNivelSel(prev => ({ ...prev, [nombre]: !prev[nombre] }))
+  }
+
+  function setNivelField(nombre, campo, valor) {
+    setNivelConfig(prev => ({ ...prev, [nombre]: { ...prev[nombre], [campo]: valor } }))
+  }
+
+  const nivelesSeleccionados = NIVELES_PROFESION.filter(n => nivelSel[n.nombre])
+
+  async function generar() {
+    if (!nombre.trim()) return setError('El nombre del paquete es requerido.')
+    if (!prompt.trim()) return setError('El contexto/temática es requerido.')
+    if (!nivelesSeleccionados.length) return setError('Selecciona al menos un nivel de profesión.')
+    setError('')
+    setPaso(2)
+
+    try {
+      const token = session?.access_token
+      const resp = await fetch(`${BASE_URL}/api/ia/generar-paquete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          nombre: nombre.trim(),
+          descripcion: descripcion.trim(),
+          prompt: prompt.trim(),
+          categoria_id: categoriaId || null,
+          modelo,
+          has_ai_chat: hasAiChat,
+          niveles: nivelesSeleccionados.map(n => ({
+            nombre: n.nombre,
+            cantidad: parseInt(nivelConfig[n.nombre]?.cantidad) || 20,
+            precio:   parseInt(nivelConfig[n.nombre]?.precio)   || 0,
+            tiempo:   parseInt(nivelConfig[n.nombre]?.tiempo)   || 60,
+          })),
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Error del servidor.')
+      setResultado(data)
+      setPaso(3)
+    } catch (err) {
+      setError(err.message || 'Error al generar el paquete.')
+      setPaso(1)
+    }
+  }
+
+  const CLS_INPUT = 'w-full px-3 py-2.5 bg-surface-container border border-outline-variant/30 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="sticky top-0 bg-surface px-6 pt-6 pb-4 border-b border-outline-variant/15 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">Generar paquete con IA</h2>
+              <p className="text-xs text-on-surface-variant">La IA crea preguntas, niveles y versiones automáticamente</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-on-surface-variant hover:bg-surface-container transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        {/* Paso 2: generando */}
+        {paso === 2 && (
+          <div className="p-10 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-3xl animate-spin">progress_activity</span>
+            </div>
+            <p className="font-bold text-lg">Generando paquete…</p>
+            <p className="text-sm text-on-surface-variant max-w-sm">
+              La IA está creando las preguntas para {nivelesSeleccionados.length} nivel{nivelesSeleccionados.length > 1 ? 'es' : ''}.
+              Esto puede tomar 30–90 segundos.
+            </p>
+            <div className="flex gap-1.5 mt-2">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full bg-primary"
+                     style={{ animation: `bounce 1s ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Paso 3: éxito */}
+        {paso === 3 && resultado && (
+          <div className="p-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-secondary-container flex items-center justify-center">
+              <span className="material-symbols-outlined text-secondary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            </div>
+            <p className="font-bold text-xl">¡Paquete creado!</p>
+            <p className="text-sm text-on-surface-variant">Quedó en borrador. Entra a editarlo para publicarlo.</p>
+            <div className="w-full max-w-sm bg-surface-container rounded-xl p-4 text-left space-y-2 mt-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">Resumen de preguntas</p>
+              {Object.entries(resultado.preguntas).map(([nivel, qty]) => (
+                <div key={nivel} className="flex justify-between text-sm">
+                  <span className="text-on-surface-variant">{nivel}</span>
+                  <span className="font-bold">{qty} preguntas</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => { onSuccess(); onClose() }}
+                      className="px-6 py-2.5 bg-primary text-on-primary rounded-full text-sm font-bold">
+                Ver paquete
+              </button>
+              <button onClick={() => { setPaso(1); setNombre(''); setPrompt(''); setResultado(null) }}
+                      className="px-6 py-2.5 bg-surface-container rounded-full text-sm font-bold text-on-surface-variant">
+                Generar otro
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Paso 1: formulario */}
+        {paso === 1 && (
+          <div className="p-6 space-y-5">
+            {error && (
+              <div className="p-3 rounded-xl bg-error/10 border border-error/20 text-error text-sm flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm">error</span>
+                {error}
+              </div>
+            )}
+
+            {/* Info básica */}
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Información del paquete</p>
+              <input value={nombre} onChange={e => setNombre(e.target.value)}
+                     placeholder="Nombre del paquete *" className={CLS_INPUT} />
+              <textarea value={descripcion} onChange={e => setDescripcion(e.target.value)}
+                        placeholder="Descripción breve (opcional)" rows={2}
+                        className={`${CLS_INPUT} resize-none`} />
+              <select value={categoriaId} onChange={e => setCategoriaId(e.target.value)} className={CLS_INPUT}>
+                <option value="">Sin categoría</option>
+                {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
+            {/* Prompt */}
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Contexto / temática *</p>
+              <p className="text-xs text-on-surface-variant">Describe la entidad, cargo, áreas temáticas y normativa que debe cubrir el paquete.</p>
+              <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4}
+                        placeholder="ej: Contraloría General de la República — cargo Técnico de Verificación de Cuentas. Áreas: control fiscal, SECOP II, gestión documental, régimen disciplinario, MIPG..."
+                        className={`${CLS_INPUT} resize-none`} />
+            </div>
+
+            {/* Niveles de profesión */}
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Niveles de profesión *</p>
+              <p className="text-xs text-on-surface-variant">Cada nivel genera su propio conjunto de preguntas y versión del paquete con precio independiente.</p>
+              <div className="space-y-2">
+                {NIVELES_PROFESION.map(n => (
+                  <div key={n.nombre} className={`rounded-xl border transition-all ${nivelSel[n.nombre] ? 'border-primary/40 bg-primary/5' : 'border-outline-variant/20 bg-surface-container-low'}`}>
+                    <button type="button" onClick={() => toggleNivel(n.nombre)}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                      <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-all ${nivelSel[n.nombre] ? 'bg-primary' : 'bg-surface-container border border-outline-variant'}`}>
+                        {nivelSel[n.nombre] && <span className="material-symbols-outlined text-white text-xs">check</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold">{n.nombre}</p>
+                        <p className="text-[10px] text-on-surface-variant">{n.bloom}</p>
+                      </div>
+                    </button>
+                    {nivelSel[n.nombre] && (
+                      <div className="grid grid-cols-3 gap-2 px-4 pb-3">
+                        <div>
+                          <p className="text-[10px] text-on-surface-variant mb-1">Preguntas</p>
+                          <input type="number" min={5} max={50}
+                                 value={nivelConfig[n.nombre]?.cantidad || 20}
+                                 onChange={e => setNivelField(n.nombre, 'cantidad', e.target.value)}
+                                 className="w-full px-2 py-1.5 bg-surface-container border border-outline-variant/30 rounded-lg text-sm text-center outline-none" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-on-surface-variant mb-1">Precio (COP)</p>
+                          <input type="number" min={0} step={1000}
+                                 value={nivelConfig[n.nombre]?.precio || 0}
+                                 onChange={e => setNivelField(n.nombre, 'precio', e.target.value)}
+                                 className="w-full px-2 py-1.5 bg-surface-container border border-outline-variant/30 rounded-lg text-sm text-center outline-none" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-on-surface-variant mb-1">Tiempo (min)</p>
+                          <input type="number" min={10} max={240}
+                                 value={nivelConfig[n.nombre]?.tiempo || 60}
+                                 onChange={e => setNivelField(n.nombre, 'tiempo', e.target.value)}
+                                 className="w-full px-2 py-1.5 bg-surface-container border border-outline-variant/30 rounded-lg text-sm text-center outline-none" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Modelo y opciones */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Modelo IA</p>
+                <div className="flex gap-2">
+                  {['gemini', 'deepseek'].map(m => (
+                    <button key={m} type="button" onClick={() => setModelo(m)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border ${modelo === m ? 'bg-primary text-on-primary border-primary' : 'border-outline-variant text-on-surface-variant hover:bg-surface-container'}`}>
+                      {m === 'gemini' ? '✦ Gemini' : '◆ DeepSeek'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Asistente IA</p>
+                <div className="flex items-center justify-between p-3 bg-surface-container rounded-xl">
+                  <p className="text-xs font-semibold flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-primary">smart_toy</span>
+                    Praxia IA
+                  </p>
+                  <button type="button" onClick={() => setHasAiChat(v => !v)}
+                          className={`w-10 h-5 rounded-full relative transition-all ${hasAiChat ? 'bg-primary' : 'bg-outline-variant'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${hasAiChat ? 'right-0.5' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Botón generar */}
+            <button onClick={generar}
+                    disabled={!nombre.trim() || !prompt.trim() || !nivelesSeleccionados.length}
+                    className="w-full py-3.5 bg-primary text-on-primary rounded-full font-bold text-sm
+                               disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2
+                               hover:bg-primary/90 transition-colors active:scale-[0.98]">
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              Generar paquete con IA
+              {nivelesSeleccionados.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-[10px] font-black">
+                  {nivelesSeleccionados.reduce((s, n) => s + (parseInt(nivelConfig[n.nombre]?.cantidad) || 20), 0)} preguntas
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── Panel DeepSeek embebido ──────────────────────────────────────────────────
@@ -371,6 +659,7 @@ El tono debe ser motivador y pedagógico, sin ser condescendiente. Máximo 2 pá
 export default function AdminPaquetes() {
   const navigate = useNavigate()
 
+  const [mostrarModalIA, setMostrarModalIA] = useState(false)
   const [paquetes, setPaquetes] = useState([])
   const [total, setTotal] = useState(0)
   const [pagina, setPagina] = useState(1)
@@ -538,6 +827,12 @@ export default function AdminPaquetes() {
     cargarStatsGlobales()
   }
 
+  async function toggleAiChat(pkg) {
+    const { error } = await supabase.from('packages').update({ has_ai_chat: !pkg.has_ai_chat }).eq('id', pkg.id)
+    if (error) { alert('No se pudo actualizar el asistente IA.'); return }
+    cargarPaquetes()
+  }
+
   async function eliminarPaquete(id) {
     if (!confirm('¿Eliminar este paquete? Esta acción no se puede deshacer.')) return
     const { error } = await supabase.from('packages').delete().eq('id', id)
@@ -607,11 +902,18 @@ export default function AdminPaquetes() {
 
           <div className="flex flex-wrap gap-3">
             <button
+              onClick={() => setMostrarModalIA(true)}
+              className="bg-gradient-to-r from-primary to-tertiary text-white px-6 py-3 rounded-full font-bold shadow-xl shadow-primary/20 hover:-translate-y-0.5 transition-all flex items-center gap-2 active:scale-95 text-sm"
+            >
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              Generar con IA
+            </button>
+            <button
               onClick={() => navigate('/admin/evaluaciones/nueva')}
               className="bg-primary text-on-primary px-6 py-3 rounded-full font-bold shadow-xl shadow-primary/20 hover:-translate-y-0.5 transition-all flex items-center gap-2 active:scale-95 text-sm"
             >
               <span className="material-symbols-outlined text-sm">add_circle</span>
-              + Nuevo Paquete
+              + Manual
             </button>
           </div>
         </div>
@@ -710,6 +1012,7 @@ export default function AdminPaquetes() {
                       <th className="px-6 py-4">Paquete</th>
                       <th className="px-6 py-4">Estructura</th>
                       <th className="px-6 py-4 text-center">Estado</th>
+                      <th className="px-6 py-4 text-center">IA</th>
                       <th className="px-6 py-4 text-right">Ventas</th>
                       <th className="px-6 py-4 text-right">Precio</th>
                       <th className="px-6 py-4" />
@@ -798,6 +1101,16 @@ export default function AdminPaquetes() {
                               }`}>
                                 {pkg.is_active ? 'ACTIVO' : 'BORRADOR'}
                               </span>
+                            </td>
+
+                            <td className="px-6 py-5 text-center">
+                              <button
+                                onClick={() => toggleAiChat(pkg)}
+                                title={pkg.has_ai_chat ? 'Deshabilitar IA' : 'Habilitar IA'}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${pkg.has_ai_chat ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+                                <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: `'FILL' ${pkg.has_ai_chat ? 1 : 0}` }}>smart_toy</span>
+                                {pkg.has_ai_chat ? 'ON' : 'OFF'}
+                              </button>
                             </td>
 
                             <td className="px-6 py-5 text-right font-medium text-sm text-on-surface-variant">
@@ -1142,11 +1455,20 @@ export default function AdminPaquetes() {
 
       {/* FAB */}
       <button
-        onClick={() => navigate('/admin/evaluaciones/nueva')}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50"
+        onClick={() => setMostrarModalIA(true)}
+        className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-br from-primary to-tertiary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50"
+        title="Generar paquete con IA"
       >
-        <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+        <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
       </button>
+
+      {/* Modal IA */}
+      {mostrarModalIA && (
+        <GenerarConIAModal
+          onClose={() => setMostrarModalIA(false)}
+          onSuccess={() => { cargarPaquetes(); cargarStats(); cargarStatsGlobales() }}
+        />
+      )}
     </div>
   )
 }

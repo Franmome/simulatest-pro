@@ -729,6 +729,175 @@ export async function testGenerador(req, res) {
   }
 }
 
+// ── Endpoint: Generar paquete completo con IA ────────────────────────────────
+// Crea evaluation + levels + questions + options + package + package_versions
+// en una sola llamada. Solo admins.
+
+const BLOOM_POR_NIVEL = {
+  'Auxiliar / Asistencial': 'I (básico) — reconocimiento normativo, situaciones simples de servicio al ciudadano',
+  'Técnico':                'I-II (básico a medio) — aplicación de procedimientos, manejo de herramientas institucionales',
+  'Tecnólogo':              'II (medio) — análisis de situaciones con presión moderada, criterio técnico',
+  'Profesional':            'II-III (medio a alto) — decisión en escenarios con riesgo fiscal o disciplinario',
+  'Directivo':              'III (alto analítico) — decisión estratégica en ambigüedad legal, tensión entre norma y presión',
+}
+
+export async function generarPaqueteConIA(req, res) {
+  const { data: userRow } = await supabase.from('users').select('role').eq('id', req.user.id).maybeSingle()
+  if (!userRow || userRow.role !== 'admin')
+    return res.status(403).json({ error: 'Solo administradores pueden usar este endpoint.' })
+
+  const {
+    nombre, descripcion, prompt, categoria_id,
+    modelo = 'gemini',
+    niveles,       // [{ nombre, cantidad, precio, tiempo }]
+    has_ai_chat = false,
+  } = req.body
+
+  if (!nombre?.trim() || !prompt?.trim() || !Array.isArray(niveles) || !niveles.length)
+    return res.status(400).json({ error: 'Faltan campos: nombre, prompt y al menos un nivel.' })
+
+  try {
+    // 1. Crear evaluación base
+    const { data: evalData, error: evalErr } = await supabase
+      .from('evaluations')
+      .insert({ title: nombre.trim(), description: descripcion?.trim() || '', is_active: false, category_id: categoria_id || null })
+      .select('id').single()
+    if (evalErr) throw new Error(`Creando evaluación: ${evalErr.message}`)
+    const evalId = evalData.id
+
+    const nivelesCreados = []
+    const resumenPreguntas = {}
+
+    // 2. Para cada nivel: crear level + generar + insertar preguntas y opciones
+    for (const niv of niveles) {
+      const cantidadSafe = Math.min(Math.max(parseInt(niv.cantidad) || 20, 5), 50)
+      const bloom = BLOOM_POR_NIVEL[niv.nombre] || 'II (medio)'
+
+      const { data: levelData, error: levelErr } = await supabase
+        .from('levels')
+        .insert({
+          evaluation_id: evalId,
+          name:          niv.nombre,
+          description:   `Generado por IA — nivel ${niv.nombre}`,
+          time_limit:    parseInt(niv.tiempo) || 60,
+          passing_score: 60,
+          sort_order:    nivelesCreados.length + 1,
+        })
+        .select('id').single()
+      if (levelErr) throw new Error(`Creando nivel ${niv.nombre}: ${levelErr.message}`)
+      const levelId = levelData.id
+
+      const fullPrompt = `${SYSTEM_PROMPT}${FORMAT_ENFORCER}
+
+Nivel de complejidad objetivo: ${bloom}
+Cargo / nivel profesional: ${niv.nombre}
+Temática y contexto de la convocatoria: ${prompt.trim()}
+
+Genera EXACTAMENTE ${cantidadSafe} preguntas. Devuelve ÚNICAMENTE el array JSON.`
+
+      let rawText
+      if (modelo === 'deepseek') {
+        const { texto } = await deepseekGenerar(fullPrompt, cantidadSafe * 600 + 512)
+        rawText = texto
+      } else {
+        const { texto } = await geminiTexto(fullPrompt)
+        rawText = texto
+      }
+
+      const preguntas = validarPreguntas(extraerArrayJSON(rawText))
+
+      // Batch insert preguntas
+      const { data: newQs, error: qErr } = await supabase
+        .from('questions')
+        .insert(preguntas.map(p => ({
+          level_id:      levelId,
+          text:          p.enunciado,
+          explanation:   p.explicacion || '',
+          question_type: 'multiple',
+          difficulty:    p.dificultad || 'medio',
+          area:          p.area || niv.nombre,
+        })))
+        .select('id')
+      if (qErr) throw new Error(`Guardando preguntas de ${niv.nombre}: ${qErr.message}`)
+
+      // Batch insert opciones
+      const opciones = []
+      for (let qi = 0; qi < preguntas.length; qi++) {
+        const p  = preguntas[qi]
+        const qId = newQs[qi].id
+        for (const letra of ['A', 'B', 'C', 'D']) {
+          if (p[letra]?.trim()) {
+            opciones.push({ question_id: qId, text: p[letra], letter: letra, is_correct: p.correcta?.toUpperCase() === letra })
+          }
+        }
+      }
+      if (opciones.length) {
+        const { error: opErr } = await supabase.from('options').insert(opciones)
+        if (opErr) throw new Error(`Guardando opciones de ${niv.nombre}: ${opErr.message}`)
+      }
+
+      nivelesCreados.push({ ...niv, level_id: levelId })
+      resumenPreguntas[niv.nombre] = preguntas.length
+    }
+
+    // 3. Crear paquete
+    const precioBase = Math.min(...niveles.map(n => Number(n.precio) || 0))
+    const { data: pkgData, error: pkgErr } = await supabase
+      .from('packages')
+      .insert({
+        name:              nombre.trim(),
+        description:       descripcion?.trim() || '',
+        price:             precioBase,
+        type:              'one_time',
+        duration_days:     365,
+        is_active:         false,
+        pricing_mode:      niveles.length > 1 ? 'per_profession' : 'global',
+        content_mode:      'shared',
+        has_study_material: true,
+        has_practice_mode:  true,
+        has_exam_mode:      true,
+        has_level_selector: niveles.length > 1,
+        has_ai_chat,
+        evaluations_ids:   [evalId],
+      })
+      .select('id').single()
+    if (pkgErr) throw new Error(`Creando paquete: ${pkgErr.message}`)
+    const packageId = pkgData.id
+
+    // 4. Crear package_versions (una por nivel)
+    const { data: versionsData, error: versErr } = await supabase
+      .from('package_versions')
+      .insert(nivelesCreados.map((niv, i) => ({
+        package_id:   packageId,
+        display_name: niv.nombre,
+        price:        Number(niv.precio) || 0,
+        is_active:    true,
+        sort_order:   i,
+      })))
+      .select('id, display_name')
+    if (versErr) throw new Error(`Creando versiones: ${versErr.message}`)
+
+    // 5. Vincular versiones ↔ niveles
+    const { error: pvErr } = await supabase.from('package_version_levels').insert(
+      nivelesCreados.map((niv, i) => ({ package_version_id: versionsData[i].id, level_id: niv.level_id }))
+    )
+    if (pvErr) throw new Error(`Vinculando niveles a versiones: ${pvErr.message}`)
+
+    // 6. Vincular evaluación ↔ versiones
+    const { error: evErr } = await supabase.from('evaluation_versions').insert(
+      versionsData.map(v => ({ evaluation_id: evalId, package_version_id: v.id }))
+    )
+    if (evErr) throw new Error(`Vinculando evaluación a versiones: ${evErr.message}`)
+
+    console.log(`[IA] Paquete generado: ${packageId} (eval ${evalId}) | preguntas:`, resumenPreguntas)
+    return res.json({ ok: true, package_id: packageId, eval_id: evalId, preguntas: resumenPreguntas })
+
+  } catch (err) {
+    console.error('[IA] generarPaqueteConIA:', err)
+    return res.status(500).json({ error: formatError(err) })
+  }
+}
+
 // ── Endpoint: Análisis post-simulacro ────────────────────────────────────────
 
 export async function analizarResultadosSimulacro(req, res) {
