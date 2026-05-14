@@ -17,27 +17,43 @@ export const getPaquete = async (req, res) => {
 }
 
 export const comprarPaquete = async (req, res) => {
-  const { package_id } = req.body
+  const { package_id, package_version_id } = req.body
   const user_id = req.user.id
 
-  const { data: pkg } = await supabase
-    .from('packages').select('*').eq('id', package_id).maybeSingle()
-  if (!pkg) return res.status(404).json({ error: 'Paquete no encontrado' })
+  const publicKey = process.env.WOMPI_PUBLIC_KEY
+  if (!publicKey) return res.status(500).json({ error: 'Pasarela de pago no configurada. Contacta soporte.' })
 
-  // Generar firma de integridad para Wompi
-  const amount_in_cents = pkg.price * 100
+  let price
+  let refId = package_id
+
+  if (package_version_id) {
+    const { data: version } = await supabase
+      .from('package_versions').select('price').eq('id', package_version_id).maybeSingle()
+    if (!version) return res.status(404).json({ error: 'Versión de paquete no encontrada' })
+    price = Number(version.price)
+    refId = package_version_id
+  } else {
+    const { data: pkg } = await supabase
+      .from('packages').select('price').eq('id', package_id).maybeSingle()
+    if (!pkg) return res.status(404).json({ error: 'Paquete no encontrado' })
+    price = Number(pkg.price)
+  }
+
+  if (!price || price <= 0) return res.status(400).json({ error: 'El precio del paquete no es válido.' })
+
+  const amount_in_cents = Math.round(price * 100)
   const currency = 'COP'
-  const reference = `${user_id}-${package_id}-${Date.now()}`
+  const reference = `PRX-${user_id.slice(0, 8)}-${refId.slice(0, 8)}-${Date.now()}`
   const cadena = `${reference}${amount_in_cents}${currency}${process.env.WOMPI_INTEGRITY_SECRET}`
   const signature = crypto.createHash('sha256').update(cadena).digest('hex')
 
   return res.json({
-    public_key: process.env.WOMPI_PUBLIC_KEY,
+    public_key: publicKey,
     amount_in_cents,
     currency,
     reference,
     signature,
-    metadata: { user_id, package_id },
+    metadata: { user_id, package_id, package_version_id },
     redirect_url: `${process.env.FRONTEND_URL}/pago-resultado`
   })
 }

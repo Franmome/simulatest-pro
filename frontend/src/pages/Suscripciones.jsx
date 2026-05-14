@@ -474,22 +474,6 @@ function PanelDetalle({ pkg, versiones, comprasUsuario, onClose, onComprar, proc
                     </span>
                   </div>
 
-                  {/* Próximamente */}
-                  {[
-                    { label: 'Efecty / Baloto', sub: 'Pago en efectivo — Próximamente', icon: 'payments' },
-                    { label: 'Transferencia bancaria', sub: 'Próximamente', icon: 'account_balance' },
-                  ].map(m => (
-                    <div key={m.label} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 opacity-50 cursor-not-allowed">
-                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                        <span className="material-symbols-outlined text-slate-400 text-lg">{m.icon}</span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-slate-500">{m.label}</p>
-                        <p className="text-[10px] text-slate-400">{m.sub}</p>
-                      </div>
-                      <span className="text-[9px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">Pronto</span>
-                    </div>
-                  ))}
                 </div>
               </div>
 

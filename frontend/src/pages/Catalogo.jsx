@@ -74,8 +74,31 @@ export default function Catalogo() {
     if (errCats)  throw new Error(errCats.message)
     if (errEvals) throw new Error(errEvals.message)
 
+    // Evalucaciones que pertenecen a al menos un paquete publicado
+    const { data: pubPkgs } = await supabase
+      .from('packages')
+      .select('id, evaluations_ids')
+      .eq('is_active', true)
+
+    const evalIdsPublicados = new Set()
+    ;(pubPkgs || []).forEach(p => p.evaluations_ids?.forEach(eid => evalIdsPublicados.add(eid)))
+
+    // También via package_versions → evaluation_versions
+    const pkgIds = (pubPkgs || []).map(p => p.id)
+    if (pkgIds.length) {
+      const { data: pvs } = await supabase
+        .from('package_versions').select('id').in('package_id', pkgIds).eq('is_active', true)
+      const pvIds = (pvs || []).map(v => v.id)
+      if (pvIds.length) {
+        const { data: evVers } = await supabase
+          .from('evaluation_versions').select('evaluation_id').in('package_version_id', pvIds)
+        ;(evVers || []).forEach(r => evalIdsPublicados.add(r.evaluation_id))
+      }
+    }
+
     // Una sola query para contar todas las preguntas
-    const todosLevelIds = (evals || []).flatMap(ev => ev.levels?.map(l => l.id) || [])
+    const evalsPublicadas = (evals || []).filter(ev => evalIdsPublicados.has(ev.id))
+    const todosLevelIds = evalsPublicadas.flatMap(ev => ev.levels?.map(l => l.id) || [])
     let pregsPorLevel = {}
 
     if (todosLevelIds.length) {
@@ -88,7 +111,7 @@ export default function Catalogo() {
       })
     }
 
-    const conPreguntas = (evals || []).map(ev => ({
+    const conPreguntas = evalsPublicadas.map(ev => ({
       ...ev,
       totalPreguntas: ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0,
     }))
