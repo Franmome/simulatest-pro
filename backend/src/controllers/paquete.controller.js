@@ -43,7 +43,7 @@ export const comprarPaquete = async (req, res) => {
 
   const amount_in_cents = Math.round(price * 100)
   const currency = 'COP'
-  const reference = `PRX-${user_id.slice(0, 8)}-${refId.slice(0, 8)}-${Date.now()}`
+  const reference = `PRX-${String(user_id).slice(0, 8)}-${String(refId).slice(0, 8)}-${Date.now()}`
   const cadena = `${reference}${amount_in_cents}${currency}${process.env.WOMPI_INTEGRITY_SECRET}`
   const signature = crypto.createHash('sha256').update(cadena).digest('hex')
 
