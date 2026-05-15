@@ -24,14 +24,12 @@ export const comprarPaquete = async (req, res) => {
   if (!publicKey) return res.status(500).json({ error: 'Pasarela de pago no configurada. Contacta soporte.' })
 
   let price
-  let refId = package_id
 
   if (package_version_id) {
     const { data: version } = await supabase
       .from('package_versions').select('price').eq('id', package_version_id).maybeSingle()
     if (!version) return res.status(404).json({ error: 'Versión de paquete no encontrada' })
     price = Number(version.price)
-    refId = package_version_id
   } else {
     const { data: pkg } = await supabase
       .from('packages').select('price').eq('id', package_id).maybeSingle()
@@ -43,7 +41,8 @@ export const comprarPaquete = async (req, res) => {
 
   const amount_in_cents = Math.round(price * 100)
   const currency = 'COP'
-  const reference = `PRX-${String(user_id).slice(0, 8)}-${String(refId).slice(0, 8)}-${Date.now()}`
+  // Formato: {user_uuid}-{package_id}-{timestamp} — el webhook lo parsea así
+  const reference = `${user_id}-${package_id}-${Date.now()}`
   const cadena = `${reference}${amount_in_cents}${currency}${process.env.WOMPI_INTEGRITY_SECRET}`
   const signature = crypto.createHash('sha256').update(cadena).digest('hex')
 
