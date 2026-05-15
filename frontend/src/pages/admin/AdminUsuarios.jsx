@@ -129,6 +129,16 @@ export default function AdminUsuarios() {
 
   const [regalando, setRegalando] = useState(null)
 
+  const [modalPaquetes,    setModalPaquetes]    = useState(null)  // usuario seleccionado
+  const [paquetesUsuario,  setPaquetesUsuario]  = useState([])
+  const [cargandoPkgs,     setCargandoPkgs]     = useState(false)
+  const [pkgAccion,        setPkgAccion]        = useState(null)  // { tipo: 'ampliar'|'asignar', purchaseId? }
+  const [diasAmpliar,      setDiasAmpliar]      = useState(30)
+  const [pkgNuevoId,       setPkgNuevoId]       = useState('')
+  const [pkgNuevoDias,     setPkgNuevoDias]     = useState(30)
+  const [guardandoPkg,     setGuardandoPkg]     = useState(false)
+  const [msgPkg,           setMsgPkg]           = useState('')
+
   useEffect(() => {
     cargarUsuarios()
   }, [pagina, busqueda, filtroRol, filtroEstado])
@@ -286,6 +296,90 @@ export default function AdminUsuarios() {
       return
     }
 
+    cargarUsuarios()
+    cargarStats()
+  }
+
+  async function abrirGestionPaquetes(u) {
+    setModalPaquetes(u)
+    setPkgAccion(null)
+    setMsgPkg('')
+    setCargandoPkgs(true)
+    const { data } = await supabase
+      .from('purchases')
+      .select('id, status, start_date, end_date, amount, packages(id, name, price)')
+      .eq('user_id', u.id)
+      .in('status', ['active', 'manual'])
+      .order('end_date', { ascending: false })
+    setPaquetesUsuario(data || [])
+    setCargandoPkgs(false)
+  }
+
+  async function ampliarTiempo(purchaseId, endDateActual) {
+    setGuardandoPkg(true)
+    setMsgPkg('')
+    const base   = new Date(endDateActual) > new Date() ? new Date(endDateActual) : new Date()
+    const nuevaFecha = new Date(base.getTime() + diasAmpliar * 86400000)
+    const { error } = await supabase
+      .from('purchases')
+      .update({ end_date: nuevaFecha.toISOString() })
+      .eq('id', purchaseId)
+    setGuardandoPkg(false)
+    if (error) { setMsgPkg(`Error: ${error.message}`); return }
+    setMsgPkg(`✓ Acceso ampliado ${diasAmpliar} días`)
+    setPkgAccion(null)
+    abrirGestionPaquetes(modalPaquetes)
+    cargarUsuarios()
+  }
+
+  async function eliminarPurchase(purchaseId) {
+    if (!confirm('¿Eliminar este acceso? El usuario perderá el paquete inmediatamente.')) return
+    setGuardandoPkg(true)
+    const { error } = await supabase
+      .from('purchases')
+      .update({ status: 'cancelled' })
+      .eq('id', purchaseId)
+    setGuardandoPkg(false)
+    if (error) { setMsgPkg(`Error: ${error.message}`); return }
+    setMsgPkg('✓ Paquete eliminado')
+    abrirGestionPaquetes(modalPaquetes)
+    cargarUsuarios()
+    cargarStats()
+  }
+
+  async function asignarPaqueteNuevo() {
+    if (!pkgNuevoId) { setMsgPkg('Selecciona un paquete'); return }
+    setGuardandoPkg(true)
+    setMsgPkg('')
+    const fin = new Date(Date.now() + pkgNuevoDias * 86400000)
+    const { error } = await supabase.from('purchases').insert({
+      user_id:    modalPaquetes.id,
+      package_id: pkgNuevoId,
+      start_date: new Date().toISOString(),
+      end_date:   fin.toISOString(),
+      status:     'manual',
+      amount:     0,
+    })
+    setGuardandoPkg(false)
+    if (error) { setMsgPkg(`Error: ${error.message}`); return }
+    setMsgPkg('✓ Paquete asignado')
+    setPkgAccion(null)
+    setPkgNuevoId('')
+    abrirGestionPaquetes(modalPaquetes)
+    cargarUsuarios()
+    cargarStats()
+  }
+
+  async function eliminarUsuario(u) {
+    if (!confirm(`¿Eliminar permanentemente a "${u.full_name || u.email}"?\nEsto borra su cuenta, compras e intentos. No se puede deshacer.`)) return
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/usuarios/${u.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = await res.json()
+    if (!res.ok) { alert(`Error: ${json.error}`); return }
     cargarUsuarios()
     cargarStats()
   }
@@ -678,7 +772,7 @@ export default function AdminUsuarios() {
                               <button
                                 onClick={() => regalarPaquete(u)}
                                 disabled={regalando === u.id}
-                                title="Regalar acceso"
+                                title="Regalar acceso rápido"
                                 className="p-2 text-on-surface-variant hover:text-secondary hover:bg-secondary-fixed rounded-lg transition-all disabled:opacity-40"
                               >
                                 {regalando === u.id ? (
@@ -686,6 +780,22 @@ export default function AdminUsuarios() {
                                 ) : (
                                   <span className="material-symbols-outlined text-xl">card_giftcard</span>
                                 )}
+                              </button>
+
+                              <button
+                                onClick={() => abrirGestionPaquetes(u)}
+                                title="Gestionar paquetes"
+                                className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed rounded-lg transition-all"
+                              >
+                                <span className="material-symbols-outlined text-xl">inventory_2</span>
+                              </button>
+
+                              <button
+                                onClick={() => eliminarUsuario(u)}
+                                title="Eliminar usuario"
+                                className="p-2 text-on-surface-variant hover:text-error hover:bg-error-container rounded-lg transition-all"
+                              >
+                                <span className="material-symbols-outlined text-xl">person_remove</span>
                               </button>
                             </div>
                           </td>
@@ -872,6 +982,167 @@ export default function AdminUsuarios() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal gestión de paquetes */}
+      {modalPaquetes && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-3xl p-8 w-full max-w-lg shadow-2xl border border-outline-variant/20 max-h-[90vh] overflow-y-auto">
+
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary-fixed text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  {iniciales(modalPaquetes.full_name || modalPaquetes.email)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-headline">{modalPaquetes.full_name || 'Sin nombre'}</h3>
+                  <p className="text-xs text-on-surface-variant">{modalPaquetes.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setModalPaquetes(null)} className="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {/* Paquetes activos */}
+            <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Paquetes activos</h4>
+
+            {cargandoPkgs ? (
+              <div className="space-y-2 mb-5">
+                {[1,2].map(i => <div key={i} className="h-14 bg-surface-container rounded-xl animate-pulse" />)}
+              </div>
+            ) : paquetesUsuario.length === 0 ? (
+              <div className="bg-surface-container rounded-xl p-4 text-center text-on-surface-variant text-sm mb-5">
+                <span className="material-symbols-outlined text-2xl opacity-30 block mb-1">inventory_2</span>
+                Sin paquetes activos
+              </div>
+            ) : (
+              <div className="space-y-2 mb-5">
+                {paquetesUsuario.map(p => {
+                  const vence     = new Date(p.end_date)
+                  const diasRest  = Math.ceil((vence - Date.now()) / 86400000)
+                  const vencido   = diasRest <= 0
+                  const urgente   = !vencido && diasRest <= 7
+                  return (
+                    <div key={p.id} className="bg-surface-container rounded-xl p-4 flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm truncate">{p.packages?.name || 'Paquete'}</p>
+                        <p className={`text-xs font-semibold mt-0.5 ${vencido ? 'text-error' : urgente ? 'text-tertiary' : 'text-on-surface-variant'}`}>
+                          {vencido
+                            ? 'Vencido'
+                            : `Vence en ${diasRest} día${diasRest !== 1 ? 's' : ''} · ${vence.toLocaleDateString('es-CO')}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => setPkgAccion(a => a?.tipo === 'ampliar' && a.purchaseId === p.id ? null : { tipo: 'ampliar', purchaseId: p.id, endDate: p.end_date })}
+                          title="Ampliar tiempo"
+                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary-fixed rounded-lg transition-all"
+                        >
+                          <span className="material-symbols-outlined text-lg">more_time</span>
+                        </button>
+                        <button
+                          onClick={() => eliminarPurchase(p.id)}
+                          disabled={guardandoPkg}
+                          title="Eliminar paquete"
+                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container rounded-lg transition-all disabled:opacity-40"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Panel ampliar tiempo */}
+            {pkgAccion?.tipo === 'ampliar' && (
+              <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 mb-4 space-y-3">
+                <p className="text-xs font-bold text-primary">Ampliar tiempo de acceso</p>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={diasAmpliar}
+                    onChange={e => setDiasAmpliar(Number(e.target.value))}
+                    className="flex-1 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {[7, 15, 30, 60, 90, 180, 365].map(d => (
+                      <option key={d} value={d}>{d} días</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => ampliarTiempo(pkgAccion.purchaseId, pkgAccion.endDate)}
+                    disabled={guardandoPkg}
+                    className="px-4 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold disabled:opacity-60"
+                  >
+                    {guardandoPkg ? 'Guardando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Separador */}
+            <div className="border-t border-outline-variant/10 my-5" />
+
+            {/* Asignar nuevo paquete */}
+            <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Asignar nuevo paquete</h4>
+
+            {pkgAccion?.tipo === 'asignar' ? (
+              <div className="space-y-3">
+                <select
+                  value={pkgNuevoId}
+                  onChange={e => setPkgNuevoId(e.target.value)}
+                  className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">Selecciona un paquete</option>
+                  {paquetes.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} — ${Number(p.price).toLocaleString('es-CO')}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={pkgNuevoDias}
+                    onChange={e => setPkgNuevoDias(Number(e.target.value))}
+                    className="flex-1 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {[7, 15, 30, 60, 90, 180, 365].map(d => (
+                      <option key={d} value={d}>{d} días</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={asignarPaqueteNuevo}
+                    disabled={guardandoPkg}
+                    className="px-4 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold disabled:opacity-60"
+                  >
+                    {guardandoPkg ? 'Asignando...' : 'Asignar'}
+                  </button>
+                  <button
+                    onClick={() => setPkgAccion(null)}
+                    className="px-4 py-2.5 border border-outline-variant rounded-xl text-sm font-bold"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setPkgAccion({ tipo: 'asignar' })}
+                className="w-full py-3 border-2 border-dashed border-outline-variant/50 rounded-xl text-sm font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-lg">add</span>
+                Agregar paquete
+              </button>
+            )}
+
+            {msgPkg && (
+              <p className={`mt-4 text-xs font-bold px-3 py-2 rounded-lg ${
+                msgPkg.includes('Error') ? 'bg-error-container text-error' : 'bg-secondary-container text-on-secondary-container'
+              }`}>
+                {msgPkg}
+              </p>
+            )}
           </div>
         </div>
       )}
