@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
 import { useFetch } from '../hooks/useFetch'
-import { deepseek } from '../utils/deepseek'
 
 // ── Helpers de categoría ──────────────────────────────────────────────────────
 function catMeta(nombre) {
@@ -92,131 +91,6 @@ function TarjetaEval({ ev, intentosUsuario, onClick }) {
   )
 }
 
-// ── Chat IA flotante ──────────────────────────────────────────────────────────
-const SUGERENCIAS = [
-  '¿Cuáles son los temas más evaluados en el ICFES?',
-  '¿Cómo mejoro mi comprensión lectora?',
-  'Explícame qué es el Estado Social de Derecho',
-  '¿Qué estrategias uso el día del examen?',
-  '¿Cómo funciona el control fiscal en Colombia?',
-]
-
-function MentorIAFlotante({ contextoEval }) {
-  const [abierto,   setAbierto]   = useState(false)
-  const [mensajes,  setMensajes]  = useState([])
-  const [input,     setInput]     = useState('')
-  const [cargando,  setCargando]  = useState(false)
-  const [noLeidos,  setNoLeidos]  = useState(false)
-
-  async function enviar(texto) {
-    const msg = texto || input.trim()
-    if (!msg || cargando) return
-    setInput('')
-    const nuevos = [...mensajes, { role: 'user', content: msg }]
-    setMensajes(nuevos)
-    setCargando(true)
-    try {
-      const extra = contextoEval ? `El usuario está viendo la evaluación: "${contextoEval}"` : ''
-      const resp  = await deepseek.chat(nuevos, extra)
-      setMensajes(m => [...m, { role: 'assistant', content: resp }])
-      if (!abierto) setNoLeidos(true)
-    } catch {
-      setMensajes(m => [...m, { role: 'assistant', content: 'Hubo un error al contactar al mentor. Intenta de nuevo.' }])
-    } finally {
-      setCargando(false)
-    }
-  }
-
-  return (
-    <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-3">
-      {abierto && (
-        <div className="w-80 sm:w-96 bg-surface-container-lowest rounded-3xl shadow-2xl
-                        border border-outline-variant/20 flex flex-col overflow-hidden"
-             style={{ maxHeight: '70vh' }}>
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-outline-variant/20 bg-primary text-on-primary">
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>smart_toy</span>
-            <div>
-              <p className="font-bold text-sm">Mentor IA</p>
-              <p className="text-[10px] opacity-80">Preparación CNSC · ICFES · Saber Pro</p>
-            </div>
-            <button onClick={() => setAbierto(false)} className="ml-auto opacity-70 hover:opacity-100">
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {mensajes.length === 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-on-surface-variant font-medium text-center mb-4">
-                  ¡Hola! Soy tu mentor de preparación. ¿En qué te ayudo hoy?
-                </p>
-                {SUGERENCIAS.map(s => (
-                  <button key={s} onClick={() => enviar(s)}
-                          className="w-full text-left text-xs px-3 py-2 rounded-xl bg-surface-container
-                                     hover:bg-primary/10 hover:text-primary transition-colors">
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-            {mensajes.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
-                  ${m.role === 'user'
-                    ? 'bg-primary text-on-primary rounded-br-sm'
-                    : 'bg-surface-container text-on-surface rounded-bl-sm'}`}>
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {cargando && (
-              <div className="flex justify-start">
-                <div className="bg-surface-container px-4 py-3 rounded-2xl rounded-bl-sm">
-                  <div className="flex gap-1">
-                    {[0,1,2].map(i => (
-                      <div key={i} className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"
-                           style={{ animationDelay: `${i * 0.15}s` }} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 border-t border-outline-variant/20 flex gap-2">
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviar()}
-              placeholder="Escribe tu pregunta..."
-              className="flex-1 bg-surface-container rounded-full px-4 py-2 text-sm outline-none
-                         focus:ring-2 focus:ring-primary/20 border-none"
-            />
-            <button onClick={() => enviar()}
-                    disabled={!input.trim() || cargando}
-                    className="w-9 h-9 bg-primary text-on-primary rounded-full flex items-center justify-center
-                               disabled:opacity-40 hover:bg-primary/90 transition-all active:scale-95 flex-shrink-0">
-              <span className="material-symbols-outlined text-sm">send</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      <button onClick={() => { setAbierto(a => !a); setNoLeidos(false) }}
-              className="w-14 h-14 bg-primary text-on-primary rounded-full shadow-xl flex items-center justify-center
-                         hover:scale-110 active:scale-95 transition-all relative">
-        <span className="material-symbols-outlined text-2xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}>
-          {abierto ? 'close' : 'smart_toy'}
-        </span>
-        {noLeidos && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white" />
-        )}
-      </button>
-    </div>
-  )
-}
-
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function Estudio() {
   const navigate = useNavigate()
@@ -224,7 +98,6 @@ export default function Estudio() {
 
   const [busqueda,    setBusqueda]   = useState('')
   const [catFiltro,   setCatFiltro]  = useState('todas')
-  const [contextoIA,  setContextoIA] = useState('')
 
   // ── Carga principal con useFetch ──────────────────────────────────────────
   const { data, loading, error, retry } = useFetch(async () => {
@@ -393,7 +266,7 @@ export default function Estudio() {
           <div className="space-y-3">
             {evalsFiltradas.map(ev => (
               <TarjetaEval key={ev.id} ev={ev} intentosUsuario={intentos}
-                           onClick={e => { setContextoIA(e.title); navigate(`/prueba/${e.id}`) }} />
+                           onClick={e => navigate(`/prueba/${e.id}`)} />
             ))}
           </div>
         )}
@@ -421,7 +294,6 @@ export default function Estudio() {
         </div>
       </section>
 
-      <MentorIAFlotante contextoEval={contextoIA} />
     </div>
   )
 }
