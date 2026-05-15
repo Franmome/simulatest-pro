@@ -257,6 +257,25 @@ async function deepseekGenerar(prompt, maxTokens = 8192) {
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
 
+// Si el proveedor principal da 429/rate-limit, cambia al otro automáticamente
+async function conFallback(modelo, deepFn, gemFn) {
+  const esPrimarioDeep = modelo === 'deepseek'
+  try {
+    const r = await (esPrimarioDeep ? deepFn() : gemFn())
+    return { ...r, proveedor_real: modelo }
+  } catch (err) {
+    const saturado = err?.status === 429
+      || String(err?.message).includes('429')
+      || String(err?.message).toLowerCase().includes('rate limit')
+      || String(err?.message).toLowerCase().includes('too many')
+    if (!saturado) throw err
+    const fallbackNombre = esPrimarioDeep ? 'gemini' : 'deepseek'
+    console.warn(`[IA] ${modelo} saturado → cambiando a ${fallbackNombre}`)
+    const r = await (esPrimarioDeep ? gemFn() : deepFn())
+    return { ...r, proveedor_real: fallbackNombre }
+  }
+}
+
 async function deepseekTexto(prompt) {
   const r = await deepseek.chat.completions.create({
     model: 'deepseek-chat',
@@ -410,6 +429,7 @@ export async function generarSimulacroPersonal(req, res) {
     }
 
     let tokensIn = 0, tokensOut = 0
+    let proveedorReal = modelo
 
     if (!preguntas) {
       const BATCH    = 20
@@ -456,12 +476,9 @@ INSTRUCCIONES PARA ESTE CARGO:
           dificultadTarget !== 'mixta' ? `- TODAS de dificultad "${dificultadTarget}".` : '- Varía la dificultad: mezcla facil, medio y dificil de forma equilibrada.',
         ].filter(Boolean).join('\n')
         const prompt = `${SP}\n\n${instr}${cargoCtx}`
-        if (modelo === 'deepseek') {
-          const full = pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt
-          // 4 opciones + contexto rico necesita más tokens por pregunta
-          return deepseekGenerar(full, lote.n * 1200 + 512)
-        }
-        return geminiGenerar(pdfPart ? [prompt, pdfPart] : [prompt])
+        const deepFn = () => deepseekGenerar(pdfText ? `${prompt}\n\nMATERIAL DE ESTUDIO:\n${pdfText.slice(0, 4000)}` : prompt, lote.n * 1200 + 512)
+        const gemFn  = () => geminiGenerar(pdfPart ? [prompt, pdfPart] : [prompt])
+        return conFallback(modelo, deepFn, gemFn)
       }
 
       if (cantidadTarget <= BATCH) {
@@ -469,15 +486,16 @@ INSTRUCCIONES PARA ESTE CARGO:
         let result
         const sp = `${promptBase}${cargoCtx}`
         if (file) {
-          if (modelo === 'deepseek') {
-            result = await deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 1200 + 512)
-          } else {
-            result = await geminiGenerar([`${sp}\n\nAnaliza el material y genera exactamente ${cantidadTarget} preguntas.`, pdfPart])
-          }
+          const deepFn = () => deepseekGenerar(`${sp}\n\nMATERIAL DE ESTUDIO:\n${(pdfText || '').slice(0, 12000)}\n\nGenera exactamente ${cantidadTarget} preguntas.`, cantidadTarget * 1200 + 512)
+          const gemFn  = () => geminiGenerar([`${sp}\n\nAnaliza el material y genera exactamente ${cantidadTarget} preguntas.`, pdfPart])
+          result = await conFallback(modelo, deepFn, gemFn)
         } else {
           const p = `${sp}\n\nGenera exactamente ${cantidadTarget} preguntas de juicio situado para este cargo.`
-          result = modelo === 'deepseek' ? await deepseekGenerar(p, cantidadTarget * 1200 + 512) : await geminiGenerar(p)
+          const deepFn = () => deepseekGenerar(p, cantidadTarget * 1200 + 512)
+          const gemFn  = () => geminiGenerar(p)
+          result = await conFallback(modelo, deepFn, gemFn)
         }
+        proveedorReal = result.proveedor_real || modelo
         preguntas = validarPreguntas(extraerArrayJSON(result.texto))
         tokensIn = result.tokensIn; tokensOut = result.tokensOut
 
@@ -497,6 +515,7 @@ INSTRUCCIONES PARA ESTE CARGO:
                 allPreguntas.push(...ps)
                 totalTIn  += r.value.tokensIn  || 0
                 totalTOut += r.value.tokensOut || 0
+                if (r.value.proveedor_real && r.value.proveedor_real !== modelo) proveedorReal = r.value.proveedor_real
               } catch (e) { console.error('[IA] batch parse:', e.message) }
             } else {
               console.error('[IA] batch wave failed:', r.reason?.message)
@@ -538,7 +557,7 @@ INSTRUCCIONES PARA ESTE CARGO:
     if (tokensIn + tokensOut > 0)
       await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'simulacro', modelo })
 
-    return res.json({ simulacro_id: sim.id, total: preguntas.length, desde_cache: tokensIn === 0 })
+    return res.json({ simulacro_id: sim.id, total: preguntas.length, desde_cache: tokensIn === 0, proveedor_real: proveedorReal })
 
   } catch (err) {
     console.error('[IA] generarSimulacroPersonal:', err)

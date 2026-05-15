@@ -537,7 +537,7 @@ export default function DetallePrueba() {
     setGenerandoIA(true)
     setErrorIA(null)
     try {
-      const { simulacro_id, total } = await generarSimulacroPersonal({
+      const { simulacro_id, total, proveedor_real } = await generarSimulacroPersonal({
         evaluacion_id:       id,
         cargo:               cargo.trim(),
         pdf:                 pdfIA || undefined,
@@ -546,6 +546,15 @@ export default function DetallePrueba() {
         tiempo_por_pregunta: configIA.tiempo,
         dificultad_config:   configIA.dificultad,
       })
+      if (proveedor_real && proveedor_real !== modeloIA) {
+        const nombres = { deepseek: 'DeepSeek', gemini: 'Gemini' }
+        addNotif({
+          tipo:   'info',
+          titulo: `${nombres[modeloIA] || modeloIA} no disponible`,
+          cuerpo: `Se usó ${nombres[proveedor_real] || proveedor_real} automáticamente. Tu prueba quedó lista.`,
+          icon:   'swap_horiz',
+        })
+      }
       setLoadingProgress(100)
       setRecargarSims(v => v + 1)
       if (segundoPlanoNotifIdRef.current) {

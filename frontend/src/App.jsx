@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationsProvider } from './context/NotificationsContext'
@@ -7,7 +8,7 @@ import AdminLayout from './components/AdminLayout'
 import DeployWatcher from './components/DeployWatcher'
 
 // Páginas públicas
-import InicioPublico from './pages/InicioPublico'  // ✅ Landing pública
+import InicioPublico from './pages/InicioPublico'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Catalogo from './pages/Catalogo'
@@ -29,17 +30,25 @@ import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
 
-// Páginas de administración
-import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminUsuarios from './pages/admin/AdminUsuarios'
-import AdminPaquetes from './pages/admin/AdminPaquetes'
-import AdminTesoreria from './pages/admin/AdminTesoreria'
-import AdminEditor from './pages/admin/AdminEditor'
-import AdminErrores from './pages/admin/AdminErrores'
-import AdminIATraining from './pages/admin/AdminIATraining'
-import AdminTokens from './pages/admin/AdminTokens'
-import EvaluacionesList from './pages/admin/EvaluacionesList'
-import EvaluacionForm from './pages/admin/EvaluacionForm'
+// Páginas de administración — se cargan solo cuando el admin entra al panel
+const AdminDashboard   = lazy(() => import('./pages/admin/AdminDashboard'))
+const AdminUsuarios    = lazy(() => import('./pages/admin/AdminUsuarios'))
+const AdminPaquetes    = lazy(() => import('./pages/admin/AdminPaquetes'))
+const AdminTesoreria   = lazy(() => import('./pages/admin/AdminTesoreria'))
+const AdminEditor      = lazy(() => import('./pages/admin/AdminEditor'))
+const AdminErrores     = lazy(() => import('./pages/admin/AdminErrores'))
+const AdminIATraining  = lazy(() => import('./pages/admin/AdminIATraining'))
+const AdminTokens      = lazy(() => import('./pages/admin/AdminTokens'))
+const EvaluacionesList = lazy(() => import('./pages/admin/EvaluacionesList'))
+const EvaluacionForm   = lazy(() => import('./pages/admin/EvaluacionForm'))
+
+function AdminFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface">
+      <div className="w-10 h-10 border-[3px] border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
 
 export default function App() {
   return (
@@ -81,17 +90,17 @@ export default function App() {
 
           {/* 👑 Panel de administración */}
           <Route path="/admin" element={<PrivateRoute requireAdmin><AdminLayout /></PrivateRoute>}>
-            <Route index                          element={<AdminDashboard />} />
-            <Route path="evaluaciones"            element={<EvaluacionesList />} />
-            <Route path="evaluaciones/nueva"      element={<EvaluacionForm />} />
-            <Route path="evaluaciones/:id/editar" element={<EvaluacionForm />} />
-            <Route path="usuarios"                element={<AdminUsuarios />} />
-            <Route path="paquetes"                element={<AdminPaquetes />} />
-            <Route path="tesoreria"               element={<AdminTesoreria />} />
-            <Route path="editor"                  element={<AdminEditor />} />
-            <Route path="errores"                 element={<AdminErrores />} />
-            <Route path="ia-training"             element={<AdminIATraining />} />
-            <Route path="tokens"                  element={<AdminTokens />} />
+            <Route index                          element={<Suspense fallback={<AdminFallback />}><AdminDashboard /></Suspense>} />
+            <Route path="evaluaciones"            element={<Suspense fallback={<AdminFallback />}><EvaluacionesList /></Suspense>} />
+            <Route path="evaluaciones/nueva"      element={<Suspense fallback={<AdminFallback />}><EvaluacionForm /></Suspense>} />
+            <Route path="evaluaciones/:id/editar" element={<Suspense fallback={<AdminFallback />}><EvaluacionForm /></Suspense>} />
+            <Route path="usuarios"                element={<Suspense fallback={<AdminFallback />}><AdminUsuarios /></Suspense>} />
+            <Route path="paquetes"                element={<Suspense fallback={<AdminFallback />}><AdminPaquetes /></Suspense>} />
+            <Route path="tesoreria"               element={<Suspense fallback={<AdminFallback />}><AdminTesoreria /></Suspense>} />
+            <Route path="editor"                  element={<Suspense fallback={<AdminFallback />}><AdminEditor /></Suspense>} />
+            <Route path="errores"                 element={<Suspense fallback={<AdminFallback />}><AdminErrores /></Suspense>} />
+            <Route path="ia-training"             element={<Suspense fallback={<AdminFallback />}><AdminIATraining /></Suspense>} />
+            <Route path="tokens"                  element={<Suspense fallback={<AdminFallback />}><AdminTokens /></Suspense>} />
           </Route>
 
           {/* 🔄 Redirección por defecto (por si acaso) */}
