@@ -709,10 +709,12 @@ export default function CuadernoIA() {
   const finalizarTour = () => { localStorage.setItem(TOUR_KEY, '1'); setTourActivo(false) }
 
   // Fuentes
-  const [fuentes,     setFuentes]     = useState([]) // admin + user
-  const [subiendo,    setSubiendo]    = useState(false)
-  const [errorSubida, setErrorSubida] = useState('')
-  const [modalFuente, setModalFuente] = useState(null)
+  const [fuentes,      setFuentes]      = useState([])
+  const [subiendo,     setSubiendo]     = useState(false)
+  const [errorSubida,  setErrorSubida]  = useState('')
+  const [ytUrl,        setYtUrl]        = useState('')
+  const [agregandoYt,  setAgregandoYt]  = useState(false)
+  const [modalFuente,  setModalFuente]  = useState(null)
   const fileRef = useRef(null)
 
   // Chat
@@ -847,6 +849,21 @@ export default function CuadernoIA() {
     }
     setSubiendo(false)
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function agregarYoutube() {
+    if (!ytUrl.trim()) return
+    setAgregandoYt(true); setErrorSubida('')
+    try {
+      const h = await hdrs()
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/fuentes/youtube`, {
+        method: 'POST', headers: h, body: JSON.stringify({ url: ytUrl.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) { setFuentes(prev => [...prev, data.fuente]); setYtUrl('') }
+      else { setErrorSubida(data.error || 'Error al agregar el video.'); setTimeout(() => setErrorSubida(''), 6000) }
+    } catch { setErrorSubida('Error de conexión.'); setTimeout(() => setErrorSubida(''), 6000) }
+    setAgregandoYt(false)
   }
 
   async function eliminarFuente(id) {
@@ -1065,8 +1082,10 @@ export default function CuadernoIA() {
                 <div key={f.id} className="flex items-center gap-1.5">
                   <button onClick={() => setModalFuente(f)}
                     className="flex-1 flex items-center gap-2 text-xs bg-slate-50 hover:bg-primary/5 rounded-lg px-2.5 py-1.5 transition-colors text-left">
-                    <span className="material-symbols-outlined text-sm text-blue-500 flex-shrink-0"
-                          style={{ fontVariationSettings: "'FILL' 1" }}>description</span>
+                    <span className={`material-symbols-outlined text-sm flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-500'}`}
+                          style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {f.tipo === 'youtube' ? 'smart_display' : 'description'}
+                    </span>
                     <span className="truncate">{f.nombre}</span>
                   </button>
                   <button onClick={() => eliminarFuente(f.id)}
@@ -1086,6 +1105,24 @@ export default function CuadernoIA() {
                 : <><span className="material-symbols-outlined text-xs">upload</span>Subir mi PDF</>
               }
             </button>
+            {/* YouTube URL */}
+            <div className="mt-2 flex gap-1">
+              <div className="flex-1 flex items-center gap-1.5 bg-slate-100 rounded-xl px-2.5 py-1.5 border border-transparent focus-within:border-red-400 transition-colors">
+                <span className="material-symbols-outlined text-red-500 text-sm flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>smart_display</span>
+                <input value={ytUrl} onChange={e => setYtUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && agregarYoutube()}
+                  placeholder="Pega un link de YouTube…"
+                  className="flex-1 bg-transparent text-[11px] outline-none min-w-0" />
+              </div>
+              <button onClick={agregarYoutube} disabled={!ytUrl.trim() || agregandoYt}
+                className="w-8 h-8 flex items-center justify-center bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-40 flex-shrink-0">
+                {agregandoYt
+                  ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
+                }
+              </button>
+            </div>
+
             {errorSubida && (
               <div className="mt-1.5 bg-error/10 border border-error/20 rounded-xl px-3 py-2 flex items-start gap-2">
                 <span className="material-symbols-outlined text-error text-xs mt-0.5 flex-shrink-0">error</span>

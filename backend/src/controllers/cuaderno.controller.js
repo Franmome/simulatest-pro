@@ -1,9 +1,51 @@
 import OpenAI              from 'openai'
 import { createRequire }   from 'module'
 import { createClient }    from '@supabase/supabase-js'
+import { YoutubeTranscript } from 'youtube-transcript'
 
 const require  = createRequire(import.meta.url)
-const pdfParse = require('pdf-parse')
+
+// ── Extracción de texto PDF (texto digital + fallback OCR visión) ─────────────
+async function extraerTextoPDF(buffer) {
+  // Intento 1: pdfjs-dist (texto digital, maneja más formatos que pdf-parse)
+  try {
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+    const pdf  = await pdfjsLib.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, isEvalSupported: false }).promise
+    let texto  = ''
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page    = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      texto += content.items.map(it => it.str).join(' ') + '\n'
+    }
+    if (texto.trim().length > 100) return texto.trim()
+  } catch (e) {
+    console.warn('[pdf texto] pdfjs falló, intentando OCR visión:', e.message)
+  }
+
+  // Intento 2: OCR con OpenAI visión (PDFs escaneados)
+  // Enviamos el PDF como base64 y pedimos extracción de texto página por página
+  try {
+    const b64  = buffer.toString('base64')
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Extrae TODO el texto de este documento PDF conservando la estructura. Devuelve solo el texto, sin comentarios.' },
+          { type: 'image_url', image_url: { url: `data:application/pdf;base64,${b64}`, detail: 'high' } },
+        ],
+      }],
+    })
+    const texto = resp.choices[0].message.content?.trim()
+    if (texto && texto.length > 50) return texto
+  } catch (e) {
+    console.warn('[pdf ocr visión]', e.message)
+  }
+
+  return null
+}
 
 const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
@@ -310,16 +352,8 @@ export const subirFuente = async (req, res) => {
   if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
   if (!req.file) return res.status(400).json({ error: 'No se recibió archivo.' })
 
-  let texto
-  try {
-    const result = await pdfParse(req.file.buffer)
-    texto = result.text?.trim() || ''
-  } catch {
-    return res.status(422).json({ error: 'No se pudo leer el PDF. Verifica que no esté protegido.' })
-  }
-
-  if (!texto) return res.status(422).json({ error: 'El PDF no contiene texto extraíble.' })
-  if (texto.length > 120000) texto = texto.slice(0, 120000) // límite razonable
+  const texto = await extraerTextoPDF(req.file.buffer)
+  if (!texto) return res.status(422).json({ error: 'No se pudo extraer texto del PDF. Si está escaneado, asegúrate de que tenga buena calidad de imagen.' })
 
   const nombre = req.file.originalname.replace(/\.pdf$/i, '')
   const { data, error } = await supabase
@@ -337,6 +371,54 @@ export const eliminarFuente = async (req, res) => {
   const userId = req.user.id
   await supabase.from('user_cuaderno_fuentes').delete().eq('id', fuenteId).eq('user_id', userId)
   return res.json({ ok: true })
+}
+
+// ── POST /api/cuaderno/:packageId/fuentes/youtube ────────────────────────────
+export const agregarYoutube = async (req, res) => {
+  const packageId = parseInt(req.params.packageId)
+  const { url }   = req.body
+  const userId    = req.user.id
+
+  if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
+  if (!url?.trim()) return res.status(400).json({ error: 'URL requerida.' })
+
+  // Extraer video ID
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+  if (!match) return res.status(400).json({ error: 'URL de YouTube inválida. Usa el formato youtube.com/watch?v=... o youtu.be/...' })
+  const videoId = match[1]
+
+  let transcript
+  try {
+    const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
+      .catch(() => YoutubeTranscript.fetchTranscript(videoId)) // fallback a cualquier idioma
+    transcript = items.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim()
+  } catch (err) {
+    console.error('[youtube transcript]', err.message)
+    return res.status(422).json({ error: 'No se pudo obtener el transcript. El video puede no tener subtítulos o ser privado.' })
+  }
+
+  if (!transcript || transcript.length < 50)
+    return res.status(422).json({ error: 'El video no tiene subtítulos disponibles.' })
+
+  // Obtener título del video via OpenAI (opcional, rápido)
+  let nombreVideo = `YouTube-${videoId}`
+  try {
+    const info = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini', max_tokens: 60,
+      messages: [{ role: 'user', content: `Dame SOLO el título probable de un video de YouTube cuyo transcript empieza así: "${transcript.slice(0, 300)}". Responde solo el título, sin comillas.` }],
+    })
+    nombreVideo = info.choices[0].message.content?.trim() || nombreVideo
+  } catch { /* usa el ID como nombre */ }
+
+  const textoFinal = transcript.length > 120000 ? transcript.slice(0, 120000) : transcript
+
+  const { data, error } = await supabase
+    .from('user_cuaderno_fuentes')
+    .insert({ user_id: userId, package_id: packageId, nombre: nombreVideo, texto: textoFinal })
+    .select('id, nombre, texto, created_at').single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ fuente: { ...data, origen: 'user', tipo: 'youtube', url } })
 }
 
 // ── GET /api/cuaderno/:packageId/tokens ──────────────────────────────────────

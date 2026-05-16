@@ -5,7 +5,7 @@ import {
   chatCuaderno, getHistorial,
   guardarNota, getNotas, eliminarNota, fijarNota,
   generarArtefacto,
-  listarFuentes, subirFuente, eliminarFuente,
+  listarFuentes, subirFuente, eliminarFuente, agregarYoutube,
   getTokens, audioOverview,
 } from '../controllers/cuaderno.controller.js'
 
@@ -30,6 +30,7 @@ router.post('/:packageId/generar',                authMiddleware, generarArtefac
 router.get('/:packageId/fuentes',                 authMiddleware, listarFuentes)
 router.post('/:packageId/fuentes',                authMiddleware, upload.single('pdf'), subirFuente)
 router.delete('/:packageId/fuentes/:fuenteId',    authMiddleware, eliminarFuente)
+router.post('/:packageId/fuentes/youtube',        authMiddleware, agregarYoutube)
 
 // Tokens
 router.get('/:packageId/tokens',                  authMiddleware, getTokens)
