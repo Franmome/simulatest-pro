@@ -2,49 +2,64 @@ import OpenAI              from 'openai'
 import { createRequire }   from 'module'
 import { createClient }    from '@supabase/supabase-js'
 import { YoutubeTranscript } from 'youtube-transcript'
+import { exec }            from 'child_process'
+import { promisify }       from 'util'
+import { writeFile, unlink, readFile, readdir } from 'fs/promises'
+import { tmpdir }          from 'os'
+import { join }            from 'path'
+import { randomUUID }      from 'crypto'
 
-const require  = createRequire(import.meta.url)
+const require    = createRequire(import.meta.url)
+const execAsync  = promisify(exec)
 
-// ── Extracción de texto PDF (texto digital + fallback OCR visión) ─────────────
+// ── Extracción de texto PDF ───────────────────────────────────────────────────
 async function extraerTextoPDF(buffer) {
-  // Intento 1: pdfjs-dist (texto digital, maneja más formatos que pdf-parse)
-  try {
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-    const pdf  = await pdfjsLib.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, isEvalSupported: false }).promise
-    let texto  = ''
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page    = await pdf.getPage(i)
-      const content = await page.getTextContent()
-      texto += content.items.map(it => it.str).join(' ') + '\n'
-    }
-    if (texto.trim().length > 100) return texto.trim()
-  } catch (e) {
-    console.warn('[pdf texto] pdfjs falló, intentando OCR visión:', e.message)
-  }
+  const id     = randomUUID()
+  const tmpPDF = join(tmpdir(), `${id}.pdf`)
 
-  // Intento 2: OCR con OpenAI visión (PDFs escaneados)
-  // Enviamos el PDF como base64 y pedimos extracción de texto página por página
   try {
-    const b64  = buffer.toString('base64')
-    const resp = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      max_tokens: 4000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Extrae TODO el texto de este documento PDF conservando la estructura. Devuelve solo el texto, sin comentarios.' },
-          { type: 'image_url', image_url: { url: `data:application/pdf;base64,${b64}`, detail: 'high' } },
-        ],
-      }],
-    })
-    const texto = resp.choices[0].message.content?.trim()
-    if (texto && texto.length > 50) return texto
-  } catch (e) {
-    console.warn('[pdf ocr visión]', e.message)
-  }
+    await writeFile(tmpPDF, buffer)
 
-  return null
+    // Intento 1: pdftotext (poppler) — digital o con capa de texto
+    try {
+      const { stdout } = await execAsync(`pdftotext "${tmpPDF}" -`, { timeout: 30000 })
+      const txt = stdout.trim()
+      if (txt.length > 100) return txt
+    } catch (e) { console.warn('[pdftotext]', e.message) }
+
+    // Intento 2: pdftoppm → imágenes PNG → OpenAI visión (PDFs escaneados)
+    const imgBase = join(tmpdir(), id)
+    try {
+      await execAsync(`pdftoppm -png -r 150 -l 8 "${tmpPDF}" "${imgBase}"`, { timeout: 60000 })
+      const archivos = (await readdir(tmpdir())).filter(f => f.startsWith(id) && f.endsWith('.png')).sort()
+      if (!archivos.length) return null
+
+      const imageContent = await Promise.all(
+        archivos.slice(0, 6).map(async f => {
+          const buf = await readFile(join(tmpdir(), f))
+          return { type: 'image_url', image_url: { url: `data:image/png;base64,${buf.toString('base64')}`, detail: 'high' } }
+        })
+      )
+
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [
+          ...imageContent,
+          { type: 'text', text: 'Extrae TODO el texto de estas páginas. Preserva la estructura. Devuelve solo el texto extraído, sin comentarios ni explicaciones.' },
+        ]}],
+      })
+
+      await Promise.all(archivos.map(f => unlink(join(tmpdir(), f)).catch(() => {})))
+
+      const texto = resp.choices[0].message.content?.trim()
+      if (texto && texto.length > 50) return texto
+    } catch (e) { console.warn('[pdftoppm/vision]', e.message) }
+
+    return null
+  } finally {
+    await unlink(tmpPDF).catch(() => {})
+  }
 }
 
 const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
