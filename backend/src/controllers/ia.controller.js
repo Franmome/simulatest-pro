@@ -1041,3 +1041,167 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
     return res.status(500).json({ error: 'No se pudo generar el análisis.' })
   }
 }
+
+// ── Endpoint: Generar práctica dirigida desde simulacro IA ───────────────────
+
+export async function generarPracticaDesdeIA(req, res) {
+  try {
+    const userId = req.user.id
+    const { simulacro_id } = req.body
+
+    const { data: sim } = await supabase
+      .from('user_simulacros')
+      .select('id, cargo, evaluacion_id, completado')
+      .eq('id', parseInt(simulacro_id))
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!sim) return res.status(404).json({ error: 'Simulacro no encontrado' })
+    if (!sim.completado) return res.status(400).json({ error: 'Debes completar el simulacro primero' })
+
+    const { data: answers } = await supabase
+      .from('user_simulacro_answers')
+      .select('area, dificultad, es_correcta, opcion_elegida, opcion_correcta')
+      .eq('simulacro_id', parseInt(simulacro_id))
+      .eq('user_id', userId)
+
+    if (!answers?.length) return res.status(400).json({ error: 'No hay respuestas registradas' })
+
+    const areaMap = {}
+    answers.forEach(a => {
+      if (!areaMap[a.area]) areaMap[a.area] = { correctas: 0, total: 0 }
+      areaMap[a.area].total++
+      if (a.es_correcta) areaMap[a.area].correctas++
+    })
+
+    const areasDebiles = Object.entries(areaMap)
+      .map(([area, d]) => ({ area, pct: Math.round((d.correctas / d.total) * 100), total: d.total }))
+      .filter(a => a.pct < 70)
+      .sort((a, b) => a.pct - b.pct)
+      .slice(0, 4)
+
+    const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT, 'deepseek')) + FORMAT_ENFORCER
+    const cantidad = Math.min(20, Math.max(10, areasDebiles.length * 5))
+
+    const areasTexto = areasDebiles.length
+      ? areasDebiles.map(a => `- ${a.area}: ${a.pct}% acierto`).join('\n')
+      : '- Todas las áreas (repaso general)'
+
+    const prompt = `${SP}
+
+MODO: Examen de práctica dirigida — enfocado en debilidades detectadas
+CARGO OBJETIVO: ${sim.cargo || 'Profesional sector público colombiano'}
+
+ÁREAS A REFORZAR (el usuario tuvo dificultades aquí):
+${areasTexto}
+
+INSTRUCCIONES ESPECÍFICAS:
+- Genera EXACTAMENTE ${cantidad} preguntas.
+- Enfócate EXCLUSIVAMENTE en las áreas débiles listadas arriba.
+- Incluye explicación detallada en cada pregunta (campo justificacion).
+- Varía dificultad: 40% fácil, 40% medio, 20% difícil.
+- Tipo mixto: funcional y comportamental según las áreas.`
+
+    const result = await conFallback('deepseek',
+      () => deepseekGenerar(prompt, cantidad * 1200 + 512),
+      () => geminiGenerar(prompt)
+    )
+
+    const preguntas = validarPreguntas(extraerArrayJSON(result.texto))
+    if (!preguntas.length) return res.status(500).json({ error: 'No se generaron preguntas' })
+
+    const { data: nueva, error: simErr } = await supabase
+      .from('user_simulacros')
+      .insert({
+        user_id: userId,
+        evaluacion_id: sim.evaluacion_id,
+        cargo: sim.cargo,
+        preguntas,
+        cantidad_preguntas: preguntas.length,
+        dificultad_config: 'mixta',
+        tipo: 'practica_ia',
+        simulacro_origen_id: parseInt(simulacro_id),
+      })
+      .select('id').single()
+
+    if (simErr) throw new Error(simErr.message)
+
+    return res.json({ simulacro_id: nueva.id, areas_debiles: areasDebiles, total: preguntas.length })
+  } catch (err) {
+    console.error('[IA] generarPracticaDesdeIA:', err)
+    return res.status(500).json({ error: err.message || 'Error generando práctica' })
+  }
+}
+
+// ── Endpoint: Analizar perfil vs cargos OPEC ─────────────────────────────────
+
+export async function analizarPerfilCV(req, res) {
+  try {
+    const userId = req.user.id
+    const { convocatoria_id, perfil_texto } = req.body
+    const file = req.file
+
+    const [{ data: cargos }, { data: conv }] = await Promise.all([
+      supabase.from('opec_cargos').select('*').eq('convocatoria_id', convocatoria_id).eq('is_active', true).order('nombre_cargo'),
+      supabase.from('convocatorias').select('nombre, entidad').eq('id', convocatoria_id).maybeSingle(),
+    ])
+
+    if (!cargos?.length) return res.status(404).json({ error: 'No hay cargos para esta convocatoria aún. El equipo de Praxia los está cargando.' })
+
+    const cvText = file ? await extractPdfText(file.buffer) : ''
+
+    const cargosTexto = cargos.slice(0, 15).map((c, i) =>
+      `${i + 1}. ${c.nombre_cargo} | Nivel: ${c.nivel || 'N/A'} | Grado: ${c.grado || 'N/A'} | Vacantes: ${c.num_vacantes || 1}
+   Educación: ${c.requisitos_educacion || 'Ver convocatoria'}
+   Experiencia: ${c.requisitos_experiencia || 'Ver convocatoria'}`
+    ).join('\n\n')
+
+    const prompt = `Eres un experto en selección de personal para el sector público colombiano. Analiza el perfil del candidato y recomienda qué cargos de la convocatoria se ajustan mejor a su perfil.
+
+CONVOCATORIA: ${conv?.nombre || 'Sin nombre'} — ${conv?.entidad || 'Entidad pública colombiana'}
+
+PERFIL DEL CANDIDATO:
+${perfil_texto || 'No proporcionado'}
+${cvText ? `\nHOJA DE VIDA:\n${cvText.slice(0, 5000)}` : ''}
+
+CARGOS DISPONIBLES:
+${cargosTexto}
+
+Responde ÚNICAMENTE con JSON válido, sin texto adicional:
+{
+  "resumen_perfil": "análisis de 2-3 oraciones del perfil del candidato",
+  "cargos_recomendados": [
+    {
+      "nombre_cargo": "nombre exacto del cargo",
+      "compatibilidad": 85,
+      "fortalezas": ["fortaleza 1", "fortaleza 2"],
+      "brechas": ["brecha 1", "brecha 2"],
+      "recomendacion": "qué debe estudiar o reforzar para este cargo"
+    }
+  ],
+  "recomendacion_general": "consejo general de preparación en 2-3 oraciones"
+}`
+
+    const result = await deepseekTexto(prompt)
+
+    let analisis
+    try {
+      const match = result.texto.match(/\{[\s\S]*\}/)
+      analisis = match ? JSON.parse(match[0]) : { resumen_perfil: result.texto, cargos_recomendados: [], recomendacion_general: '' }
+    } catch {
+      analisis = { resumen_perfil: result.texto, cargos_recomendados: [], recomendacion_general: '' }
+    }
+
+    try {
+      await supabase.from('user_profile_analysis').upsert(
+        { user_id: userId, convocatoria_id: parseInt(convocatoria_id), analisis, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,convocatoria_id' }
+      )
+    } catch { /* tabla puede no existir aún */ }
+
+    return res.json({ analisis })
+  } catch (err) {
+    console.error('[IA] analizarPerfilCV:', err)
+    return res.status(500).json({ error: err.message })
+  }
+}

@@ -707,7 +707,17 @@ export default function DetallePrueba() {
       }
     }
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre }
+    // Top simulacros IA para esta evaluación (ranking)
+    const { data: ranking } = await supabase
+      .from('user_simulacros')
+      .select('cargo, score_pct, completado, users(full_name)')
+      .eq('evaluacion_id', parseInt(id))
+      .eq('completado', true)
+      .not('score_pct', 'is', null)
+      .order('score_pct', { ascending: false })
+      .limit(8)
+
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking: ranking || [] }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -721,6 +731,7 @@ export default function DetallePrueba() {
   const packageId        = data?.packageId ?? null
   const hasAiChat        = data?.hasAiChat ?? false
   const versionNombre    = data?.versionNombre ?? null
+  const ranking          = data?.ranking ?? []
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -1163,6 +1174,32 @@ export default function DetallePrueba() {
                         {s.label}
                       </span>
                       <span className={`text-xs font-bold ${s.color}`}>{s.val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ranking IA */}
+            {ranking.length > 0 && (
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+                  Mejores resultados
+                </p>
+                <div className="space-y-2">
+                  {ranking.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center font-extrabold text-[10px] flex-shrink-0 ${
+                        i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-100 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-surface-container text-on-surface-variant'
+                      }`}>{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{r.users?.full_name?.split(' ')[0] || 'Usuario'}</p>
+                        <p className="text-on-surface-variant truncate text-[10px]">{r.cargo}</p>
+                      </div>
+                      <span className={`font-extrabold flex-shrink-0 ${r.score_pct >= 70 ? 'text-secondary' : 'text-error'}`}>
+                        {r.score_pct}%
+                      </span>
                     </div>
                   ))}
                 </div>

@@ -5,11 +5,13 @@ import { useLang } from '../context/LangContext'
 import APP from '../utils/app.config.js'
 
 const NAV_DEFS = [
-  { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard', hint: 'Vista principal'     },
-  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo',  hint: 'Paquetes y pruebas'  },
-  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',    hint: 'Suscripciones'       },
-  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',    hint: 'Resultados y métricas' },
-  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',   hint: 'Material y recursos' },
+  { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard',        hint: 'Vista principal'           },
+  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo',          hint: 'Paquetes y pruebas'        },
+  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',            hint: 'Suscripciones'             },
+  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas'     },
+  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos'       },
+  { icon: 'auto_stories',      label: 'Material IA',       path: '/material-estudio',  hint: 'Cuadernos y convocatorias' },
+  { icon: 'manage_accounts',   label: 'Mi Perfil IA',      path: '/analisis-perfil',   hint: 'Análisis de perfil IA'     },
 ]
 
 function QuickPill({ children, active = false }) {
@@ -33,7 +35,7 @@ export default function Sidebar({ expanded, setExpanded }) {
   const { t } = useLang()
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const navItems = NAV_DEFS.map(d => ({ ...d, label: t(d.labelKey) }))
+  const navItems = NAV_DEFS.map(d => ({ ...d, label: d.label || t(d.labelKey) }))
 
   const isActive = (path) => location.pathname.startsWith(path)
 
@@ -121,7 +123,7 @@ export default function Sidebar({ expanded, setExpanded }) {
 
         {expanded && (
           <div className="flex flex-wrap gap-2 mt-3">
-            {currentItem && <QuickPill active>{t(currentItem.labelKey)}</QuickPill>}
+            {currentItem && <QuickPill active>{currentItem.label || t(currentItem.labelKey)}</QuickPill>}
             {esAdmin && <QuickPill>Admin</QuickPill>}
           </div>
         )}

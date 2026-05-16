@@ -491,6 +491,15 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir,
           )}
         </div>
 
+        {/* Nota sobre práctica IA */}
+        <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-sm text-center">
+          <p className="font-bold text-primary mb-1">
+            <span className="material-symbols-outlined text-base align-middle mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            ¿Quieres practicar tus áreas débiles?
+          </p>
+          <p className="text-on-surface-variant text-xs">Vuelve a la evaluación y usa el botón <strong>"Simulacro personalizado IA"</strong> para generar una práctica dirigida a tus puntos débiles.</p>
+        </div>
+
         {/* Acciones */}
         <div className="flex gap-3">
           <button onClick={onVolver}

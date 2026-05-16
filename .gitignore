@@ -21,3 +21,6 @@ npm-debug.log*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Notas locales (no subir)
+TAREAS.md
