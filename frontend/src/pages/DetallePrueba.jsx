@@ -1139,35 +1139,9 @@ export default function DetallePrueba() {
             </div>
           )}
 
-          {/* Tabs */}
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl">
-            {[
-              { key: 'simulacro', icon: 'quiz',      label: 'Simulacros' },
-              { key: 'material',  icon: 'menu_book', label: 'Material' },
-            ].map(t => (
-              <button key={t.key} onClick={() => setTabActiva(t.key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all
-                  ${tabActiva === t.key ? 'bg-white shadow-sm text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
-                <span className="material-symbols-outlined text-base"
-                  style={{ fontVariationSettings: tabActiva === t.key ? "'FILL' 1" : "'FILL' 0" }}>{t.icon}</span>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Contenido del tab */}
+          {/* Simulacros */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm min-h-32">
-            {tabActiva === 'material' ? (
-              <TabMaterial
-                packageId={packageId}
-                tienePlan={tienePlan}
-                evaluacionId={id}
-                userId={user?.id}
-                convocatoriaId={convocatoriaId}
-                convocatoriaNombre={convocatoriaNombre}
-              />
-            ) : (
-              <div className="space-y-5">
+            <div className="space-y-5">
 
                 {/* ── Simulacros IA personalizados ── */}
                 <div>
@@ -1203,13 +1177,13 @@ export default function DetallePrueba() {
                   </div>
                 </div>
 
-              </div>
-            )}
+            </div>
           </div>
 
         </div>
 
         {/* ═══════════════════ SIDEBAR DESKTOP ═══════════════════ */}
+
         <div className="hidden lg:block">
           <div className="sticky top-6 space-y-4">
 

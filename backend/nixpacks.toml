@@ -1,2 +1,1 @@
-[phases.setup]
-aptPkgs = ["poppler-utils"]
+# Sin dependencias de sistema — OpenAI procesa los archivos en la nube

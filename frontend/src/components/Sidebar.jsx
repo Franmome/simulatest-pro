@@ -10,6 +10,7 @@ const NAV_DEFS = [
   { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',            hint: 'Suscripciones'             },
   { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas'     },
   { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos'       },
+  { icon: 'manage_accounts',   label: 'Análisis de perfil', path: '/analisis-perfil',  hint: 'Tu perfil vs convocatoria' },
 ]
 
 function QuickPill({ children, active = false }) {
