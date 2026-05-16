@@ -344,7 +344,9 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
 
 // ── Tab Material ──────────────────────────────────────────────────────────────
 
-function TabMaterial({ packageId, tienePlan, evaluacionId, userId }) {
+function TabMaterial({ packageId, tienePlan, evaluacionId, userId, convocatoriaId, convocatoriaNombre }) {
+  const navigate = useNavigate()
+
   const { data, loading, error, retry } = useFetch(async () => {
     if (!packageId) return []
     const { data, error } = await supabase
@@ -374,64 +376,117 @@ function TabMaterial({ packageId, tienePlan, evaluacionId, userId }) {
     </div>
   )
 
-  if (loading) return (
-    <div className="space-y-4 animate-pulse">
-      {[1, 2, 3].map(i => <div key={i} className="h-20 bg-surface-container-high rounded-2xl" />)}
-    </div>
-  )
-
-  if (error) return (
-    <div className="flex flex-col items-center gap-3 py-12">
-      <span className="material-symbols-outlined text-error text-4xl">error</span>
-      <p className="text-sm text-on-surface-variant">{error}</p>
-      <button onClick={retry} className="text-primary text-sm font-bold underline">Reintentar</button>
-    </div>
-  )
-
-  if (materiales.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-20 h-20 rounded-3xl bg-surface-container-high flex items-center justify-center mb-4">
-        <span className="material-symbols-outlined text-on-surface-variant text-4xl">folder_open</span>
-      </div>
-      <h3 className="font-bold text-xl mb-1">Sin material aún</h3>
-      <p className="text-on-surface-variant text-sm">El equipo está preparando el contenido. Pronto estará disponible.</p>
-    </div>
-  )
-
   return (
     <div className="space-y-6">
-      {Object.entries(carpetas).map(([carpeta, items]) => (
-        <div key={carpeta}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="material-symbols-outlined text-primary text-lg"
-              style={{ fontVariationSettings: "'FILL' 1" }}>folder</span>
-            <h3 className="font-extrabold text-sm uppercase tracking-widest text-primary">{carpeta}</h3>
-            <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">{items.length}</span>
+
+      {/* ── Herramientas IA del paquete ── */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>smart_toy</span>
+          Herramientas IA
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+          {/* Cuaderno IA — OpenAI (próximamente) */}
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 text-white opacity-60 cursor-not-allowed select-none">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+              <p className="font-bold text-sm">Cuaderno IA</p>
+              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold ml-auto">Próximamente</span>
+            </div>
+            <p className="text-white/60 text-xs">Chat con tu material usando IA · OpenAI Notebooks</p>
           </div>
-          <div className="space-y-2">
-            {items.map(m => (
-              <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
-                onClick={() => {
-                  if (userId) supabase.from('user_material_views').insert({
-                    user_id: userId, evaluacion_id: evaluacionId || null,
-                    material_id: m.id, material_nombre: m.title, material_tipo: m.type || 'link',
-                  }).then(() => {}).catch(() => {})
-                }}
-                className="flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-200 hover:border-primary/30 hover:shadow-md transition-all group">
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMaterial(m.type)}`}>
-                  <span className="material-symbols-outlined text-xl"
-                    style={{ fontVariationSettings: "'FILL' 1" }}>{iconoMaterial(m.type)}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm group-hover:text-primary transition-colors truncate">{m.title}</p>
-                  {m.description && <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-1">{m.description}</p>}
-                </div>
-                <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors flex-shrink-0">open_in_new</span>
-              </a>
-            ))}
-          </div>
+
+          {/* Análisis de perfil vs convocatoria */}
+          {convocatoriaId ? (
+            <button
+              onClick={() => navigate(`/analisis-perfil?conv=${convocatoriaId}`)}
+              className="bg-primary/5 border-2 border-primary/20 hover:border-primary hover:bg-primary/10 rounded-xl p-4 text-left transition-all group"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>manage_accounts</span>
+                <p className="font-bold text-sm text-primary">Mi perfil vs cargos</p>
+                <span className="material-symbols-outlined text-primary/40 group-hover:text-primary text-base ml-auto transition-colors">arrow_forward</span>
+              </div>
+              <p className="text-xs text-on-surface-variant">
+                DeepSeek analiza qué cargos de {convocatoriaNombre || 'la convocatoria'} van con tu perfil
+              </p>
+            </button>
+          ) : (
+            <div className="bg-surface-container-high rounded-xl p-4 opacity-40 cursor-not-allowed select-none">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="material-symbols-outlined text-on-surface-variant text-lg">manage_accounts</span>
+                <p className="font-bold text-sm text-on-surface-variant">Análisis de perfil</p>
+              </div>
+              <p className="text-xs text-on-surface-variant">Disponible en paquetes con convocatoria vinculada.</p>
+            </div>
+          )}
         </div>
-      ))}
+      </div>
+
+      {/* ── Archivos y recursos ── */}
+      {loading && (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2].map(i => <div key={i} className="h-16 bg-surface-container-high rounded-2xl" />)}
+        </div>
+      )}
+
+      {error && (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <span className="material-symbols-outlined text-error text-4xl">error</span>
+          <p className="text-sm text-on-surface-variant">{error}</p>
+          <button onClick={retry} className="text-primary text-sm font-bold underline">Reintentar</button>
+        </div>
+      )}
+
+      {!loading && !error && materiales.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-10 text-center border-t border-slate-100 pt-6">
+          <span className="material-symbols-outlined text-on-surface-variant text-4xl opacity-40">folder_open</span>
+          <p className="font-semibold mt-2 text-sm">Sin archivos aún</p>
+          <p className="text-on-surface-variant text-xs mt-1">El equipo está preparando el contenido. Pronto estará disponible.</p>
+        </div>
+      )}
+
+      {!loading && !error && Object.keys(carpetas).length > 0 && (
+        <div className="border-t border-slate-100 pt-5 space-y-6">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">folder</span>
+            Archivos y recursos
+          </p>
+          {Object.entries(carpetas).map(([carpeta, items]) => (
+            <div key={carpeta}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="material-symbols-outlined text-primary text-lg"
+                  style={{ fontVariationSettings: "'FILL' 1" }}>folder</span>
+                <h3 className="font-extrabold text-sm uppercase tracking-widest text-primary">{carpeta}</h3>
+                <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">{items.length}</span>
+              </div>
+              <div className="space-y-2">
+                {items.map(m => (
+                  <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
+                    onClick={() => {
+                      if (userId) supabase.from('user_material_views').insert({
+                        user_id: userId, evaluacion_id: evaluacionId || null,
+                        material_id: m.id, material_nombre: m.title, material_tipo: m.type || 'link',
+                      }).then(() => {}).catch(() => {})
+                    }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-200 hover:border-primary/30 hover:shadow-md transition-all group">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMaterial(m.type)}`}>
+                      <span className="material-symbols-outlined text-xl"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>{iconoMaterial(m.type)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm group-hover:text-primary transition-colors truncate">{m.title}</p>
+                      {m.description && <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-1">{m.description}</p>}
+                    </div>
+                    <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors flex-shrink-0">open_in_new</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -700,10 +755,15 @@ export default function DetallePrueba() {
         }
       }
 
+      let convocatoriaId = null, convocatoriaNombre = null
       if (packageId) {
         const { data: pkg } = await supabase
-          .from('packages').select('has_ai_chat').eq('id', packageId).maybeSingle()
+          .from('packages')
+          .select('has_ai_chat, convocatoria_id, convocatorias(id, nombre)')
+          .eq('id', packageId).maybeSingle()
         hasAiChat = pkg?.has_ai_chat ?? false
+        convocatoriaId = pkg?.convocatoria_id ?? null
+        convocatoriaNombre = pkg?.convocatorias?.nombre ?? null
       }
     }
 
@@ -717,7 +777,7 @@ export default function DetallePrueba() {
       .order('score_pct', { ascending: false })
       .limit(8)
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking: ranking || [] }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking: ranking || [], convocatoriaId, convocatoriaNombre }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -727,11 +787,13 @@ export default function DetallePrueba() {
   const pregsPorNivel    = data?.pregsPorNivel ?? {}
   const intentosPorNivel = data?.intentosPorNivel ?? {}
   const totalPregs       = data?.totalPregs ?? 0
-  const tienePlan        = data?.tienePlan ?? false
-  const packageId        = data?.packageId ?? null
-  const hasAiChat        = data?.hasAiChat ?? false
-  const versionNombre    = data?.versionNombre ?? null
-  const ranking          = data?.ranking ?? []
+  const tienePlan          = data?.tienePlan ?? false
+  const packageId          = data?.packageId ?? null
+  const hasAiChat          = data?.hasAiChat ?? false
+  const versionNombre      = data?.versionNombre ?? null
+  const ranking            = data?.ranking ?? []
+  const convocatoriaId     = data?.convocatoriaId ?? null
+  const convocatoriaNombre = data?.convocatoriaNombre ?? null
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -1093,7 +1155,14 @@ export default function DetallePrueba() {
           {/* Contenido del tab */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm min-h-32">
             {tabActiva === 'material' ? (
-              <TabMaterial packageId={packageId} tienePlan={tienePlan} evaluacionId={id} userId={user?.id} />
+              <TabMaterial
+                packageId={packageId}
+                tienePlan={tienePlan}
+                evaluacionId={id}
+                userId={user?.id}
+                convocatoriaId={convocatoriaId}
+                convocatoriaNombre={convocatoriaNombre}
+              />
             ) : (
               <div className="space-y-5">
 
