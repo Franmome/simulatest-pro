@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const openai   = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-const LIMITE_MES = 40
+const LIMITE_MES = 50
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function tieneAcceso(userId, packageId) {
@@ -79,8 +79,8 @@ export const chatCuaderno = async (req, res) => {
   let respuesta
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 1000,
+      model: 'gpt-4.1-mini',
+      max_tokens: 1200,
       messages: [
         {
           role: 'system',
@@ -193,6 +193,14 @@ Devuelve SOLO el siguiente array JSON sin texto extra:
   plan: `Genera un plan de estudio de 4 semanas para preparar este concurso de méritos.
 Devuelve SOLO el siguiente array JSON sin texto extra:
 [{"semana":1,"titulo":"Nombre de la semana","objetivo":"Objetivo principal de la semana","dias":[{"dia":"Lunes","tarea":"Descripción concreta de la actividad","horas":"2h"}]}]`,
+
+  faq: `Genera exactamente 12 preguntas frecuentes que hacen los candidatos sobre este concurso de méritos.
+Devuelve SOLO el siguiente array JSON sin texto extra:
+[{"pregunta":"¿Pregunta concreta del candidato?","respuesta":"Respuesta clara y completa basada en la norma o el material.","categoria":"Inscripción|Pruebas|Empleo|Normativa|Proceso"}]`,
+
+  cronologia: `Genera una cronología con los hitos más importantes del proceso de selección de este concurso de méritos (etapas, plazos, actuaciones legales).
+Devuelve SOLO el siguiente array JSON sin texto extra:
+[{"orden":1,"hito":"Nombre del hito","descripcion":"Descripción detallada de qué ocurre en esta etapa","norma":"Artículo o norma aplicable si existe","tipo":"convocatoria|inscripcion|prueba|lista|empleo"}]`,
 }
 
 export const generarArtefacto = async (req, res) => {
@@ -211,8 +219,8 @@ export const generarArtefacto = async (req, res) => {
   let raw
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 2000,
+      model: 'gpt-4.1-mini',
+      max_tokens: 3000,
       response_format: tipo !== 'resumen' ? { type: 'json_object' } : undefined,
       messages: [
         {

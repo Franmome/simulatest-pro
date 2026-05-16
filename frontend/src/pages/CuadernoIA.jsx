@@ -12,19 +12,23 @@ async function hdrs(contentType = 'application/json') {
 }
 
 const FUENTE_META = {
-  manual:     { label: 'Manual',      icon: 'edit',           cls: 'bg-slate-100 text-slate-600' },
-  ia_chat:    { label: 'Chat',        icon: 'chat',           cls: 'bg-primary/10 text-primary' },
-  resumen:    { label: 'Resumen',     icon: 'summarize',      cls: 'bg-blue-100 text-blue-700' },
-  quiz:       { label: 'Quiz',        icon: 'quiz',           cls: 'bg-violet-100 text-violet-700' },
-  flashcards: { label: 'Flashcards',  icon: 'style',          cls: 'bg-amber-100 text-amber-700' },
-  plan:       { label: 'Plan',        icon: 'calendar_month', cls: 'bg-emerald-100 text-emerald-700' },
+  manual:      { label: 'Manual',      icon: 'edit',           cls: 'bg-slate-100 text-slate-600' },
+  ia_chat:     { label: 'Chat',        icon: 'chat',           cls: 'bg-primary/10 text-primary' },
+  resumen:     { label: 'Resumen',     icon: 'summarize',      cls: 'bg-blue-100 text-blue-700' },
+  quiz:        { label: 'Quiz',        icon: 'quiz',           cls: 'bg-violet-100 text-violet-700' },
+  flashcards:  { label: 'Flashcards',  icon: 'style',          cls: 'bg-amber-100 text-amber-700' },
+  plan:        { label: 'Plan',        icon: 'calendar_month', cls: 'bg-emerald-100 text-emerald-700' },
+  faq:         { label: 'FAQ',         icon: 'help',           cls: 'bg-cyan-100 text-cyan-700' },
+  cronologia:  { label: 'Cronología',  icon: 'timeline',       cls: 'bg-rose-100 text-rose-700' },
 }
 
 const ACCIONES = [
-  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',         desc: 'Ejes temáticos + glosario + ejecutivo', grad: 'from-blue-600 to-blue-700' },
-  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',       desc: '10 preguntas interactivas tipo situación',grad: 'from-violet-600 to-violet-700' },
-  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',      desc: '12 tarjetas con volteo 3D',             grad: 'from-amber-500 to-orange-600' },
-  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio', desc: 'Cronograma 4 semanas con checkboxes',    grad: 'from-emerald-600 to-teal-700' },
+  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',          desc: 'Ejes temáticos + glosario + ejecutivo',   grad: 'from-blue-600 to-blue-700' },
+  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',        desc: '10 preguntas interactivas tipo situación', grad: 'from-violet-600 to-violet-700' },
+  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',       desc: '12 tarjetas con volteo 3D',               grad: 'from-amber-500 to-orange-600' },
+  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio',  desc: 'Cronograma 4 semanas con checkboxes',     grad: 'from-emerald-600 to-teal-700' },
+  { tipo: 'faq',        icon: 'help',           label: 'FAQ',              desc: '12 preguntas frecuentes del concurso',    grad: 'from-cyan-500 to-sky-600' },
+  { tipo: 'cronologia', icon: 'timeline',       label: 'Cronología',       desc: 'Hitos y etapas del proceso de selección', grad: 'from-rose-500 to-pink-600' },
 ]
 
 // ── Parseo de citas 【...】 en texto ──────────────────────────────────────────
@@ -363,6 +367,121 @@ function PlanView({ semanas, packageId }) {
   )
 }
 
+// ── Vista FAQ ─────────────────────────────────────────────────────────────────
+const CAT_COLOR = {
+  Inscripción: 'bg-blue-100 text-blue-700',
+  Pruebas:     'bg-violet-100 text-violet-700',
+  Empleo:      'bg-emerald-100 text-emerald-700',
+  Normativa:   'bg-amber-100 text-amber-700',
+  Proceso:     'bg-rose-100 text-rose-700',
+}
+
+function FaqView({ items }) {
+  const [abierta, setAbierta] = useState(null)
+  if (!items?.length) return <div className="p-6 text-sm text-slate-400">Sin preguntas disponibles.</div>
+  return (
+    <div className="p-4 overflow-y-auto h-full space-y-2">
+      <p className="text-xs text-slate-400 font-semibold mb-3">
+        {items.length} preguntas frecuentes · toca para ver la respuesta
+      </p>
+      {items.map((item, i) => {
+        const open = abierta === i
+        const catCls = CAT_COLOR[item.categoria] || 'bg-slate-100 text-slate-600'
+        return (
+          <div key={i} className={`border rounded-xl overflow-hidden transition-all ${open ? 'border-primary/30 bg-primary/5' : 'border-slate-200 bg-white'}`}>
+            <button onClick={() => setAbierta(open ? null : i)}
+              className="w-full flex items-start gap-3 px-4 py-3 text-left">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 font-extrabold text-xs
+                ${open ? 'bg-primary text-on-primary' : 'bg-slate-100 text-slate-500'}`}>
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold leading-snug ${open ? 'text-primary' : ''}`}>{item.pregunta}</p>
+                {item.categoria && (
+                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${catCls}`}>
+                    {item.categoria}
+                  </span>
+                )}
+              </div>
+              <span className={`material-symbols-outlined text-base flex-shrink-0 mt-0.5 transition-transform ${open ? 'rotate-180 text-primary' : 'text-slate-300'}`}>
+                expand_more
+              </span>
+            </button>
+            {open && (
+              <div className="px-4 pb-4 pt-1 border-t border-primary/10">
+                <p className="text-sm leading-relaxed text-slate-700">{item.respuesta}</p>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Vista Cronología ──────────────────────────────────────────────────────────
+const TIPO_HITO = {
+  convocatoria: { icon: 'campaign',      cls: 'bg-rose-500' },
+  inscripcion:  { icon: 'how_to_reg',    cls: 'bg-blue-500' },
+  prueba:       { icon: 'quiz',          cls: 'bg-violet-500' },
+  lista:        { icon: 'format_list_numbered', cls: 'bg-amber-500' },
+  empleo:       { icon: 'work',          cls: 'bg-emerald-500' },
+}
+
+function CronologiaView({ hitos }) {
+  const [expandido, setExpandido] = useState(null)
+  if (!hitos?.length) return <div className="p-6 text-sm text-slate-400">Sin cronología disponible.</div>
+  return (
+    <div className="p-4 overflow-y-auto h-full">
+      <p className="text-xs text-slate-400 font-semibold mb-4">{hitos.length} hitos del proceso · toca para ver detalle</p>
+      <div className="relative">
+        {/* línea vertical */}
+        <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-slate-200" />
+        <div className="space-y-3">
+          {hitos.map((h, i) => {
+            const t   = TIPO_HITO[h.tipo] || { icon: 'circle', cls: 'bg-slate-400' }
+            const exp = expandido === i
+            return (
+              <div key={i} className="relative flex gap-3">
+                {/* Icono */}
+                <div className={`relative z-10 w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${t.cls}`}>
+                  <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{t.icon}</span>
+                </div>
+                {/* Contenido */}
+                <div className={`flex-1 border rounded-xl overflow-hidden transition-all mb-1 ${exp ? 'border-primary/30' : 'border-slate-200 bg-white'}`}>
+                  <button onClick={() => setExpandido(exp ? null : i)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded-md flex-shrink-0">
+                          {h.orden}
+                        </span>
+                        <p className="font-bold text-sm leading-tight">{h.hito}</p>
+                      </div>
+                    </div>
+                    <span className={`material-symbols-outlined text-sm flex-shrink-0 transition-transform ${exp ? 'rotate-180 text-primary' : 'text-slate-300'}`}>
+                      expand_more
+                    </span>
+                  </button>
+                  {exp && (
+                    <div className="px-3 pb-3 pt-1 border-t border-slate-100 space-y-1.5">
+                      <p className="text-sm leading-relaxed text-slate-700">{h.descripcion}</p>
+                      {h.norma && (
+                        <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">gavel</span>{h.norma}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal visor de fuente ─────────────────────────────────────────────────────
 function ModalFuente({ fuente, onClose }) {
   if (!fuente) return null
@@ -423,7 +542,7 @@ export default function CuadernoIA() {
   const [enviando,    setEnviando]    = useState(false)
   const [guardandoMsg,setGuardandoMsg]= useState(null)
   const [usados,      setUsados]      = useState(0)
-  const [limite,      setLimite]      = useState(40)
+  const [limite,      setLimite]      = useState(50)
   const [chatErr,     setChatErr]     = useState('')
   const bottomRef = useRef(null)
 
@@ -574,10 +693,12 @@ export default function CuadernoIA() {
       </div>
     )
 
-    if (vista === 'resumen' && vistaData) return <ResumenView datos={vistaData} />
-    if (vista === 'quiz' && Array.isArray(vistaData)) return <QuizView preguntas={vistaData} />
+    if (vista === 'resumen'    && vistaData)              return <ResumenView    datos={vistaData} />
+    if (vista === 'quiz'       && Array.isArray(vistaData)) return <QuizView       preguntas={vistaData} />
     if (vista === 'flashcards' && Array.isArray(vistaData)) return <FlashcardsView cards={vistaData} />
-    if (vista === 'plan' && Array.isArray(vistaData)) return <PlanView semanas={vistaData} packageId={packageId} />
+    if (vista === 'plan'       && Array.isArray(vistaData)) return <PlanView       semanas={vistaData} packageId={packageId} />
+    if (vista === 'faq'        && Array.isArray(vistaData)) return <FaqView        items={vistaData} />
+    if (vista === 'cronologia' && Array.isArray(vistaData)) return <CronologiaView hitos={vistaData} />
 
     // Chat (default)
     return (
