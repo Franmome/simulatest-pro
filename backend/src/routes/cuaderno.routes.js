@@ -6,6 +6,7 @@ import {
   guardarNota, getNotas, eliminarNota, fijarNota,
   generarArtefacto,
   listarFuentes, subirFuente, eliminarFuente,
+  getTokens, audioOverview,
 } from '../controllers/cuaderno.controller.js'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -29,5 +30,11 @@ router.post('/:packageId/generar',                authMiddleware, generarArtefac
 router.get('/:packageId/fuentes',                 authMiddleware, listarFuentes)
 router.post('/:packageId/fuentes',                authMiddleware, upload.single('pdf'), subirFuente)
 router.delete('/:packageId/fuentes/:fuenteId',    authMiddleware, eliminarFuente)
+
+// Tokens
+router.get('/:packageId/tokens',                  authMiddleware, getTokens)
+
+// Audio Overview
+router.post('/:packageId/audio-overview',         authMiddleware, audioOverview)
 
 export default router

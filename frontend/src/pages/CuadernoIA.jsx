@@ -20,15 +20,17 @@ const FUENTE_META = {
   plan:        { label: 'Plan',        icon: 'calendar_month', cls: 'bg-emerald-100 text-emerald-700' },
   faq:         { label: 'FAQ',         icon: 'help',           cls: 'bg-cyan-100 text-cyan-700' },
   cronologia:  { label: 'Cronología',  icon: 'timeline',       cls: 'bg-rose-100 text-rose-700' },
+  audio:       { label: 'Audio',       icon: 'headphones',     cls: 'bg-slate-100 text-slate-700' },
 }
 
 const ACCIONES = [
-  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',          desc: 'Ejes temáticos + glosario + ejecutivo',   grad: 'from-blue-600 to-blue-700' },
-  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',        desc: '10 preguntas interactivas tipo situación', grad: 'from-violet-600 to-violet-700' },
-  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',       desc: '12 tarjetas con volteo 3D',               grad: 'from-amber-500 to-orange-600' },
-  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio',  desc: 'Cronograma 4 semanas con checkboxes',     grad: 'from-emerald-600 to-teal-700' },
-  { tipo: 'faq',        icon: 'help',           label: 'FAQ',              desc: '12 preguntas frecuentes del concurso',    grad: 'from-cyan-500 to-sky-600' },
-  { tipo: 'cronologia', icon: 'timeline',       label: 'Cronología',       desc: 'Hitos y etapas del proceso de selección', grad: 'from-rose-500 to-pink-600' },
+  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',          desc: 'Ejes temáticos + glosario + ejecutivo',     grad: 'from-blue-600 to-blue-700' },
+  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',        desc: '10 preguntas interactivas tipo situación',   grad: 'from-violet-600 to-violet-700' },
+  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',       desc: '12 tarjetas con volteo 3D',                 grad: 'from-amber-500 to-orange-600' },
+  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio',  desc: 'Cronograma 4 semanas con checkboxes',       grad: 'from-emerald-600 to-teal-700' },
+  { tipo: 'faq',        icon: 'help',           label: 'FAQ',              desc: '12 preguntas frecuentes del concurso',      grad: 'from-cyan-500 to-sky-600' },
+  { tipo: 'cronologia', icon: 'timeline',       label: 'Cronología',       desc: 'Hitos y etapas del proceso de selección',   grad: 'from-rose-500 to-pink-600' },
+  { tipo: 'audio',      icon: 'headphones',     label: 'Audio Overview',   desc: 'Podcast IA · Valentina & Andrés ~5 min',    grad: 'from-slate-700 to-slate-900' },
 ]
 
 // ── Parseo de citas 【...】 en texto ──────────────────────────────────────────
@@ -482,6 +484,55 @@ function CronologiaView({ hitos }) {
   )
 }
 
+// ── Vista Audio Overview ──────────────────────────────────────────────────────
+function AudioView({ audioUrl, generando }) {
+  if (generando) return (
+    <div className="flex flex-col items-center justify-center h-full gap-5 p-6 text-center">
+      <div className="relative w-20 h-20">
+        <div className="absolute inset-0 rounded-3xl bg-slate-900 flex items-center justify-center">
+          <span className="material-symbols-outlined text-white text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>headphones</span>
+        </div>
+        <div className="absolute -inset-1 rounded-[22px] border-2 border-primary border-t-transparent animate-spin opacity-60" />
+      </div>
+      <div>
+        <p className="font-extrabold text-slate-700 text-lg">Generando podcast IA…</p>
+        <p className="text-xs text-slate-400 mt-1.5 max-w-xs leading-relaxed">
+          Valentina y Andrés están discutiendo el material. El proceso toma entre 30 y 60 segundos.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <span className="material-symbols-outlined text-sm animate-pulse">mic</span> Generando voces con IA…
+      </div>
+    </div>
+  )
+
+  if (!audioUrl) return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center text-slate-400">
+      <span className="material-symbols-outlined text-5xl opacity-20">headphones</span>
+      <p className="text-sm font-semibold">Toca "Audio Overview" para generar el podcast</p>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
+      <div className="w-24 h-24 bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl flex items-center justify-center shadow-xl">
+        <span className="material-symbols-outlined text-white text-5xl" style={{ fontVariationSettings: "'FILL' 1" }}>headphones</span>
+      </div>
+      <div className="text-center">
+        <p className="font-extrabold text-xl">Audio Overview</p>
+        <p className="text-sm text-slate-500 mt-1">Podcast generado por IA · Valentina &amp; Andrés</p>
+      </div>
+      <audio controls autoPlay className="w-full max-w-md rounded-xl" src={audioUrl}>
+        Tu navegador no soporta audio HTML5.
+      </audio>
+      <a href={audioUrl} download="audio-overview.mp3"
+        className="flex items-center gap-2 text-sm font-bold text-primary hover:underline">
+        <span className="material-symbols-outlined text-sm">download</span>Descargar MP3
+      </a>
+    </div>
+  )
+}
+
 // ── Modal visor de fuente ─────────────────────────────────────────────────────
 function ModalFuente({ fuente, onClose }) {
   if (!fuente) return null
@@ -541,15 +592,16 @@ export default function CuadernoIA() {
   const [input,       setInput]       = useState('')
   const [enviando,    setEnviando]    = useState(false)
   const [guardandoMsg,setGuardandoMsg]= useState(null)
-  const [usados,      setUsados]      = useState(0)
-  const [limite,      setLimite]      = useState(50)
+  const [tokensUsados, setTokensUsados] = useState(0)
+  const [tokensLimite, setTokensLimite] = useState(2_000_000)
   const [chatErr,     setChatErr]     = useState('')
   const bottomRef = useRef(null)
 
-  // Vista activa (chat | resumen | quiz | flashcards | plan)
+  // Vista activa (chat | resumen | quiz | flashcards | plan | faq | cronologia | audio)
   const [vista,       setVista]       = useState('chat')
   const [vistaData,   setVistaData]   = useState(null)
   const [generando,   setGenerando]   = useState(null)
+  const [audioUrl,    setAudioUrl]    = useState(null)
 
   // Notas
   const [notas,       setNotas]       = useState([])
@@ -573,12 +625,12 @@ export default function CuadernoIA() {
     if (fuentesRes.ok) { const d = await fuentesRes.json(); setFuentes([...(d.admin || []), ...(d.user || [])]) }
     if (pkgRes.data)   setPkgNombre(pkgRes.data.name)
 
-    const inicio = new Date(); inicio.setDate(1); inicio.setHours(0,0,0,0)
-    const { count } = await supabase
-      .from('user_cuaderno_mensajes').select('*', { count: 'exact', head: true })
-      .eq('user_id', user?.id).eq('package_id', parseInt(packageId)).eq('rol', 'user')
-      .gte('created_at', inicio.toISOString())
-    setUsados(count || 0)
+    const tokRes = await fetch(`${BASE}/api/cuaderno/${packageId}/tokens`, { headers: h })
+    if (tokRes.ok) {
+      const td = await tokRes.json()
+      setTokensUsados(td.tokensUsados || 0)
+      setTokensLimite(td.tokensLimite || 2_000_000)
+    }
   }
 
   // ── Chat ──
@@ -596,7 +648,8 @@ export default function CuadernoIA() {
       const data = await res.json()
       if (!res.ok) { setChatErr(data.error || 'Error.'); return }
       setMensajes(prev => [...prev, { id: `a${Date.now()}`, rol: 'assistant', contenido: data.respuesta }])
-      setUsados(data.usados); setLimite(data.limite)
+      if (data.tokensUsados !== undefined) setTokensUsados(data.tokensUsados)
+      if (data.tokensLimite !== undefined) setTokensLimite(data.tokensLimite)
     } catch { setChatErr('Error de conexión.') }
     finally { setEnviando(false) }
   }, [input, enviando, packageId])
@@ -614,6 +667,18 @@ export default function CuadernoIA() {
   // ── Generación ──
   async function generar(tipo) {
     setGenerando(tipo); setVista(tipo); setVistaData(null)
+
+    if (tipo === 'audio') {
+      try {
+        const h = await hdrs()
+        const res  = await fetch(`${BASE}/api/cuaderno/${packageId}/audio-overview`, { method: 'POST', headers: h })
+        const data = await res.json()
+        if (res.ok) setAudioUrl(data.audioUrl)
+      } catch {}
+      finally { setGenerando(null) }
+      return
+    }
+
     try {
       const h = await hdrs()
       const res  = await fetch(`${BASE}/api/cuaderno/${packageId}/generar`, {
@@ -677,7 +742,7 @@ export default function CuadernoIA() {
     })
   }
 
-  const agotado = usados >= limite
+  const agotado = tokensUsados >= tokensLimite
   const fuentesAdmin = fuentes.filter(f => f.origen === 'admin')
   const fuentesUser  = fuentes.filter(f => f.origen === 'user')
 
@@ -699,6 +764,7 @@ export default function CuadernoIA() {
     if (vista === 'plan'       && Array.isArray(vistaData)) return <PlanView       semanas={vistaData} packageId={packageId} />
     if (vista === 'faq'        && Array.isArray(vistaData)) return <FaqView        items={vistaData} />
     if (vista === 'cronologia' && Array.isArray(vistaData)) return <CronologiaView hitos={vistaData} />
+    if (vista === 'audio') return <AudioView audioUrl={audioUrl} generando={generando === 'audio'} />
 
     // Chat (default)
     return (
@@ -748,8 +814,9 @@ export default function CuadernoIA() {
         )}
         <div className="p-4 bg-white border-t border-slate-200 flex-shrink-0">
           {agotado ? (
-            <div className="p-3 bg-error/10 text-error text-sm font-semibold rounded-xl text-center">
-              Límite de {limite} mensajes/mes alcanzado. Se renueva el 1 del próximo mes.
+            <div className="p-3 bg-error/10 text-error text-sm font-semibold rounded-xl text-center space-y-1">
+              <p>Agotaste tus 2M tokens este mes.</p>
+              <p className="text-xs font-normal">Se renuevan el 1 del próximo mes o recarga tokens.</p>
             </div>
           ) : (
             <div className="flex gap-2 items-end">
@@ -792,8 +859,9 @@ export default function CuadernoIA() {
           </button>
         )}
         <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full
-          ${usados >= limite * 0.8 ? 'bg-error/10 text-error' : 'bg-slate-100 text-slate-500'}`}>
-          <span className="material-symbols-outlined text-xs">chat</span>{usados}/{limite}
+          ${tokensUsados >= tokensLimite * 0.8 ? 'bg-error/10 text-error' : 'bg-slate-100 text-slate-500'}`}>
+          <span className="material-symbols-outlined text-xs">token</span>
+          {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}/{(tokensLimite/1_000_000).toFixed(0)}M
         </div>
       </header>
 

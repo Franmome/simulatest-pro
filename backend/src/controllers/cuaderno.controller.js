@@ -5,11 +5,37 @@ import { createClient }    from '@supabase/supabase-js'
 const require  = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')
 
-const openai   = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-const LIMITE_MES = 50
+const TOKENS_MES = 2_000_000
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function getPeriodo() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+}
+
+async function checkTokens(userId, packageId) {
+  const { data } = await supabase
+    .from('user_cuaderno_tokens')
+    .select('tokens_usados, tokens_limite')
+    .eq('user_id', userId).eq('package_id', packageId).eq('periodo', getPeriodo())
+    .maybeSingle()
+  const usados = data?.tokens_usados || 0
+  const limite = data?.tokens_limite  || TOKENS_MES
+  return { ok: usados < limite, usados, limite }
+}
+
+async function registrarTokens(userId, packageId, tokens) {
+  await supabase.rpc('incrementar_tokens_cuaderno', {
+    p_user_id:   userId,
+    p_package_id: packageId,
+    p_periodo:   getPeriodo(),
+    p_tokens:    tokens,
+    p_limite:    TOKENS_MES,
+  })
+}
+
 async function tieneAcceso(userId, packageId) {
   const { data: u } = await supabase.from('users').select('role').eq('id', userId).maybeSingle()
   if (u?.role === 'admin') return true
@@ -35,13 +61,13 @@ async function buildContexto(packageId, userId) {
   const { data: userSrcs } = await supabase
     .from('user_cuaderno_fuentes').select('nombre, texto')
     .eq('user_id', userId).eq('package_id', packageId)
-    .order('created_at', { ascending: false }).limit(4)
+    .order('created_at', { ascending: false }).limit(5)
 
   const partes = []
   if (mats?.length)
     partes.push(`Material del paquete:\n${mats.map(m => `• ${m.title}${m.description ? ': ' + m.description : ''}`).join('\n')}`)
   if (userSrcs?.length)
-    partes.push(`Documentos subidos por el usuario:\n${userSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 2500)}`).join('\n\n')}`)
+    partes.push(`Documentos subidos por el usuario:\n${userSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 40000)}`).join('\n\n')}`)
 
   return partes.length ? partes.join('\n\n') : 'Material aún no cargado para este paquete.'
 }
@@ -56,15 +82,9 @@ export const chatCuaderno = async (req, res) => {
   if (!(await tieneAcceso(userId, packageId)))
     return res.status(403).json({ error: 'Sin acceso a este paquete.' })
 
-  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
-  const { count } = await supabase
-    .from('user_cuaderno_mensajes')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId).eq('package_id', packageId).eq('rol', 'user')
-    .gte('created_at', inicio.toISOString())
-
-  if ((count || 0) >= LIMITE_MES)
-    return res.status(429).json({ error: `Límite de ${LIMITE_MES} mensajes/mes alcanzado.` })
+  const tokenInfo = await checkTokens(userId, packageId)
+  if (!tokenInfo.ok)
+    return res.status(429).json({ error: 'Límite de tokens mensual alcanzado. Recarga para continuar.', tokensUsados: tokenInfo.usados, tokensLimite: tokenInfo.limite })
 
   const [{ data: pkg }, contexto] = await Promise.all([
     supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
@@ -98,6 +118,7 @@ IMPORTANTE: Cuando tu respuesta se base en uno de los documentos del usuario, c�
       ],
     })
     respuesta = completion.choices[0].message.content
+    await registrarTokens(userId, packageId, completion.usage?.total_tokens || 0)
   } catch (err) {
     console.error('[cuaderno chat]', err.message)
     return res.status(502).json({ error: 'Error al conectar con el tutor IA.' })
@@ -108,7 +129,8 @@ IMPORTANTE: Cuando tu respuesta se base en uno de los documentos del usuario, c�
     { user_id: userId, package_id: packageId, rol: 'assistant', contenido: respuesta },
   ])
 
-  return res.json({ respuesta, usados: (count || 0) + 1, limite: LIMITE_MES })
+  const tokensActuales = await checkTokens(userId, packageId)
+  return res.json({ respuesta, tokensUsados: tokensActuales.usados, tokensLimite: tokensActuales.limite })
 }
 
 // ── GET /api/cuaderno/:packageId/historial ────────────────────────────────────
@@ -214,6 +236,9 @@ export const generarArtefacto = async (req, res) => {
   if (!PROMPTS[tipo]) return res.status(400).json({ error: 'Tipo inválido.' })
   if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
 
+  const tokenInfo = await checkTokens(userId, packageId)
+  if (!tokenInfo.ok) return res.status(429).json({ error: 'Límite de tokens mensual alcanzado.', tokensUsados: tokenInfo.usados, tokensLimite: tokenInfo.limite })
+
   const [{ data: pkg }, contexto] = await Promise.all([
     supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
     buildContexto(packageId, userId),
@@ -234,6 +259,7 @@ export const generarArtefacto = async (req, res) => {
       ],
     })
     raw = completion.choices[0].message.content
+    await registrarTokens(userId, packageId, completion.usage?.total_tokens || 0)
   } catch (err) {
     console.error('[cuaderno generar]', err.message)
     return res.status(502).json({ error: 'Error al generar. Intenta de nuevo.' })
@@ -311,4 +337,103 @@ export const eliminarFuente = async (req, res) => {
   const userId = req.user.id
   await supabase.from('user_cuaderno_fuentes').delete().eq('id', fuenteId).eq('user_id', userId)
   return res.json({ ok: true })
+}
+
+// ── GET /api/cuaderno/:packageId/tokens ──────────────────────────────────────
+export const getTokens = async (req, res) => {
+  const packageId = parseInt(req.params.packageId)
+  const userId = req.user.id
+  const { usados, limite } = await checkTokens(userId, packageId)
+  return res.json({ tokensUsados: usados, tokensLimite: limite })
+}
+
+// ── POST /api/cuaderno/:packageId/audio-overview ─────────────────────────────
+export const audioOverview = async (req, res) => {
+  const packageId = parseInt(req.params.packageId)
+  const userId    = req.user.id
+
+  if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
+
+  const tokenInfo = await checkTokens(userId, packageId)
+  if (!tokenInfo.ok) return res.status(429).json({ error: 'Límite de tokens alcanzado.' })
+
+  const [{ data: pkg }, contexto] = await Promise.all([
+    supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
+    buildContexto(packageId, userId),
+  ])
+
+  // 1 ── Generar guion con IA
+  let script
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      max_tokens: 1800,
+      messages: [
+        {
+          role: 'system',
+          content: `Eres un guionista de podcasts educativos para concursos de méritos del Estado colombiano.\n\n${contexto}`,
+        },
+        {
+          role: 'user',
+          content: `Genera un guion de podcast de 4-5 minutos entre VALENTINA (tutora entusiasta, pedagógica) y ANDRÉS (tutor analítico, preciso) sobre los temas clave del paquete "${pkg?.name || 'concurso'}".
+
+Reglas estrictas:
+- Cada línea DEBE empezar exactamente con VALENTINA: o ANDRÉS: (sin otro texto antes)
+- Máximo 2 oraciones por intervención
+- Entre 16 y 22 intercambios en total
+- Tono dinámico, coloquial pero profesional
+- Incluye conceptos concretos del material, normas y consejos para el examen
+
+Devuelve SOLO el guion, sin introducción ni cierre:`,
+        },
+      ],
+    })
+    script = completion.choices[0].message.content
+    await registrarTokens(userId, packageId, completion.usage?.total_tokens || 0)
+  } catch (err) {
+    console.error('[audio script]', err.message)
+    return res.status(502).json({ error: 'Error generando el guion del podcast.' })
+  }
+
+  // 2 ── Parsear segmentos
+  const segmentos = []
+  for (const line of script.split('\n')) {
+    const m = line.match(/^(VALENTINA|ANDRÉS):\s*(.+)/)
+    if (m && m[2].trim()) segmentos.push({ hablante: m[1], texto: m[2].trim() })
+  }
+  if (!segmentos.length) return res.status(502).json({ error: 'El guion generado no tiene el formato esperado.' })
+
+  // 3 ── TTS por segmento (secuencial para evitar rate limits)
+  const buffers = []
+  try {
+    for (const seg of segmentos) {
+      const voz = seg.hablante === 'VALENTINA' ? 'shimmer' : 'onyx'
+      const audio = await openai.audio.speech.create({
+        model: 'tts-1', voice: voz, input: seg.texto, response_format: 'mp3',
+      })
+      buffers.push(Buffer.from(await audio.arrayBuffer()))
+    }
+  } catch (err) {
+    console.error('[audio tts]', err.message)
+    return res.status(502).json({ error: 'Error generando el audio. Verifica que tu API key tenga acceso a TTS.' })
+  }
+
+  const audioFinal = Buffer.concat(buffers)
+
+  // 4 ── Subir a Supabase Storage
+  const filename = `${userId}/${packageId}/${Date.now()}.mp3`
+  try {
+    await supabase.storage.createBucket('cuaderno-audio', { public: true }).catch(() => {})
+    const { error: upErr } = await supabase.storage
+      .from('cuaderno-audio')
+      .upload(filename, audioFinal, { contentType: 'audio/mpeg', upsert: true })
+    if (upErr) throw upErr
+  } catch (err) {
+    console.error('[audio upload]', err.message)
+    return res.status(502).json({ error: 'Error guardando el audio. Verifica el bucket cuaderno-audio en Supabase.' })
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from('cuaderno-audio').getPublicUrl(filename)
+
+  return res.json({ audioUrl: publicUrl, segmentos: segmentos.length })
 }
