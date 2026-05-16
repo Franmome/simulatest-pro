@@ -1201,39 +1201,25 @@ export default function DetallePrueba() {
               <ModeCards />
             </div>
 
-            {/* Cuaderno IA — OpenAI (reemplaza IAPraxia) */}
-            {tienePlan && packageId ? (
+            {/* IA Praxia */}
+            <IAPraxia
+              evaluacionNombre={ev?.title}
+              tienePlan={tienePlan && hasAiChat}
+            />
+
+            {/* Cuaderno IA */}
+            {tienePlan && packageId && (
               <button
                 onClick={() => navigate(`/cuaderno/${packageId}`)}
-                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group relative overflow-hidden"
+                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
               >
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -translate-y-10 translate-x-10 pointer-events-none" />
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                    <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-extrabold text-sm">Cuaderno IA</p>
-                    <p className="text-white/60 text-xs">Tutor · Notas · Artefactos</p>
-                  </div>
-                  <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  <p className="font-bold text-sm">Cuaderno IA</p>
+                  <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
                 </div>
-                <p className="text-white/50 text-xs">Chat con IA · Sube tus documentos · Genera resúmenes, quizzes y más</p>
+                <p className="text-white/70 text-xs">Chat con el tutor IA · Notas · Artefactos</p>
               </button>
-            ) : tienePlan ? (
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white relative overflow-hidden opacity-60">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                  </div>
-                  <div>
-                    <p className="font-extrabold text-sm">Cuaderno IA</p>
-                    <p className="text-white/60 text-xs">Cargando acceso…</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <IAPraxia evaluacionNombre={ev?.title} tienePlan={false} />
             )}
 
             {/* Estadísticas rápidas del nivel */}
