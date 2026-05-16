@@ -137,3 +137,90 @@ export const eliminarNota = async (req, res) => {
   await supabase.from('user_notebook_entries').delete().eq('id', notaId).eq('user_id', userId)
   return res.json({ ok: true })
 }
+
+// ── POST /api/cuaderno/:packageId/generar ────────────────────────────────────
+const PROMPTS_ARTEFACTO = {
+  resumen: `Genera un resumen ejecutivo completo y estructurado del material de estudio de este paquete.
+Formato:
+## Resumen ejecutivo
+### Temas principales
+- ...
+### Conceptos clave
+- ...
+### Normativa relevante (si aplica)
+- ...
+### Puntos críticos para el examen
+- ...`,
+
+  quiz: `Genera 10 preguntas de selección múltiple (A, B, C, D) tipo CNSC/concurso de méritos sobre el material de este paquete.
+Formato para cada pregunta:
+**Pregunta N:** [enunciado]
+A) [opción]  B) [opción]  C) [opción]  D) [opción]
+✅ Respuesta: [letra] — [explicación breve]`,
+
+  flashcards: `Genera 12 flashcards de estudio sobre los conceptos clave de este paquete.
+Formato:
+🃏 **Flashcard N**
+**Frente:** [concepto o pregunta]
+**Reverso:** [definición o respuesta]`,
+
+  plan: `Genera un plan de estudio semanal de 4 semanas para preparar este concurso de méritos.
+Formato:
+## Plan de estudio — 4 semanas
+### Semana 1: [tema]
+- Lunes: ...
+- Miércoles: ...
+- Viernes: ...
+(repite para cada semana con objetivos, temas y actividades concretas)
+### Tips finales para el examen`,
+}
+
+export const generarArtefacto = async (req, res) => {
+  const packageId = parseInt(req.params.packageId)
+  const { tipo } = req.body
+  const userId = req.user.id
+
+  if (!PROMPTS_ARTEFACTO[tipo])
+    return res.status(400).json({ error: 'Tipo inválido. Usa: resumen, quiz, flashcards, plan.' })
+
+  if (!(await tieneAcceso(userId, packageId)))
+    return res.status(403).json({ error: 'Sin acceso a este paquete.' })
+
+  const [{ data: pkg }, { data: mats }] = await Promise.all([
+    supabase.from('packages').select('name, description').eq('id', packageId).maybeSingle(),
+    supabase.from('study_materials').select('title, description').eq('package_id', packageId).eq('is_active', true),
+  ])
+
+  const contexto = mats?.length
+    ? `Material del paquete:\n${mats.map(m => `• ${m.title}${m.description ? ': ' + m.description : ''}`).join('\n')}`
+    : 'Material aún no cargado — genera contenido general sobre el tipo de concurso indicado.'
+
+  let contenido
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 1500,
+      messages: [
+        {
+          role: 'system',
+          content: `Eres el tutor IA de Praxia para el paquete "${pkg?.name || 'de estudio'}". Preparas candidatos para concursos de méritos del Estado colombiano. Responde siempre en español.
+
+${contexto}`,
+        },
+        { role: 'user', content: PROMPTS_ARTEFACTO[tipo] },
+      ],
+    })
+    contenido = completion.choices[0].message.content
+  } catch (err) {
+    console.error('[cuaderno generar]', err.message)
+    return res.status(502).json({ error: 'Error al generar. Intenta de nuevo.' })
+  }
+
+  const { data: nota, error } = await supabase
+    .from('user_notebook_entries')
+    .insert({ user_id: userId, package_id: packageId, contenido, fuente: tipo })
+    .select('id, contenido, fuente, created_at').single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ nota, contenido })
+}
