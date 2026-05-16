@@ -1201,6 +1201,21 @@ export default function DetallePrueba() {
               tienePlan={tienePlan && hasAiChat}
             />
 
+            {/* Cuaderno IA */}
+            {tienePlan && packageId && (
+              <button
+                onClick={() => navigate(`/cuaderno/${packageId}`)}
+                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  <p className="font-bold text-sm">Cuaderno IA</p>
+                  <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
+                </div>
+                <p className="text-white/70 text-xs">Chat con el tutor IA · Notas · Artefactos</p>
+              </button>
+            )}
+
             {/* Estadísticas rápidas del nivel */}
             {nivelActual && (
               <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
