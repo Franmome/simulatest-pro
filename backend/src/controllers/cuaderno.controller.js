@@ -1,6 +1,9 @@
-import OpenAI    from 'openai'
-import pdfParse  from 'pdf-parse/lib/pdf-parse.js'
-import { createClient } from '@supabase/supabase-js'
+import OpenAI              from 'openai'
+import { createRequire }   from 'module'
+import { createClient }    from '@supabase/supabase-js'
+
+const require  = createRequire(import.meta.url)
+const pdfParse = require('pdf-parse')
 
 const openai   = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
