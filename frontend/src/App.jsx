@@ -28,6 +28,7 @@ import Configuracion from './pages/Configuracion'
 import ModoPruebas from './pages/ModoPruebas'
 import MaterialEstudio from './pages/MaterialEstudio'
 import AnalisisPerfil from './pages/AnalisisPerfil'
+import CuadernoIA from './pages/CuadernoIA'
 import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/modo-pruebas"    element={<ModoPruebas />} />
             <Route path="/material-estudio" element={<MaterialEstudio />} />
             <Route path="/analisis-perfil"  element={<AnalisisPerfil />} />
+            <Route path="/cuaderno/:packageId" element={<CuadernoIA />} />
             <Route path="/salas"           element={<Salas />} />
             <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
             <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />

@@ -387,15 +387,18 @@ function TabMaterial({ packageId, tienePlan, evaluacionId, userId, convocatoriaI
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-          {/* Cuaderno IA — OpenAI (próximamente) */}
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 text-white opacity-60 cursor-not-allowed select-none">
+          {/* Cuaderno IA — OpenAI */}
+          <button
+            onClick={() => navigate(`/cuaderno/${packageId}`)}
+            className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
+          >
             <div className="flex items-center gap-2 mb-1.5">
               <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
               <p className="font-bold text-sm">Cuaderno IA</p>
-              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold ml-auto">Próximamente</span>
+              <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
             </div>
-            <p className="text-white/60 text-xs">Chat con tu material usando IA · OpenAI Notebooks</p>
-          </div>
+            <p className="text-white/70 text-xs">Chat con el tutor IA · Guarda tus notas personales</p>
+          </button>
 
           {/* Análisis de perfil vs convocatoria */}
           {convocatoriaId ? (

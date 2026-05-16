@@ -8,6 +8,7 @@ import paqueteRoutes     from './routes/paquete.routes.js'
 import usuarioRoutes     from './routes/usuario.routes.js'
 import wompiRoutes       from './routes/wompi.routes.js'   // ✅ Agregado
 import iaRoutes          from './routes/ia.routes.js'
+import cuadernoRoutes   from './routes/cuaderno.routes.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3000
@@ -28,6 +29,7 @@ app.use('/api/paquetes',    paqueteRoutes)
 app.use('/api/usuarios',    usuarioRoutes)
 app.use('/api/wompi',       wompiRoutes)   // ✅ Agregado
 app.use('/api/ia',         iaRoutes)
+app.use('/api/cuaderno',  cuadernoRoutes)
 
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
