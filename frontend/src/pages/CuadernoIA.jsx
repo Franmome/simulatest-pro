@@ -711,6 +711,7 @@ export default function CuadernoIA() {
   // Fuentes
   const [fuentes,     setFuentes]     = useState([]) // admin + user
   const [subiendo,    setSubiendo]    = useState(false)
+  const [errorSubida, setErrorSubida] = useState('')
   const [modalFuente, setModalFuente] = useState(null)
   const fileRef = useRef(null)
 
@@ -823,17 +824,29 @@ export default function CuadernoIA() {
   // ── Subir PDF ──
   async function subirPDF(file) {
     if (!file || file.type !== 'application/pdf') return
-    setSubiendo(true)
+    setSubiendo(true); setErrorSubida('')
     const form = new FormData(); form.append('pdf', file)
     const { data: sess } = await supabase.auth.getSession()
     const token = sess.session?.access_token || ''
-    const res = await fetch(`${BASE}/api/cuaderno/${packageId}/fuentes`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    })
-    if (res.ok) { const d = await res.json(); setFuentes(prev => [...prev, d.fuente]) }
+    try {
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/fuentes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setFuentes(prev => [...prev, data.fuente])
+      } else {
+        setErrorSubida(data.error || 'Error al subir el PDF.')
+        setTimeout(() => setErrorSubida(''), 6000)
+      }
+    } catch {
+      setErrorSubida('Error de conexión al subir el archivo.')
+      setTimeout(() => setErrorSubida(''), 6000)
+    }
     setSubiendo(false)
+    if (fileRef.current) fileRef.current.value = ''
   }
 
   async function eliminarFuente(id) {
@@ -1073,6 +1086,12 @@ export default function CuadernoIA() {
                 : <><span className="material-symbols-outlined text-xs">upload</span>Subir mi PDF</>
               }
             </button>
+            {errorSubida && (
+              <div className="mt-1.5 bg-error/10 border border-error/20 rounded-xl px-3 py-2 flex items-start gap-2">
+                <span className="material-symbols-outlined text-error text-xs mt-0.5 flex-shrink-0">error</span>
+                <p className="text-[10px] text-error leading-snug">{errorSubida}</p>
+              </div>
+            )}
           </div>
 
           {/* Generar */}
