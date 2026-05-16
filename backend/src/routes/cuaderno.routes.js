@@ -9,7 +9,20 @@ import {
   getTokens, audioOverview,
 } from '../controllers/cuaderno.controller.js'
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/png', 'image/jpeg', 'image/webp',
+]
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_TYPES.includes(file.mimetype)) cb(null, true)
+    else cb(new Error(`Tipo de archivo no soportado: ${file.mimetype}`))
+  },
+})
 
 const router = Router()
 

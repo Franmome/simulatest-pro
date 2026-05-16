@@ -1,65 +1,91 @@
-import OpenAI              from 'openai'
-import { createRequire }   from 'module'
-import { createClient }    from '@supabase/supabase-js'
+import OpenAI                from 'openai'
+import { createClient }      from '@supabase/supabase-js'
 import { YoutubeTranscript } from 'youtube-transcript'
-import { exec }            from 'child_process'
-import { promisify }       from 'util'
+import mammoth               from 'mammoth'
+import * as XLSX             from 'xlsx'
+import { exec }              from 'child_process'
+import { promisify }         from 'util'
 import { writeFile, unlink, readFile, readdir } from 'fs/promises'
-import { tmpdir }          from 'os'
-import { join }            from 'path'
-import { randomUUID }      from 'crypto'
+import { tmpdir }            from 'os'
+import { join }              from 'path'
+import { randomUUID }        from 'crypto'
 
-const require    = createRequire(import.meta.url)
-const execAsync  = promisify(exec)
+const execAsync = promisify(exec)
 
-// ── Extracción de texto PDF ───────────────────────────────────────────────────
-async function extraerTextoPDF(buffer) {
-  const id     = randomUUID()
-  const tmpPDF = join(tmpdir(), `${id}.pdf`)
+// ── Lector universal de archivos ─────────────────────────────────────────────
+// Filosofía: la IA lee todo. Parsers solo para formatos de texto estructurado.
+async function extraerContenido(buffer, mimetype, originalname) {
 
-  try {
-    await writeFile(tmpPDF, buffer)
+  // ── Word (.docx) ──────────────────────────────────────────────────────────
+  if (mimetype.includes('wordprocessingml') || originalname.endsWith('.docx')) {
+    const { value } = await mammoth.extractRawText({ buffer })
+    return value?.trim() || null
+  }
 
-    // Intento 1: pdftotext (poppler) — digital o con capa de texto
+  // ── Excel (.xlsx) ─────────────────────────────────────────────────────────
+  if (mimetype.includes('spreadsheetml') || originalname.endsWith('.xlsx')) {
+    const wb = XLSX.read(buffer)
+    const partes = wb.SheetNames.map(name =>
+      `[${name}]\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}`
+    )
+    return partes.join('\n\n').trim() || null
+  }
+
+  // ── Imagen (png, jpg, webp) → OpenAI visión ───────────────────────────────
+  if (mimetype.startsWith('image/')) {
+    const b64  = buffer.toString('base64')
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 3000,
+      messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: `data:${mimetype};base64,${b64}`, detail: 'high' } },
+        { type: 'text', text: 'Analiza esta imagen de estudio para un concurso de méritos del Estado colombiano. Extrae todo el texto visible, describe tablas, diagramas y conceptos clave. Sé exhaustivo y estructurado.' },
+      ]}],
+    })
+    return resp.choices[0].message.content?.trim() || null
+  }
+
+  // ── PDF → OpenAI visión (el cerebro lee todo) ─────────────────────────────
+  if (mimetype === 'application/pdf') {
+    const id = randomUUID()
+    const tmpPDF = join(tmpdir(), `${id}.pdf`)
     try {
-      const { stdout } = await execAsync(`pdftotext "${tmpPDF}" -`, { timeout: 30000 })
-      const txt = stdout.trim()
-      if (txt.length > 100) return txt
-    } catch (e) { console.warn('[pdftotext]', e.message) }
+      await writeFile(tmpPDF, buffer)
 
-    // Intento 2: pdftoppm → imágenes PNG → OpenAI visión (PDFs escaneados)
-    const imgBase = join(tmpdir(), id)
-    try {
+      // Paso 1: pdftotext (gratis, instantáneo para PDFs digitales)
+      try {
+        const { stdout } = await execAsync(`pdftotext "${tmpPDF}" -`, { timeout: 30000 })
+        const txt = stdout.trim()
+        if (txt.length > 150) return txt
+      } catch { /* poppler no disponible o PDF escaneado, sigue */ }
+
+      // Paso 2: pdftoppm → imágenes → gpt-4o (PDFs escaneados / fotos)
+      const imgBase = join(tmpdir(), id)
       await execAsync(`pdftoppm -png -r 150 -l 8 "${tmpPDF}" "${imgBase}"`, { timeout: 60000 })
-      const archivos = (await readdir(tmpdir())).filter(f => f.startsWith(id) && f.endsWith('.png')).sort()
-      if (!archivos.length) return null
+      const imgs = (await readdir(tmpdir())).filter(f => f.startsWith(id) && f.endsWith('.png')).sort()
+      if (!imgs.length) return null
 
       const imageContent = await Promise.all(
-        archivos.slice(0, 6).map(async f => {
+        imgs.slice(0, 8).map(async f => {
           const buf = await readFile(join(tmpdir(), f))
           return { type: 'image_url', image_url: { url: `data:image/png;base64,${buf.toString('base64')}`, detail: 'high' } }
         })
       )
+      await Promise.all(imgs.map(f => unlink(join(tmpdir(), f)).catch(() => {})))
 
       const resp = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        max_tokens: 4096,
+        model: 'gpt-4o', max_tokens: 4096,
         messages: [{ role: 'user', content: [
           ...imageContent,
-          { type: 'text', text: 'Extrae TODO el texto de estas páginas. Preserva la estructura. Devuelve solo el texto extraído, sin comentarios ni explicaciones.' },
+          { type: 'text', text: 'Extrae y analiza TODO el contenido de estas páginas. Texto completo, tablas, artículos legales, estructuras. Devuelve el contenido organizado sin comentarios adicionales.' },
         ]}],
       })
-
-      await Promise.all(archivos.map(f => unlink(join(tmpdir(), f)).catch(() => {})))
-
-      const texto = resp.choices[0].message.content?.trim()
-      if (texto && texto.length > 50) return texto
-    } catch (e) { console.warn('[pdftoppm/vision]', e.message) }
-
-    return null
-  } finally {
-    await unlink(tmpPDF).catch(() => {})
+      return resp.choices[0].message.content?.trim() || null
+    } finally {
+      await unlink(tmpPDF).catch(() => {})
+    }
   }
+
+  return null
 }
 
 const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -367,10 +393,10 @@ export const subirFuente = async (req, res) => {
   if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
   if (!req.file) return res.status(400).json({ error: 'No se recibió archivo.' })
 
-  const texto = await extraerTextoPDF(req.file.buffer)
-  if (!texto) return res.status(422).json({ error: 'No se pudo extraer texto del PDF. Si está escaneado, asegúrate de que tenga buena calidad de imagen.' })
+  const texto = await extraerContenido(req.file.buffer, req.file.mimetype, req.file.originalname)
+  if (!texto) return res.status(422).json({ error: 'No se pudo extraer contenido del archivo. Verifica que no esté vacío o protegido.' })
 
-  const nombre = req.file.originalname.replace(/\.pdf$/i, '')
+  const nombre = req.file.originalname.replace(/\.[^.]+$/, '')
   const { data, error } = await supabase
     .from('user_cuaderno_fuentes')
     .insert({ user_id: userId, package_id: packageId, nombre, texto })

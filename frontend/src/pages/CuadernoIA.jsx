@@ -825,7 +825,7 @@ export default function CuadernoIA() {
 
   // ── Subir PDF ──
   async function subirPDF(file) {
-    if (!file || file.type !== 'application/pdf') return
+    if (!file) return
     setSubiendo(true); setErrorSubida('')
     const form = new FormData(); form.append('pdf', file)
     const { data: sess } = await supabase.auth.getSession()
@@ -840,7 +840,7 @@ export default function CuadernoIA() {
       if (res.ok) {
         setFuentes(prev => [...prev, data.fuente])
       } else {
-        setErrorSubida(data.error || 'Error al subir el PDF.')
+        setErrorSubida(data.error || 'Error al subir el archivo.')
         setTimeout(() => setErrorSubida(''), 6000)
       }
     } catch {
@@ -1095,14 +1095,14 @@ export default function CuadernoIA() {
                 </div>
               ))}
             </div>
-            <input ref={fileRef} type="file" accept=".pdf" className="hidden"
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp" className="hidden"
               onChange={e => e.target.files?.[0] && subirPDF(e.target.files[0])} />
             <button onClick={() => fileRef.current?.click()} disabled={subiendo}
               className="mt-2 w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-primary/10 hover:text-primary
                          text-slate-500 font-bold text-[11px] py-2 rounded-xl transition-all disabled:opacity-50 border-2 border-dashed border-slate-200">
               {subiendo
                 ? <><div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />Subiendo…</>
-                : <><span className="material-symbols-outlined text-xs">upload</span>Subir mi PDF</>
+                : <><span className="material-symbols-outlined text-xs">upload</span>Subir archivo</>
               }
             </button>
             {/* YouTube URL */}
