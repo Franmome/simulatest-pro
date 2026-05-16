@@ -3,7 +3,131 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const BASE     = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const TOUR_KEY = 'praxia_tour_cuaderno_v1'
+const PAD      = 10
+
+const PASOS_TOUR = [
+  { sel: null,                         icon: 'auto_stories',   side: 'center', titulo: '¡Bienvenido al Cuaderno IA!',    desc: 'Tu espacio personal de estudio con inteligencia artificial. En los próximos pasos te mostramos cómo funciona cada sección.' },
+  { sel: '[data-tour="fuentes-admin"]', icon: 'folder',        side: 'right',  titulo: 'Fuentes del paquete',            desc: 'Documentos oficiales del concurso cargados por el administrador. La IA los lee completos y los cita cuando te responde.' },
+  { sel: '[data-tour="mis-docs"]',      icon: 'upload_file',   side: 'right',  titulo: 'Mis documentos',                 desc: 'Sube tus propios PDFs: acuerdos, normativas, apuntes. La IA puede leer hasta 40 páginas completas por documento y usarlos en todas las funciones.' },
+  { sel: '[data-tour="generar-ia"]',    icon: 'auto_awesome',  side: 'right',  titulo: 'Generar material con IA',        desc: 'Con un clic genera 7 tipos de material: Resumen ejecutivo, Quiz interactivo, Flashcards 3D, Plan de estudio, FAQ, Cronología del proceso y un Podcast real con dos locutores.' },
+  { sel: '[data-tour="chat-input"]',    icon: 'smart_toy',     side: 'top',    titulo: 'Tutor IA',                       desc: 'Pregúntale lo que quieras. Cita tus fuentes automáticamente con 【Archivo】. Puedes guardar cualquier respuesta como nota con un clic.' },
+  { sel: '[data-tour="panel-notas"]',   icon: 'sticky_note_2', side: 'left',   titulo: 'Mis notas',                      desc: 'Guarda ideas, respuestas del chat y artefactos generados. Fija 📌 las más importantes y úsalas directamente en el chat con "Usar en chat".' },
+  { sel: '[data-tour="token-counter"]', icon: 'token',         side: 'bottom', titulo: 'Tus tokens disponibles',         desc: 'Tienes 2 millones de tokens por mes por paquete. Cada mensaje y artefacto los consume. Se renuevan automáticamente el día 1 de cada mes.' },
+]
+
+// ── Tour de bienvenida estilo videojuego ──────────────────────────────────────
+function TourCuaderno({ onDone }) {
+  const [paso, setPaso]   = useState(0)
+  const [box,  setBox]    = useState(null)
+  const step = PASOS_TOUR[paso]
+
+  useEffect(() => {
+    if (!step.sel) { setBox(null); return }
+    const el = document.querySelector(step.sel)
+    if (!el) { setBox(null); return }
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const t = setTimeout(() => {
+      const r = el.getBoundingClientRect()
+      setBox({ top: r.top - PAD, left: r.left - PAD, w: r.width + PAD * 2, h: r.height + PAD * 2, right: r.right + PAD, bottom: r.bottom + PAD })
+    }, 320)
+    return () => clearTimeout(t)
+  }, [paso])
+
+  const siguiente = () => paso < PASOS_TOUR.length - 1 ? setPaso(p => p + 1) : onDone()
+
+  const W = typeof window !== 'undefined' ? window.innerWidth  : 1280
+  const H = typeof window !== 'undefined' ? window.innerHeight : 800
+  const GAP = 16
+
+  let tip = { position: 'fixed', zIndex: 10001, width: 288 }
+  if (!box || step.side === 'center') {
+    tip = { ...tip, top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }
+  } else {
+    switch (step.side) {
+      case 'right':
+        tip.left = Math.min(box.right + GAP, W - 300)
+        tip.top  = Math.max(8, Math.min(box.top, H - 230))
+        break
+      case 'left':
+        tip.right = Math.max(W - box.left + GAP, 8)
+        tip.top   = Math.max(8, Math.min(box.top, H - 230))
+        break
+      case 'top':
+        tip.bottom = Math.max(H - box.top + GAP, 8)
+        tip.left   = Math.max(8, Math.min(box.left + box.w / 2 - 144, W - 296))
+        break
+      case 'bottom':
+        tip.top  = Math.min(box.bottom + GAP, H - 230)
+        tip.left = Math.max(8, Math.min(box.left + box.w / 2 - 144, W - 296))
+        break
+    }
+  }
+
+  return (
+    <div className="fixed inset-0" style={{ zIndex: 9999 }}>
+      {/* ── Overlay con recorte ── */}
+      {box ? (
+        <>
+          <div className="absolute bg-black/70" style={{ top: 0, left: 0, right: 0, height: box.top }} />
+          <div className="absolute bg-black/70" style={{ top: box.bottom, left: 0, right: 0, bottom: 0 }} />
+          <div className="absolute bg-black/70" style={{ top: box.top, left: 0, width: box.left, height: box.h }} />
+          <div className="absolute bg-black/70" style={{ top: box.top, left: box.right, right: 0, height: box.h }} />
+          <div className="absolute rounded-xl pointer-events-none"
+            style={{ top: box.top, left: box.left, width: box.w, height: box.h, zIndex: 10000,
+              boxShadow: '0 0 0 3px #6366f1, 0 0 20px 4px rgba(99,102,241,0.5)',
+              animation: 'pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite' }} />
+        </>
+      ) : (
+        <div className="absolute inset-0 bg-black/70" />
+      )}
+
+      {/* ── Tarjeta tooltip ── */}
+      <div style={tip}
+        className="bg-white rounded-2xl shadow-2xl p-5 flex flex-col gap-3.5"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Icono + título */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-primary text-xl"
+                  style={{ fontVariationSettings: "'FILL' 1" }}>{step.icon}</span>
+          </div>
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="font-extrabold text-sm leading-snug">{step.titulo}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Paso {paso + 1} de {PASOS_TOUR.length}</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">{step.desc}</p>
+
+        {/* Indicador de pasos */}
+        <div className="flex items-center gap-1.5">
+          {PASOS_TOUR.map((_, i) => (
+            <div key={i} onClick={() => setPaso(i)} className={`h-1.5 rounded-full transition-all cursor-pointer
+              ${i === paso ? 'bg-primary w-6' : i < paso ? 'bg-primary/40 w-1.5' : 'bg-slate-200 w-1.5'}`} />
+          ))}
+        </div>
+
+        {/* Botones */}
+        <div className="flex gap-2 pt-0.5">
+          <button onClick={onDone}
+            className="text-xs text-slate-400 hover:text-slate-600 px-3 py-2.5 rounded-xl transition-colors font-semibold">
+            Omitir
+          </button>
+          <button onClick={siguiente}
+            className="flex-1 bg-primary text-on-primary font-extrabold text-xs py-2.5 rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1.5">
+            {paso < PASOS_TOUR.length - 1
+              ? <><span>Siguiente</span><span className="material-symbols-outlined text-sm">arrow_forward</span></>
+              : <><span>¡Entendido!</span><span className="material-symbols-outlined text-sm">check_circle</span></>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 async function hdrs(contentType = 'application/json') {
   const { data } = await supabase.auth.getSession()
@@ -580,6 +704,9 @@ export default function CuadernoIA() {
 
   const [pkgNombre,   setPkgNombre]   = useState('')
   const [tabMobile,   setTabMobile]   = useState('chat')
+  const [tourActivo,  setTourActivo]  = useState(() => !localStorage.getItem(TOUR_KEY))
+
+  const finalizarTour = () => { localStorage.setItem(TOUR_KEY, '1'); setTourActivo(false) }
 
   // Fuentes
   const [fuentes,     setFuentes]     = useState([]) // admin + user
@@ -812,7 +939,7 @@ export default function CuadernoIA() {
             <span className="material-symbols-outlined text-sm">error</span>{chatErr}
           </div>
         )}
-        <div className="p-4 bg-white border-t border-slate-200 flex-shrink-0">
+        <div data-tour="chat-input" className="p-4 bg-white border-t border-slate-200 flex-shrink-0">
           {agotado ? (
             <div className="p-3 bg-error/10 text-error text-sm font-semibold rounded-xl text-center space-y-1">
               <p>Agotaste tus 2M tokens este mes.</p>
@@ -858,11 +985,15 @@ export default function CuadernoIA() {
             <span className="material-symbols-outlined text-sm">chat</span>Volver al chat
           </button>
         )}
-        <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full
+        <div data-tour="token-counter" className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full
           ${tokensUsados >= tokensLimite * 0.8 ? 'bg-error/10 text-error' : 'bg-slate-100 text-slate-500'}`}>
           <span className="material-symbols-outlined text-xs">token</span>
           {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}/{(tokensLimite/1_000_000).toFixed(0)}M
         </div>
+        <button onClick={() => { localStorage.removeItem(TOUR_KEY); setTourActivo(true) }} title="Ver tutorial"
+          className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-shrink-0 font-extrabold text-sm">
+          ?
+        </button>
       </header>
 
       {/* ── Tabs móvil ── */}
@@ -890,7 +1021,7 @@ export default function CuadernoIA() {
           ${tabMobile !== 'generar' ? 'hidden lg:flex' : ''}`}>
 
           {/* Fuentes admin */}
-          <div className="p-3 border-b border-slate-100">
+          <div data-tour="fuentes-admin" className="p-3 border-b border-slate-100">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
               <span className="material-symbols-outlined text-xs">folder</span>Fuentes del paquete
             </p>
@@ -912,7 +1043,7 @@ export default function CuadernoIA() {
           </div>
 
           {/* Fuentes del usuario */}
-          <div className="p-3 border-b border-slate-100">
+          <div data-tour="mis-docs" className="p-3 border-b border-slate-100">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
               <span className="material-symbols-outlined text-xs">upload_file</span>Mis documentos
             </p>
@@ -945,7 +1076,7 @@ export default function CuadernoIA() {
           </div>
 
           {/* Generar */}
-          <div className="p-3 flex-1">
+          <div data-tour="generar-ia" className="p-3 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
               <span className="material-symbols-outlined text-xs">auto_awesome</span>Generar con IA
             </p>
@@ -977,7 +1108,7 @@ export default function CuadernoIA() {
         </main>
 
         {/* ══ RIGHT: Notas ══ */}
-        <aside className={`flex flex-col w-full lg:w-72 border-l border-slate-200 bg-white overflow-hidden
+        <aside data-tour="panel-notas" className={`flex flex-col w-full lg:w-72 border-l border-slate-200 bg-white overflow-hidden
           ${tabMobile !== 'notas' ? 'hidden lg:flex' : ''}`}>
 
           <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2 flex-shrink-0">
@@ -1055,6 +1186,9 @@ export default function CuadernoIA() {
 
       {/* ── Modal visor de fuente ── */}
       <ModalFuente fuente={modalFuente} onClose={() => setModalFuente(null)} />
+
+      {/* ── Tour de bienvenida ── */}
+      {tourActivo && <TourCuaderno onDone={finalizarTour} />}
     </div>
   )
 }
