@@ -4,7 +4,12 @@ import { YoutubeTranscript } from 'youtube-transcript'
 import mammoth               from 'mammoth'
 import * as XLSX             from 'xlsx'
 
-// ── Lector universal — OpenAI hace el trabajo pesado ─────────────────────────
+const openai   = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+
+// ── Lector universal — OpenAI Files API + Responses API ──────────────────────
+// PDFs e imágenes se suben como binario (no base64), OpenAI los lee en sus
+// servidores. Zero RAM local. Se eliminan de OpenAI tras la extracción.
 async function extraerContenido(buffer, mimetype, originalname) {
 
   // Word → mammoth (texto puro, cero RAM)
@@ -22,37 +27,36 @@ async function extraerContenido(buffer, mimetype, originalname) {
     return partes.join('\n\n').trim() || null
   }
 
-  // PDF → OpenAI lo lee directamente (sin tocar disco, sin RAM local)
-  if (mimetype === 'application/pdf') {
-    const b64 = buffer.toString('base64')
-    const resp = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 4096,
-      messages: [{ role: 'user', content: [
-        { type: 'file', file: { filename: originalname, file_data: `data:application/pdf;base64,${b64}` } },
-        { type: 'text', text: 'Extrae y analiza TODO el contenido de este documento. Devuelve el texto completo, tablas, artículos, normas y estructuras tal como aparecen. Sé exhaustivo y organizado. Responde en español.' },
-      ]}],
-    })
-    return resp.choices[0].message.content?.trim() || null
-  }
+  // PDF o imagen → Files API (binario) + Responses API (OpenAI lee en la nube)
+  if (mimetype === 'application/pdf' || mimetype.startsWith('image/')) {
+    let fileId = null
+    try {
+      // Subir como binario — cero base64, cero spike de RAM
+      const uploaded = await openai.files.create({
+        file: new File([buffer], originalname, { type: mimetype }),
+        purpose: 'user_data',
+      })
+      fileId = uploaded.id
 
-  // Imagen suelta → gpt-4o visión (una foto, sin peso)
-  if (mimetype.startsWith('image/')) {
-    const b64 = buffer.toString('base64')
-    const resp = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 3000,
-      messages: [{ role: 'user', content: [
-        { type: 'image_url', image_url: { url: `data:${mimetype};base64,${b64}`, detail: 'high' } },
-        { type: 'text', text: 'Analiza esta imagen. Extrae todo el texto visible, tablas, diagramas y conceptos clave. Sé exhaustivo. Responde en español.' },
-      ]}],
-    })
-    return resp.choices[0].message.content?.trim() || null
+      // OpenAI lee el archivo en SUS servidores con Responses API
+      const resp = await openai.responses.create({
+        model: 'gpt-4o',
+        input: [{ role: 'user', content: [
+          { type: 'input_file', file_id: fileId },
+          { type: 'input_text', text: 'Extrae y analiza TODO el contenido de este documento. Devuelve el texto completo, tablas, artículos, normas y estructuras tal como aparecen. Sé exhaustivo y organizado. Responde en español.' },
+        ]}],
+      })
+      return resp.output_text?.trim() || null
+    } finally {
+      // Siempre limpiar el archivo de OpenAI (solo lo usamos para extracción)
+      if (fileId) await openai.files.del(fileId).catch(() => {})
+    }
   }
 
   return null
 }
 
-const openai    = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+
 const TOKENS_MES = 2_000_000
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -356,7 +360,13 @@ export const subirFuente = async (req, res) => {
   if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
   if (!req.file) return res.status(400).json({ error: 'No se recibió archivo.' })
 
-  const texto = await extraerContenido(req.file.buffer, req.file.mimetype, req.file.originalname)
+  let texto
+  try {
+    texto = await extraerContenido(req.file.buffer, req.file.mimetype, req.file.originalname)
+  } catch (err) {
+    console.error('[subirFuente]', err.message)
+    return res.status(502).json({ error: 'Error al procesar el archivo con la IA. Intenta de nuevo.' })
+  }
   if (!texto) return res.status(422).json({ error: 'No se pudo extraer contenido del archivo. Verifica que no esté vacío o protegido.' })
 
   const nombre = req.file.originalname.replace(/\.[^.]+$/, '')
