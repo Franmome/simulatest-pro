@@ -16,9 +16,15 @@ export const deleteUsuario = async (req, res) => {
   if (id === req.user.id)
     return res.status(400).json({ error: 'No puedes eliminarte a ti mismo.' })
 
-  // Limpiar datos del usuario antes de borrar auth
-  await supabase.from('purchases').delete().eq('user_id', id)
+  // Limpiar todas las tablas con user_id antes de borrar auth (orden: dependientes primero)
+  await supabase.from('user_simulacro_answers').delete().eq('user_id', id)
+  await supabase.from('user_simulacros').delete().eq('user_id', id)
+  await supabase.from('user_material_views').delete().eq('user_id', id)
+  await supabase.from('room_participants').delete().eq('user_id', id)
+  await supabase.from('user_ai_tokens').delete().eq('user_id', id)
+  await supabase.from('transactions').delete().eq('user_id', id)
   await supabase.from('attempts').delete().eq('user_id', id)
+  await supabase.from('purchases').delete().eq('user_id', id)
   await supabase.from('users').delete().eq('id', id)
 
   // Borrar de Supabase Auth (requiere service key)
