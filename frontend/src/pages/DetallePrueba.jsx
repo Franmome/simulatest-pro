@@ -714,6 +714,7 @@ export default function DetallePrueba() {
     let tienePlan = false, packageId = null, hasAiChat = false, versionNombre = null
     if (user?.id) {
       const evalIdNum = parseInt(id, 10)
+      const esAdmin = user.role === 'admin'
 
       // Resolver paquetes que contienen esta evaluación
       let evalPackageIds = []
@@ -722,20 +723,24 @@ export default function DetallePrueba() {
         supabase.from('packages').select('id').contains('evaluations_ids', [evalIdNum]),
       ])
       if (evalVers?.length) {
-        const { data: versData } = await supabase
-          .from('package_versions').select('package_id')
-          .in('id', evalVers.map(v => v.package_version_id))
-        evalPackageIds = versData?.map(v => v.package_id).filter(Boolean) || []
+        // Filtra nulls para evitar .in('id',[null]) que genera 400 en PostgREST
+        const versionIds = evalVers.map(v => v.package_version_id).filter(Boolean)
+        if (versionIds.length) {
+          const { data: versData } = await supabase
+            .from('package_versions').select('package_id')
+            .in('id', versionIds)
+          evalPackageIds = versData?.map(v => v.package_id).filter(Boolean) || []
+        }
       }
       if (pkgDirect?.length) {
         evalPackageIds = [...new Set([...evalPackageIds, ...pkgDirect.map(p => p.id)])]
       }
 
-      // Admins tienen acceso libre a todo
-      const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
-      if (userRow?.role === 'admin') {
+      if (esAdmin) {
+        // Admin: acceso total, IA siempre activa
         tienePlan = true
-        packageId = evalPackageIds[0] ?? null
+        hasAiChat = true
+        packageId  = evalPackageIds[0] ?? null
       } else if (evalPackageIds.length) {
         // Usuario normal: verificar compra específica para este paquete
         const { data: compra } = await supabase
@@ -758,29 +763,30 @@ export default function DetallePrueba() {
         }
       }
 
+      // Datos del paquete (solo para usuarios normales que necesitan verificar has_ai_chat)
       let convocatoriaId = null, convocatoriaNombre = null
-      if (packageId) {
+      if (packageId && !esAdmin) {
         const { data: pkg } = await supabase
           .from('packages')
-          .select('has_ai_chat, convocatoria_id, convocatorias(id, nombre)')
+          .select('has_ai_chat, convocatoria_id')
           .eq('id', packageId).maybeSingle()
         hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
-        convocatoriaNombre = pkg?.convocatorias?.nombre ?? null
       }
     }
 
-    // Top simulacros IA para esta evaluación (ranking)
-    const { data: ranking } = await supabase
+    // Ranking sin join de tabla users para evitar 400 por foreign key no configurado
+    const { data: rankingRaw } = await supabase
       .from('user_simulacros')
-      .select('cargo, score_pct, completado, users(full_name)')
+      .select('cargo, score_pct, completado, user_id')
       .eq('evaluacion_id', parseInt(id))
       .eq('completado', true)
       .not('score_pct', 'is', null)
       .order('score_pct', { ascending: false })
       .limit(8)
+    const ranking = (rankingRaw || []).map(r => ({ ...r, users: { full_name: 'Candidato' } }))
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking: ranking || [], convocatoriaId, convocatoriaNombre }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId: null, convocatoriaNombre: null }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -1195,25 +1201,39 @@ export default function DetallePrueba() {
               <ModeCards />
             </div>
 
-            {/* IA Praxia */}
-            <IAPraxia
-              evaluacionNombre={ev?.title}
-              tienePlan={tienePlan && hasAiChat}
-            />
-
-            {/* Cuaderno IA */}
-            {tienePlan && packageId && (
+            {/* Cuaderno IA — OpenAI (reemplaza IAPraxia) */}
+            {tienePlan && packageId ? (
               <button
                 onClick={() => navigate(`/cuaderno/${packageId}`)}
-                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
+                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group relative overflow-hidden"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                  <p className="font-bold text-sm">Cuaderno IA</p>
-                  <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
+                <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -translate-y-10 translate-x-10 pointer-events-none" />
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-extrabold text-sm">Cuaderno IA</p>
+                    <p className="text-white/60 text-xs">Tutor · Notas · Artefactos</p>
+                  </div>
+                  <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
                 </div>
-                <p className="text-white/70 text-xs">Chat con el tutor IA · Notas · Artefactos</p>
+                <p className="text-white/50 text-xs">Chat con IA · Sube tus documentos · Genera resúmenes, quizzes y más</p>
               </button>
+            ) : tienePlan ? (
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white relative overflow-hidden opacity-60">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-sm">Cuaderno IA</p>
+                    <p className="text-white/60 text-xs">Cargando acceso…</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <IAPraxia evaluacionNombre={ev?.title} tienePlan={false} />
             )}
 
             {/* Estadísticas rápidas del nivel */}
