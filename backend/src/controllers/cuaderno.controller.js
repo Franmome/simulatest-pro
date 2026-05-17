@@ -262,30 +262,48 @@ export const fijarNota = async (req, res) => {
 }
 
 // ── POST /api/cuaderno/:packageId/generar ────────────────────────────────────
+// Tipos que devuelven OBJETO JSON (response_format: json_object es seguro)
+const OBJECT_TIPOS = new Set(['resumen', 'mapa_mental', 'tabla', 'guia'])
+
 const PROMPTS = {
   resumen: `Genera un resumen ejecutivo estructurado de este material.
 Devuelve SOLO el siguiente objeto JSON sin texto extra:
 {"ejes":[{"titulo":"Nombre del eje temático","puntos":["punto 1","punto 2"]}],"glosario":[{"termino":"término","definicion":"definición concisa"}],"criticos":["Punto crítico para el examen 1","..."],"ejecutivo":"Párrafo de resumen ejecutivo de 3-4 oraciones."}`,
 
   quiz: `Genera exactamente 10 preguntas tipo juicio de situación estilo CNSC/concurso de méritos.
-Devuelve SOLO el siguiente array JSON sin texto extra:
+Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
 [{"n":1,"pregunta":"Enunciado completo de la situación","opciones":{"A":"opción A","B":"opción B","C":"opción C","D":"opción D"},"correcta":"B","justificacion":"Justificación legal o técnica concisa."}]`,
 
   flashcards: `Genera exactamente 12 flashcards sobre los conceptos clave de este concurso de méritos.
-Devuelve SOLO el siguiente array JSON sin texto extra:
+Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
 [{"frente":"Concepto o pregunta corta","reverso":"Definición o respuesta completa"}]`,
 
   plan: `Genera un plan de estudio de 4 semanas para preparar este concurso de méritos.
-Devuelve SOLO el siguiente array JSON sin texto extra:
+Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
 [{"semana":1,"titulo":"Nombre de la semana","objetivo":"Objetivo principal de la semana","dias":[{"dia":"Lunes","tarea":"Descripción concreta de la actividad","horas":"2h"}]}]`,
 
   faq: `Genera exactamente 12 preguntas frecuentes que hacen los candidatos sobre este concurso de méritos.
-Devuelve SOLO el siguiente array JSON sin texto extra:
+Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
 [{"pregunta":"¿Pregunta concreta del candidato?","respuesta":"Respuesta clara y completa basada en la norma o el material.","categoria":"Inscripción|Pruebas|Empleo|Normativa|Proceso"}]`,
 
   cronologia: `Genera una cronología con los hitos más importantes del proceso de selección de este concurso de méritos (etapas, plazos, actuaciones legales).
-Devuelve SOLO el siguiente array JSON sin texto extra:
+Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
 [{"orden":1,"hito":"Nombre del hito","descripcion":"Descripción detallada de qué ocurre en esta etapa","norma":"Artículo o norma aplicable si existe","tipo":"convocatoria|inscripcion|prueba|lista|empleo"}]`,
+
+  mapa_mental: `Genera un mapa mental estructurado con los temas y conceptos clave de este concurso de méritos.
+Devuelve SOLO el siguiente objeto JSON sin texto extra:
+{"nodo_central":"Nombre del concurso/cargo","ramas":[{"titulo":"Eje temático 1","color":"blue","subtemas":["Subtema 1","Subtema 2","Subtema 3"]},{"titulo":"Eje temático 2","color":"violet","subtemas":["Subtema 1","Subtema 2"]}]}
+Usa entre 4 y 6 ramas. Colores disponibles: blue, violet, emerald, amber, rose, cyan.`,
+
+  tabla: `Analiza el material y genera una tabla comparativa con los datos más importantes para preparar este concurso de méritos (requisitos, funciones, normas aplicables, sueldos, competencias, etc.).
+Devuelve SOLO el siguiente objeto JSON sin texto extra:
+{"titulo":"Nombre descriptivo de la tabla","columnas":["Componente","Detalle de la OPEC","Importancia para el examen"],"filas":[["Nivel/Grado","Profesional Universitario - Grado 01","Define la complejidad del cuestionario"],["Función principal","Control fiscal participativo","Tema obligatorio de estudio"]]}
+Genera entre 6 y 10 filas con datos reales del material.`,
+
+  guia: `Genera una guía de estudio estructurada por fases para preparar este concurso de méritos.
+Devuelve SOLO el siguiente objeto JSON sin texto extra:
+{"titulo":"Nombre de la guía","modulos":[{"fase":"Fase 1: Fundamentos (Días 1-3)","tema":"Tema principal de la fase","lectura_clave":"Descripción de qué estudiar y dónde enfocarse","objetivo":"Objetivo de aprendizaje de esta fase"},{"fase":"Fase 2: Aplicación (Días 4-6)","tema":"Tema de aplicación práctica","lectura_clave":"Descripción de ejercicios y práctica","objetivo":"Objetivo de la fase de aplicación"}]}
+Genera entre 3 y 5 módulos progresivos.`,
 }
 
 export const generarArtefacto = async (req, res) => {
@@ -309,7 +327,7 @@ export const generarArtefacto = async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4.1-mini',
       max_tokens: 3000,
-      response_format: tipo !== 'resumen' ? { type: 'json_object' } : undefined,
+      response_format: OBJECT_TIPOS.has(tipo) ? { type: 'json_object' } : undefined,
       messages: [
         {
           role: 'system',
@@ -325,7 +343,7 @@ export const generarArtefacto = async (req, res) => {
     return res.status(502).json({ error: 'Error al generar. Intenta de nuevo.' })
   }
 
-  // Para quiz/flashcards/plan: parsear JSON. Para resumen: texto plano
+  // resumen: texto plano. Resto: parsear JSON (objeto o array)
   let datos = raw
   let contenidoNota = raw
   if (tipo !== 'resumen') {

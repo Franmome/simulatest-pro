@@ -136,25 +136,31 @@ async function hdrs(contentType = 'application/json') {
 }
 
 const FUENTE_META = {
-  manual:      { label: 'Manual',      icon: 'edit',           cls: 'bg-slate-100 text-slate-600' },
-  ia_chat:     { label: 'Chat',        icon: 'chat',           cls: 'bg-primary/10 text-primary' },
-  resumen:     { label: 'Resumen',     icon: 'summarize',      cls: 'bg-blue-100 text-blue-700' },
-  quiz:        { label: 'Quiz',        icon: 'quiz',           cls: 'bg-violet-100 text-violet-700' },
-  flashcards:  { label: 'Flashcards',  icon: 'style',          cls: 'bg-amber-100 text-amber-700' },
-  plan:        { label: 'Plan',        icon: 'calendar_month', cls: 'bg-emerald-100 text-emerald-700' },
-  faq:         { label: 'FAQ',         icon: 'help',           cls: 'bg-cyan-100 text-cyan-700' },
-  cronologia:  { label: 'Cronología',  icon: 'timeline',       cls: 'bg-rose-100 text-rose-700' },
-  audio:       { label: 'Audio',       icon: 'headphones',     cls: 'bg-slate-100 text-slate-700' },
+  manual:      { label: 'Manual',       icon: 'edit',           cls: 'bg-slate-100 text-slate-600' },
+  ia_chat:     { label: 'Chat',         icon: 'chat',           cls: 'bg-primary/10 text-primary' },
+  resumen:     { label: 'Resumen',      icon: 'summarize',      cls: 'bg-blue-100 text-blue-700' },
+  quiz:        { label: 'Quiz',         icon: 'quiz',           cls: 'bg-violet-100 text-violet-700' },
+  flashcards:  { label: 'Flashcards',   icon: 'style',          cls: 'bg-amber-100 text-amber-700' },
+  plan:        { label: 'Plan',         icon: 'calendar_month', cls: 'bg-emerald-100 text-emerald-700' },
+  faq:         { label: 'FAQ',          icon: 'help',           cls: 'bg-cyan-100 text-cyan-700' },
+  cronologia:  { label: 'Cronología',   icon: 'timeline',       cls: 'bg-rose-100 text-rose-700' },
+  mapa_mental: { label: 'Mapa Mental',  icon: 'account_tree',   cls: 'bg-purple-100 text-purple-700' },
+  tabla:       { label: 'Tabla',        icon: 'table_chart',    cls: 'bg-sky-100 text-sky-700' },
+  guia:        { label: 'Guía',         icon: 'menu_book',      cls: 'bg-green-100 text-green-700' },
+  audio:       { label: 'Audio',        icon: 'headphones',     cls: 'bg-slate-100 text-slate-700' },
 }
 
 const ACCIONES = [
-  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',          desc: 'Ejes temáticos + glosario + ejecutivo',     grad: 'from-blue-600 to-blue-700' },
-  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',        desc: '10 preguntas interactivas tipo situación',   grad: 'from-violet-600 to-violet-700' },
-  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',       desc: '12 tarjetas con volteo 3D',                 grad: 'from-amber-500 to-orange-600' },
-  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio',  desc: 'Cronograma 4 semanas con checkboxes',       grad: 'from-emerald-600 to-teal-700' },
-  { tipo: 'faq',        icon: 'help',           label: 'FAQ',              desc: '12 preguntas frecuentes del concurso',      grad: 'from-cyan-500 to-sky-600' },
-  { tipo: 'cronologia', icon: 'timeline',       label: 'Cronología',       desc: 'Hitos y etapas del proceso de selección',   grad: 'from-rose-500 to-pink-600' },
-  { tipo: 'audio',      icon: 'headphones',     label: 'Audio Overview',   desc: 'Podcast IA · Valentina & Andrés ~5 min',    grad: 'from-slate-700 to-slate-900' },
+  { tipo: 'resumen',    icon: 'summarize',      label: 'Resumen',          desc: 'Ejes temáticos + glosario + ejecutivo',      grad: 'from-blue-600 to-blue-700' },
+  { tipo: 'quiz',       icon: 'quiz',           label: 'Quiz CNSC',        desc: '10 preguntas interactivas tipo situación',    grad: 'from-violet-600 to-violet-700' },
+  { tipo: 'flashcards', icon: 'style',          label: 'Flashcards',       desc: '12 tarjetas con volteo 3D',                  grad: 'from-amber-500 to-orange-600' },
+  { tipo: 'mapa_mental',icon: 'account_tree',   label: 'Mapa Mental',      desc: 'Árbol visual de temas y conceptos clave',    grad: 'from-purple-600 to-indigo-700' },
+  { tipo: 'tabla',      icon: 'table_chart',    label: 'Tabla de datos',   desc: 'Análisis matricial del concurso',             grad: 'from-sky-500 to-blue-600' },
+  { tipo: 'guia',       icon: 'menu_book',      label: 'Guía de estudio',  desc: 'Módulos por fases con objetivos',             grad: 'from-green-600 to-teal-600' },
+  { tipo: 'plan',       icon: 'calendar_month', label: 'Plan de estudio',  desc: 'Cronograma 4 semanas con checkboxes',         grad: 'from-emerald-600 to-teal-700' },
+  { tipo: 'faq',        icon: 'help',           label: 'FAQ',              desc: '12 preguntas frecuentes del concurso',        grad: 'from-cyan-500 to-sky-600' },
+  { tipo: 'cronologia', icon: 'timeline',       label: 'Cronología',       desc: 'Hitos y etapas del proceso de selección',     grad: 'from-rose-500 to-pink-600' },
+  { tipo: 'audio',      icon: 'headphones',     label: 'Audio Overview',   desc: 'Podcast IA · Valentina & Andrés ~5 min',      grad: 'from-slate-700 to-slate-900' },
 ]
 
 // ── Parseo de citas 【...】 en texto ──────────────────────────────────────────
@@ -608,6 +614,134 @@ function CronologiaView({ hitos }) {
   )
 }
 
+// ── Vista Mapa Mental ─────────────────────────────────────────────────────────
+const PALETA_MAPA = [
+  { borde: 'border-l-blue-400',    fondo: 'bg-blue-50',    titulo: 'text-blue-700',    dot: 'bg-blue-400'    },
+  { borde: 'border-l-violet-400',  fondo: 'bg-violet-50',  titulo: 'text-violet-700',  dot: 'bg-violet-400'  },
+  { borde: 'border-l-emerald-400', fondo: 'bg-emerald-50', titulo: 'text-emerald-700', dot: 'bg-emerald-400' },
+  { borde: 'border-l-amber-400',   fondo: 'bg-amber-50',   titulo: 'text-amber-700',   dot: 'bg-amber-400'   },
+  { borde: 'border-l-rose-400',    fondo: 'bg-rose-50',    titulo: 'text-rose-700',    dot: 'bg-rose-400'    },
+  { borde: 'border-l-cyan-400',    fondo: 'bg-cyan-50',    titulo: 'text-cyan-700',    dot: 'bg-cyan-400'    },
+]
+
+function MapaMentalView({ datos }) {
+  if (!datos?.ramas?.length) return <div className="p-6 text-sm text-slate-400">Sin mapa disponible.</div>
+  return (
+    <div className="p-5 overflow-y-auto h-full space-y-4">
+      {/* Nodo central */}
+      <div className="flex justify-center mb-2">
+        <div className="bg-primary text-on-primary font-extrabold text-sm px-6 py-3 rounded-2xl shadow-lg shadow-primary/25 text-center max-w-xs leading-snug">
+          {datos.nodo_central}
+        </div>
+      </div>
+      <div className="flex justify-center mb-3">
+        <div className="w-0.5 h-5 bg-primary/30 rounded-full" />
+      </div>
+      {/* Ramas */}
+      {datos.ramas.map((rama, i) => {
+        const p = PALETA_MAPA[i % PALETA_MAPA.length]
+        return (
+          <div key={i} className={`border-l-4 ${p.borde} ${p.fondo} rounded-r-2xl p-4`}>
+            <p className={`font-extrabold text-sm mb-3 ${p.titulo}`}>{rama.titulo}</p>
+            <div className="space-y-2">
+              {rama.subtemas?.map((sub, j) => (
+                <div key={j} className="flex items-start gap-2.5">
+                  <div className={`w-2 h-2 rounded-full ${p.dot} mt-1.5 flex-shrink-0`} />
+                  <p className="text-sm text-slate-700 leading-snug">{sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Vista Tabla de datos ──────────────────────────────────────────────────────
+function TablaView({ datos }) {
+  if (!datos?.columnas?.length || !datos?.filas?.length)
+    return <div className="p-6 text-sm text-slate-400">Sin datos de tabla.</div>
+  return (
+    <div className="p-4 overflow-auto h-full">
+      {datos.titulo && (
+        <h3 className="font-extrabold text-base mb-4 text-slate-800">{datos.titulo}</h3>
+      )}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+        <table className="w-full text-sm min-w-max">
+          <thead>
+            <tr className="bg-primary/10">
+              {datos.columnas.map((col, i) => (
+                <th key={i} className="text-left px-4 py-3 font-extrabold text-xs text-primary uppercase tracking-wider whitespace-nowrap border-b border-primary/20">
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {datos.filas.map((fila, i) => (
+              <tr key={i} className={`transition-colors hover:bg-slate-50 ${i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}>
+                {fila.map((celda, j) => (
+                  <td key={j} className={`px-4 py-3 text-sm leading-snug ${j === 0 ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                    {celda}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Vista Guía de estudio ─────────────────────────────────────────────────────
+const FASE_CLS = [
+  'bg-primary/10 text-primary border-primary/20',
+  'bg-violet-100 text-violet-700 border-violet-200',
+  'bg-emerald-100 text-emerald-700 border-emerald-200',
+  'bg-amber-100 text-amber-700 border-amber-200',
+  'bg-rose-100 text-rose-700 border-rose-200',
+]
+
+function GuiaView({ datos }) {
+  if (!datos?.modulos?.length) return <div className="p-6 text-sm text-slate-400">Sin guía disponible.</div>
+  return (
+    <div className="p-4 overflow-y-auto h-full space-y-4">
+      {datos.titulo && (
+        <div className="bg-gradient-to-r from-primary/10 to-transparent rounded-xl p-4 border border-primary/10">
+          <h3 className="font-extrabold text-base text-primary">{datos.titulo}</h3>
+        </div>
+      )}
+      {datos.modulos.map((mod, i) => (
+        <div key={i} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className={`px-4 py-3 border-b ${FASE_CLS[i % FASE_CLS.length]}`}>
+            <p className="font-extrabold text-sm">{mod.fase}</p>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Tema</p>
+              <p className="text-sm font-semibold text-slate-800">{mod.tema}</p>
+            </div>
+            {mod.lectura_clave && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Lectura clave</p>
+                <p className="text-sm text-slate-600 leading-relaxed">{mod.lectura_clave}</p>
+              </div>
+            )}
+            {mod.objetivo && (
+              <div className="flex items-start gap-2 bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                <span className="material-symbols-outlined text-emerald-600 text-sm mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>target</span>
+                <p className="text-sm text-emerald-800 leading-relaxed">{mod.objetivo}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Vista Audio Overview ──────────────────────────────────────────────────────
 function AudioView({ audioUrl, generando }) {
   if (generando) return (
@@ -816,7 +950,7 @@ export default function CuadernoIA() {
       })
       const data = await res.json()
       if (res.ok) {
-        setVistaData(data.datos)
+        setVistaData(normalizarDatos(tipo, data.datos))
         if (data.nota) setNotas(prev => [data.nota, ...prev])
       }
     } catch { setVistaData(null) }
@@ -900,35 +1034,55 @@ export default function CuadernoIA() {
   }
 
   // ── Helpers para notas de artefactos ──
-  const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen'])
+  const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen','mapa_mental','tabla','guia'])
+
+  // Normaliza respuesta de la IA: si el modelo envolvió un array en un objeto, lo extrae
+  function normalizarDatos(tipo, datos) {
+    const ARRAY_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia'])
+    if (!ARRAY_TIPOS.has(tipo)) return datos
+    if (Array.isArray(datos)) return datos
+    if (datos && typeof datos === 'object') {
+      const arr = Object.values(datos).find(v => Array.isArray(v))
+      return arr || datos
+    }
+    return datos
+  }
 
   function getArtefactoResumen(nota) {
     try {
-      if (nota.fuente === 'resumen') return 'Resumen ejecutivo generado por IA'
-      const d = JSON.parse(nota.contenido)
-      if (nota.fuente === 'quiz')       return `${Array.isArray(d) ? d.length : '?'} preguntas de práctica`
-      if (nota.fuente === 'flashcards') return `${Array.isArray(d) ? d.length : '?'} tarjetas de memoria`
-      if (nota.fuente === 'plan')       return `${Array.isArray(d) ? d.length : '?'} semanas de estudio`
-      if (nota.fuente === 'faq')        return `${Array.isArray(d) ? d.length : '?'} preguntas frecuentes`
-      if (nota.fuente === 'cronologia') return `${Array.isArray(d) ? d.length : '?'} hitos del proceso`
+      if (nota.fuente === 'resumen')     return 'Resumen ejecutivo generado por IA'
+      if (nota.fuente === 'audio')       return 'Podcast IA generado'
+      const d = nota.fuente !== 'resumen' ? JSON.parse(nota.contenido) : nota.contenido
+      const nd = normalizarDatos(nota.fuente, d)
+      if (nota.fuente === 'quiz')        return `${Array.isArray(nd) ? nd.length : '?'} preguntas de práctica`
+      if (nota.fuente === 'flashcards')  return `${Array.isArray(nd) ? nd.length : '?'} tarjetas de memoria`
+      if (nota.fuente === 'plan')        return `${Array.isArray(nd) ? nd.length : '?'} semanas de estudio`
+      if (nota.fuente === 'faq')         return `${Array.isArray(nd) ? nd.length : '?'} preguntas frecuentes`
+      if (nota.fuente === 'cronologia')  return `${Array.isArray(nd) ? nd.length : '?'} hitos del proceso`
+      if (nota.fuente === 'mapa_mental') return `${nd?.ramas?.length || '?'} ramas temáticas`
+      if (nota.fuente === 'tabla')       return `Tabla con ${nd?.filas?.length || '?'} filas`
+      if (nota.fuente === 'guia')        return `${nd?.modulos?.length || '?'} módulos de estudio`
     } catch {}
     return 'Artefacto generado por IA'
   }
 
   function abrirArtefactoDesdeNota(nota) {
     try {
-      const datos = nota.fuente === 'resumen' ? nota.contenido : JSON.parse(nota.contenido)
+      let datos = nota.fuente === 'resumen' ? nota.contenido : JSON.parse(nota.contenido)
+      datos = normalizarDatos(nota.fuente, datos)
       setVistaData(datos)
       setVista(nota.fuente)
       setTabMobile('chat')
-    } catch {}
+    } catch (e) {
+      console.error('[abrirArtefacto]', e)
+    }
   }
 
   function descargarArtefacto(nota) {
     let texto = nota.contenido
     if (nota.fuente !== 'resumen') {
       try {
-        const d = JSON.parse(nota.contenido)
+        const d = normalizarDatos(nota.fuente, JSON.parse(nota.contenido))
         if (nota.fuente === 'quiz' && Array.isArray(d))
           texto = d.map((q, i) => `Pregunta ${q.n || i+1}: ${q.pregunta}\nA) ${q.opciones?.A}\nB) ${q.opciones?.B}\nC) ${q.opciones?.C}\nD) ${q.opciones?.D}\nRespuesta: ${q.correcta}\nJustificación: ${q.justificacion}`).join('\n\n')
         else if (nota.fuente === 'flashcards' && Array.isArray(d))
@@ -939,6 +1093,13 @@ export default function CuadernoIA() {
           texto = d.map(h => `${h.orden}. ${h.hito}\n${h.descripcion}${h.norma ? '\nNorma: ' + h.norma : ''}`).join('\n\n')
         else if (nota.fuente === 'plan' && Array.isArray(d))
           texto = d.map(s => `SEMANA ${s.semana}: ${s.titulo}\n${s.dias?.map(dd => `  ${dd.dia}: ${dd.tarea} (${dd.horas})`).join('\n')}`).join('\n\n')
+        else if (nota.fuente === 'mapa_mental' && d?.ramas)
+          texto = `${d.nodo_central}\n${d.ramas.map(r => `\n▶ ${r.titulo}\n${r.subtemas?.map(s => `  • ${s}`).join('\n')}`).join('')}`
+        else if (nota.fuente === 'tabla' && d?.filas) {
+          const header = (d.columnas || []).join('\t')
+          texto = [d.titulo || '', header, ...(d.filas || []).map(f => f.join('\t'))].filter(Boolean).join('\n')
+        } else if (nota.fuente === 'guia' && d?.modulos)
+          texto = `${d.titulo || 'Guía de estudio'}\n\n${d.modulos.map(m => `${m.fase}\nTema: ${m.tema}\nLectura: ${m.lectura_clave}\nObjetivo: ${m.objetivo}`).join('\n\n')}`
         else
           texto = JSON.stringify(d, null, 2)
       } catch {}
@@ -966,12 +1127,15 @@ export default function CuadernoIA() {
       </div>
     )
 
-    if (vista === 'resumen'    && vistaData)              return <ResumenView    datos={vistaData} />
+    if (vista === 'resumen'    && vistaData)                return <ResumenView    datos={vistaData} />
     if (vista === 'quiz'       && Array.isArray(vistaData)) return <QuizView       preguntas={vistaData} />
     if (vista === 'flashcards' && Array.isArray(vistaData)) return <FlashcardsView cards={vistaData} />
     if (vista === 'plan'       && Array.isArray(vistaData)) return <PlanView       semanas={vistaData} packageId={packageId} />
     if (vista === 'faq'        && Array.isArray(vistaData)) return <FaqView        items={vistaData} />
     if (vista === 'cronologia' && Array.isArray(vistaData)) return <CronologiaView hitos={vistaData} />
+    if (vista === 'mapa_mental'&& vistaData)                return <MapaMentalView datos={vistaData} />
+    if (vista === 'tabla'      && vistaData)                return <TablaView      datos={vistaData} />
+    if (vista === 'guia'       && vistaData)                return <GuiaView       datos={vistaData} />
     if (vista === 'audio') return <AudioView audioUrl={audioUrl} generando={generando === 'audio'} />
 
     // Chat (default)
