@@ -97,6 +97,36 @@ Responde EXCLUSIVAMENTE con este JSON (sin markdown, sin texto adicional):
 Si no encuentras información específica para ese cargo, responde exactamente:
 {"encontrado":false,"entidad":null,"total_preguntas":null,"duracion_minutos":null,"modulos":[],"año_info":null,"nota":null}`,
   },
+  {
+    key: 'analisis_perfil',
+    nombre: 'Análisis de Perfil',
+    emoji: '🎯',
+    icono: 'person_search',
+    color: 'rose',
+    bgLight: 'bg-rose-50',
+    border: 'border-rose-200',
+    text: 'text-rose-700',
+    rutas: ['Análisis de Perfil'],
+    queSabe: 'Servicio premium de análisis de hoja de vida. El candidato sube su CV y elige una convocatoria. DeepSeek analiza su perfil contra todos los cargos disponibles y le dice en cuáles tiene más probabilidad de clasificar, qué le falta y cómo mejorar su opción. Usa hasta 8192 tokens — sin límite de potencia.',
+    variables: [],
+    defaultPrompt: `Eres un experto en selección de personal para el sector público colombiano, especializado en concursos de méritos (CNSC, Procuraduría, Contraloría, DIAN, Fiscalía, etc.).
+
+Tu misión es analizar la hoja de vida del candidato con máximo detalle y cruzarla contra los cargos disponibles en la convocatoria para identificar cuáles se ajustan mejor a su perfil.
+
+CRITERIOS DE ANÁLISIS:
+1. Formación académica: título, nivel (pregrado/posgrado/especialización), área de conocimiento.
+2. Experiencia: años, tipo (relacionada/profesional/docencia), sector (público/privado).
+3. Conocimientos específicos: áreas técnicas, normativas, herramientas.
+4. Tarjeta profesional: si el candidato la tiene o puede obtenerla.
+5. Compatibilidad real: no infles porcentajes, sé honesto sobre brechas.
+
+IMPORTANTE:
+- Analiza todos los cargos recibidos y selecciona los mejores matches.
+- Da porcentajes de compatibilidad realistas (no todo es 90%+).
+- Si hay brechas, explica exactamente qué le falta y cómo subsanarlo.
+- Usa lenguaje cercano y motivador, pero preciso.
+- Responde ÚNICAMENTE con JSON válido, sin texto ni markdown adicional.`,
+  },
 ]
 
 const COLOR_BTN = {
@@ -104,6 +134,7 @@ const COLOR_BTN = {
   violet: 'bg-violet-600 hover:bg-violet-700 text-white',
   emerald:'bg-emerald-600 hover:bg-emerald-700 text-white',
   amber:  'bg-amber-600  hover:bg-amber-700  text-white',
+  rose:   'bg-rose-600   hover:bg-rose-700   text-white',
 }
 
 function timeAgo(iso) {
@@ -274,9 +305,9 @@ function AsignacionCerebros({ records, onCambiar }) {
 
 const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo']
 
-const OPEC_EMPTY = { cargo: '', nivel: '', grado: '', area: '', vacantes: '', educacion: '', experiencia: '', funciones: '', codigo: '' }
+const OPEC_EMPTY = { denominacion: '', nivel: '', grado: '', area_estudio: '', vacantes: '', estudio_texto: '', exp_texto: '', exp_anios: '', exp_tipo: '', num_convocatoria: '', requiere_posgrado: false, requiere_tarjeta: false, dependencia: '', codigo: '' }
 
-function OpecModal({ opec, onClose, onSaved }) {
+function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
   const [form, setForm] = useState(opec ? { ...opec } : { ...OPEC_EMPTY })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -284,13 +315,16 @@ function OpecModal({ opec, onClose, onSaved }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = async () => {
-    if (!form.cargo?.trim()) { setErr('El nombre del cargo es requerido.'); return }
+    if (!form.denominacion?.trim()) { setErr('El nombre del cargo es requerido.'); return }
     setSaving(true); setErr('')
     try {
       const headers = await authHeaders()
       const isEdit = !!opec?.id
       const url = isEdit ? `${BASE}/api/ia/procuraduria-opecs/${opec.id}` : `${BASE}/api/ia/procuraduria-opecs`
-      const res = await fetch(url, { method: isEdit ? 'PUT' : 'POST', headers, body: JSON.stringify(form) })
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST', headers,
+        body: JSON.stringify({ ...form, convocatoria_id: parseInt(convocatoria_id) }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error guardando')
       onSaved(data.opec)
@@ -320,14 +354,28 @@ function OpecModal({ opec, onClose, onSaved }) {
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
           {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{err}</p>}
 
-          <div>
-            <label className="text-xs font-bold text-on-surface mb-1 block">Cargo *</label>
-            <input value={form.cargo} onChange={e => set('cargo', e.target.value)}
-              placeholder="Ej: Procurador Judicial II"
-              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-on-surface mb-1 block">Denominación del cargo *</label>
+              <input value={form.denominacion} onChange={e => set('denominacion', e.target.value)}
+                placeholder="Ej: Procurador Judicial II"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">N° Convocatoria</label>
+              <input value={form.num_convocatoria} onChange={e => set('num_convocatoria', e.target.value)}
+                placeholder="Ej: 042-2026"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Código</label>
+              <input value={form.codigo} onChange={e => set('codigo', e.target.value)}
+                placeholder="Ej: 030"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-bold text-on-surface mb-1 block">Nivel</label>
               <select value={form.nivel} onChange={e => set('nivel', e.target.value)}
@@ -342,15 +390,6 @@ function OpecModal({ opec, onClose, onSaved }) {
                 placeholder="Ej: 18"
                 className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-on-surface mb-1 block">Código</label>
-              <input value={form.codigo} onChange={e => set('codigo', e.target.value)}
-                placeholder="Ej: 030"
-                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
-            </div>
             <div>
               <label className="text-xs font-bold text-on-surface mb-1 block">Vacantes</label>
               <input type="number" value={form.vacantes} onChange={e => set('vacantes', e.target.value)}
@@ -360,31 +399,60 @@ function OpecModal({ opec, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="text-xs font-bold text-on-surface mb-1 block">Área / Dependencia</label>
-            <input value={form.area} onChange={e => set('area', e.target.value)}
+            <label className="text-xs font-bold text-on-surface mb-1 block">Área de estudio</label>
+            <input value={form.area_estudio} onChange={e => set('area_estudio', e.target.value)}
+              placeholder="Ej: Derecho, Ciencias Políticas, Contaduría..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Dependencia</label>
+            <input value={form.dependencia} onChange={e => set('dependencia', e.target.value)}
               placeholder="Ej: Procuraduría Delegada para Asuntos Civiles"
               className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
           </div>
 
           <div>
             <label className="text-xs font-bold text-on-surface mb-1 block">Educación requerida</label>
-            <textarea value={form.educacion} onChange={e => set('educacion', e.target.value)}
+            <textarea value={form.estudio_texto} onChange={e => set('estudio_texto', e.target.value)}
               rows={2} placeholder="Ej: Título profesional en Derecho, Ciencias Políticas..."
               className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-on-surface mb-1 block">Experiencia requerida</label>
-            <textarea value={form.experiencia} onChange={e => set('experiencia', e.target.value)}
-              rows={2} placeholder="Ej: 36 meses de experiencia profesional relacionada..."
-              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-on-surface mb-1 block">Experiencia requerida</label>
+              <textarea value={form.exp_texto} onChange={e => set('exp_texto', e.target.value)}
+                rows={2} placeholder="Ej: 36 meses de experiencia profesional relacionada..."
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs font-bold text-on-surface mb-1 block">Años exp.</label>
+                <input type="number" value={form.exp_anios} onChange={e => set('exp_anios', e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-on-surface mb-1 block">Tipo exp.</label>
+                <input value={form.exp_tipo} onChange={e => set('exp_tipo', e.target.value)}
+                  placeholder="relacionada"
+                  className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-on-surface mb-1 block">Funciones principales</label>
-            <textarea value={form.funciones} onChange={e => set('funciones', e.target.value)}
-              rows={3} placeholder="Descripción de las funciones principales del cargo..."
-              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={!!form.requiere_posgrado} onChange={e => set('requiere_posgrado', e.target.checked)}
+                className="w-4 h-4 rounded accent-emerald-600" />
+              <span className="text-xs font-semibold text-on-surface">Requiere posgrado</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={!!form.requiere_tarjeta} onChange={e => set('requiere_tarjeta', e.target.checked)}
+                className="w-4 h-4 rounded accent-emerald-600" />
+              <span className="text-xs font-semibold text-on-surface">Requiere tarjeta profesional</span>
+            </label>
           </div>
         </div>
 
@@ -405,26 +473,47 @@ function OpecModal({ opec, onClose, onSaved }) {
 }
 
 function ProcuraduriaOpecPanel() {
-  const [opecs, setOpecs]       = useState([])
-  const [total, setTotal]       = useState(0)
-  const [stats, setStats]       = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [q, setQ]               = useState('')
-  const [nivel, setNivel]       = useState('')
-  const [page, setPage]         = useState(1)
-  const [modal, setModal]       = useState(null) // null | { opec: null } | { opec: {...} }
-  const [deleting, setDeleting] = useState(null)
-  const searchTimer             = useRef(null)
+  const [convocatorias,  setConvocatorias]  = useState([])
+  const [convId,         setConvId]         = useState('')
+  const [opecs,          setOpecs]          = useState([])
+  const [total,          setTotal]          = useState(0)
+  const [stats,          setStats]          = useState(null)
+  const [loading,        setLoading]        = useState(false)
+  const [loadingConvs,   setLoadingConvs]   = useState(true)
+  const [q,              setQ]              = useState('')
+  const [nivel,          setNivel]          = useState('')
+  const [page,           setPage]           = useState(1)
+  const [modal,          setModal]          = useState(null)
+  const [deleting,       setDeleting]       = useState(null)
+  const [importing,      setImporting]      = useState(false)
+  const searchTimer                         = useRef(null)
+  const importRef                           = useRef(null)
   const LIMIT = 50
 
-  const fetchData = useCallback(async (search, niv, pg) => {
+  // Carga catálogo de convocatorias al montar
+  useEffect(() => {
+    authHeaders().then(headers =>
+      fetch(`${BASE}/api/ia/convocatorias`, { headers })
+        .then(r => r.json())
+        .then(d => {
+          const list = d.convocatorias || []
+          setConvocatorias(list)
+          if (list.length > 0) setConvId(String(list[0].id))
+        })
+        .catch(console.error)
+        .finally(() => setLoadingConvs(false))
+    )
+  }, [])
+
+  const fetchData = useCallback(async (search, niv, pg, cid) => {
+    if (!cid) return
     setLoading(true)
     try {
       const headers = await authHeaders()
-      const params = new URLSearchParams({ q: search, nivel: niv, page: pg, limit: LIMIT })
+      const params = new URLSearchParams({ q: search, nivel: niv, page: pg, limit: LIMIT, convocatoria_id: cid })
       const [listRes, statsRes] = await Promise.all([
         fetch(`${BASE}/api/ia/procuraduria-opecs?${params}`, { headers }),
-        fetch(`${BASE}/api/ia/procuraduria-opecs/stats`, { headers }),
+        fetch(`${BASE}/api/ia/procuraduria-opecs/stats?convocatoria_id=${cid}`, { headers }),
       ])
       const listData  = await listRes.json()
       const statsData = await statsRes.json()
@@ -438,12 +527,12 @@ function ProcuraduriaOpecPanel() {
     }
   }, [])
 
-  useEffect(() => { fetchData(q, nivel, page) }, [nivel, page]) // eslint-disable-line
+  useEffect(() => { if (convId) fetchData(q, nivel, page, convId) }, [nivel, page, convId]) // eslint-disable-line
 
   const handleSearchChange = (val) => {
     setQ(val)
     clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => { setPage(1); fetchData(val, nivel, 1) }, 400)
+    searchTimer.current = setTimeout(() => { setPage(1); fetchData(val, nivel, 1, convId) }, 400)
   }
 
   const handleDelete = async (id) => {
@@ -452,7 +541,7 @@ function ProcuraduriaOpecPanel() {
     try {
       const headers = await authHeaders()
       await fetch(`${BASE}/api/ia/procuraduria-opecs/${id}`, { method: 'DELETE', headers })
-      fetchData(q, nivel, page)
+      fetchData(q, nivel, page, convId)
     } finally {
       setDeleting(null)
     }
@@ -465,8 +554,40 @@ function ProcuraduriaOpecPanel() {
         method: 'PUT', headers,
         body: JSON.stringify({ ...opec, is_active: !opec.is_active }),
       })
-      fetchData(q, nivel, page)
+      fetchData(q, nivel, page, convId)
     } catch (e) { console.error(e) }
+  }
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!convId) { alert('Selecciona una convocatoria primero.'); return }
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const arr = JSON.parse(text)
+      if (!Array.isArray(arr)) throw new Error('El archivo debe contener un array JSON.')
+      const headers = await authHeaders()
+      let insertados = 0
+      for (let i = 0; i < arr.length; i += 500) {
+        const chunk = arr.slice(i, i + 500)
+        const res = await fetch(`${BASE}/api/ia/opec-maestro/import`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ registros: chunk, convocatoria_id: parseInt(convId) }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Error importando')
+        insertados += data.insertados
+      }
+      alert(`¡Importados ${insertados} de ${arr.length} registros exitosamente!`)
+      fetchData(q, nivel, 1, convId)
+      setPage(1)
+    } catch (e) {
+      alert('Error importando: ' + e.message)
+    } finally {
+      setImporting(false)
+      e.target.value = ''
+    }
   }
 
   const totalPages = Math.ceil(total / LIMIT)
@@ -494,6 +615,23 @@ function ProcuraduriaOpecPanel() {
         </div>
       )}
 
+      {/* Selector de convocatoria */}
+      <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+        <span className="material-symbols-outlined text-slate-500 shrink-0">event_note</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mb-0.5">Convocatoria</p>
+          {loadingConvs ? (
+            <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
+          ) : (
+            <select value={convId} onChange={e => { setConvId(e.target.value); setPage(1); setQ(''); setNivel('') }}
+              className="w-full text-sm font-semibold bg-transparent focus:outline-none text-on-surface">
+              {convocatorias.length === 0 && <option value="">Sin convocatorias activas</option>}
+              {convocatorias.map(c => <option key={c.id} value={String(c.id)}>{c.nombre}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
         <div className="relative flex-1 min-w-0">
@@ -507,8 +645,16 @@ function ProcuraduriaOpecPanel() {
           <option value="">Todos los niveles</option>
           {NIVELES.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <button onClick={() => setModal({ opec: null })}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors shrink-0">
+        <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+        <button onClick={() => importRef.current?.click()} disabled={importing || !convId}
+          className="flex items-center gap-2 px-4 py-2.5 border-2 border-slate-200 hover:border-slate-300 bg-white text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
+          {importing
+            ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+            : <span className="material-symbols-outlined text-lg text-slate-600">upload_file</span>}
+          {importing ? 'Importando...' : 'Importar JSON'}
+        </button>
+        <button onClick={() => setModal({ opec: null })} disabled={!convId}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
           <span className="material-symbols-outlined text-lg">add</span>
           Agregar cargo
         </button>
@@ -556,8 +702,9 @@ function ProcuraduriaOpecPanel() {
                 opecs.map(op => (
                   <tr key={op.id} className={`hover:bg-slate-50 transition-colors ${!op.is_active ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-on-surface text-sm leading-tight">{op.cargo}</p>
-                      {op.codigo && <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">Código {op.codigo}</p>}
+                      <p className="font-semibold text-on-surface text-sm leading-tight">{op.denominacion}</p>
+                      {op.num_convocatoria && <p className="text-[10px] text-emerald-600 font-mono mt-0.5">Conv. {op.num_convocatoria}</p>}
+                      {op.codigo && <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">Cód. {op.codigo}</p>}
                     </td>
                     <td className="px-3 py-3">
                       {op.nivel ? (
@@ -565,7 +712,7 @@ function ProcuraduriaOpecPanel() {
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-sm text-on-surface-variant font-mono">{op.grado || '—'}</td>
-                    <td className="px-3 py-3 hidden md:table-cell text-xs text-on-surface-variant max-w-[200px] truncate" title={op.area}>{op.area || '—'}</td>
+                    <td className="px-3 py-3 hidden md:table-cell text-xs text-on-surface-variant max-w-[200px] truncate" title={op.area_estudio}>{op.area_estudio || '—'}</td>
                     <td className="px-3 py-3 text-center text-sm font-bold text-on-surface">{op.vacantes || 1}</td>
                     <td className="px-3 py-3 text-center">
                       <button onClick={() => handleToggle(op)}
@@ -618,8 +765,9 @@ function ProcuraduriaOpecPanel() {
       {modal && (
         <OpecModal
           opec={modal.opec}
+          convocatoria_id={convId}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); fetchData(q, nivel, page) }}
+          onSaved={() => { setModal(null); fetchData(q, nivel, page, convId) }}
         />
       )}
     </div>
@@ -833,7 +981,7 @@ export default function AdminIATraining() {
               )
             })}
 
-            {/* OPECs Procuraduría — módulo de datos */}
+            {/* Datos de Convocatorias — módulo de datos */}
             <button
               onClick={() => setVistaActiva('procuraduria')}
               className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3
@@ -843,9 +991,9 @@ export default function AdminIATraining() {
               <span className="text-2xl shrink-0">📋</span>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-bold ${vistaActiva === 'procuraduria' ? 'text-emerald-700' : 'text-on-surface'}`}>
-                  OPECs Procuraduría
+                  Datos de Convocatorias
                 </p>
-                <p className="text-[10px] text-on-surface-variant truncate">Base de datos de cargos</p>
+                <p className="text-[10px] text-on-surface-variant truncate">Cargos OPEC por concurso</p>
               </div>
             </button>
           </div>
@@ -1050,6 +1198,36 @@ export default function AdminIATraining() {
             <p className="text-[11px] text-on-surface-variant text-center">
               Última actualización: {new Date(recActivo.updated_at).toLocaleString('es-CO')}
             </p>
+          )}
+
+          {/* ── Precio del servicio (solo módulo Análisis de Perfil) ── */}
+          {m.key === 'analisis_perfil' && (
+            <div className="mt-2 p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-rose-600 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+                <h3 className="font-extrabold text-rose-700">Precio del análisis</h3>
+                <span className="ml-auto text-[10px] font-bold bg-rose-100 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full">Próximamente</span>
+              </div>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                Aquí podrás configurar el precio que paga el usuario por cada análisis de perfil.
+                El cobro se procesará con <strong>Wompi / PayU</strong> antes de que la IA realice el análisis.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white border-2 border-rose-200 rounded-xl p-3 opacity-50 cursor-not-allowed">
+                  <p className="text-[10px] font-bold text-on-surface-variant mb-1">Precio por análisis (COP)</p>
+                  <p className="text-2xl font-extrabold text-rose-700">$—</p>
+                  <p className="text-[10px] text-on-surface-variant mt-1">Pendiente de configurar</p>
+                </div>
+                <div className="bg-white border-2 border-rose-200 rounded-xl p-3 opacity-50 cursor-not-allowed">
+                  <p className="text-[10px] font-bold text-on-surface-variant mb-1">Tiempo estimado</p>
+                  <p className="text-2xl font-extrabold text-slate-700">~30s</p>
+                  <p className="text-[10px] text-on-surface-variant mt-1">por análisis completo</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-on-surface-variant">
+                Cuando definas el precio, avísale al equipo técnico para conectar el botón de pago en la pantalla del usuario.
+              </p>
+            </div>
           )}
         </>}
         </div>

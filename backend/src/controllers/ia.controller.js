@@ -285,6 +285,21 @@ async function deepseekTexto(prompt) {
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
 
+// Función dedicada para análisis de perfil — sin límite artificial de tokens,
+// temperatura baja para análisis preciso, system prompt separado desde DB.
+async function deepseekAnalisisPerfil(systemPrompt, userPrompt) {
+  const r = await deepseek.chat.completions.create({
+    model:       'deepseek-chat',
+    messages:    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userPrompt },
+    ],
+    temperature: 0.3,
+    max_tokens:  8192,
+  })
+  return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
+}
+
 async function deepseekChat(systemCtx, historial, mensaje) {
   const r = await deepseek.chat.completions.create({
     model: 'deepseek-chat',
@@ -1135,71 +1150,97 @@ INSTRUCCIONES ESPECÍFICAS:
 
 // ── Endpoint: Analizar perfil vs cargos OPEC ─────────────────────────────────
 
+const SYSTEM_PROMPT_ANALISIS_PERFIL = `Eres un experto en selección de personal para el sector público colombiano, especializado en concursos de méritos (CNSC, Procuraduría, Contraloría, DIAN, Fiscalía, etc.).
+
+Tu misión es analizar la hoja de vida del candidato con máximo detalle y cruzarla contra los cargos disponibles en la convocatoria para identificar cuáles se ajustan mejor a su perfil.
+
+CRITERIOS DE ANÁLISIS:
+1. Formación académica: título, nivel (pregrado/posgrado/especialización), área de conocimiento.
+2. Experiencia: años, tipo (relacionada/profesional/docencia), sector (público/privado).
+3. Conocimientos específicos: áreas técnicas, normativas, herramientas.
+4. Tarjeta profesional: si el candidato la tiene o puede obtenerla.
+5. Compatibilidad real: no infles porcentajes, sé honesto sobre brechas.
+
+IMPORTANTE:
+- Analiza TODOS los cargos recibidos y selecciona los mejores matches.
+- Da porcentajes de compatibilidad realistas (no todo es 90%+).
+- Si hay brechas, explica exactamente qué le falta y cómo subsanarlo.
+- Usa lenguaje cercano y motivador, pero preciso.
+- Responde ÚNICAMENTE con JSON válido, sin texto ni markdown adicional.`
+
 export async function analizarPerfilCV(req, res) {
   try {
     const userId = req.user.id
-    const { convocatoria_id, perfil_texto, modo } = req.body
+    const { convocatoria_id, perfil_texto } = req.body
     const file = req.file
     const cvText = file ? await extractPdfText(file.buffer) : ''
 
-    let cargosTexto = ''
-    let entidadNombre = 'Procuraduría General de la Nación'
-    let convNombre    = 'Concurso de Méritos Procuraduría'
+    if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
+    if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
 
-    if (modo === 'procuraduria') {
-      // Modo Procuraduría: busca en la base de datos maestra
-      // Filtra por palabras clave del perfil para seleccionar cargos relevantes
-      const keywords = (perfil_texto || '').toLowerCase().split(/\s+/).filter(w => w.length > 4).slice(0, 10)
-      let query = supabase.from('procuraduria_opecs').select('*').eq('is_active', true).limit(200)
-      const { data: todosOpec } = await query
+    const [{ data: todosOpec }, { data: conv }] = await Promise.all([
+      supabase.from('opec_maestro').select('*')
+        .eq('convocatoria_id', parseInt(convocatoria_id))
+        .eq('is_active', true)
+        .order('num_convocatoria'),
+      supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle(),
+    ])
 
-      if (!todosOpec?.length) return res.status(404).json({ error: 'La base de datos de OPECs de Procuraduría aún está vacía. El equipo está cargando los datos.' })
+    if (!todosOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aún no tiene cargos cargados. El equipo los está importando.' })
 
-      // Score básico de relevancia por palabras clave del perfil
-      const scored = todosOpec.map(c => {
-        const texto = `${c.cargo} ${c.area || ''} ${c.educacion || ''} ${c.funciones || ''}`.toLowerCase()
-        const score = keywords.reduce((acc, kw) => acc + (texto.includes(kw) ? 1 : 0), 0)
-        return { ...c, _score: score }
-      }).sort((a, b) => b._score - a._score).slice(0, 20)
+    const entidadNombre = conv?.entidad || 'Entidad pública colombiana'
+    const convNombre    = conv?.nombre  || 'Convocatoria pública'
 
-      cargosTexto = scored.map((c, i) =>
-        `${i + 1}. ${c.cargo} | Nivel: ${c.nivel || 'N/A'} | Grado: ${c.grado || 'N/A'} | Vacantes: ${c.vacantes || 1}
-   Área: ${c.area || 'N/A'}
-   Educación: ${c.educacion || 'Ver convocatoria'}
-   Experiencia: ${c.experiencia || 'Ver convocatoria'}
-   ${c.funciones ? `Funciones: ${c.funciones.slice(0, 200)}` : ''}`
-      ).join('\n\n')
-    } else {
-      // Modo convocatoria específica (flujo original)
-      const [{ data: cargos }, { data: conv }] = await Promise.all([
-        supabase.from('opec_cargos').select('*').eq('convocatoria_id', convocatoria_id).eq('is_active', true).order('nombre_cargo'),
-        supabase.from('convocatorias').select('nombre, entidad').eq('id', convocatoria_id).maybeSingle(),
-      ])
-      if (!cargos?.length) return res.status(404).json({ error: 'No hay cargos para esta convocatoria aún. El equipo de Praxia los está cargando.' })
-      entidadNombre = conv?.entidad || 'Entidad pública colombiana'
-      convNombre    = conv?.nombre  || 'Convocatoria pública'
-      cargosTexto   = cargos.slice(0, 15).map((c, i) =>
-        `${i + 1}. ${c.nombre_cargo} | Nivel: ${c.nivel || 'N/A'} | Grado: ${c.grado || 'N/A'} | Vacantes: ${c.num_vacantes || 1}
-   Educación: ${c.requisitos_educacion || 'Ver convocatoria'}
-   Experiencia: ${c.requisitos_experiencia || 'Ver convocatoria'}`
-      ).join('\n\n')
-    }
+    // Todos los cargos — sin filtro, sin recorte. DeepSeek los lee todos y decide.
+    const cargosTexto = todosOpec.map((c, i) =>
+      `[${i + 1}] ${c.denominacion} | Conv: ${c.num_convocatoria || 'N/A'} | Nivel: ${c.nivel || 'N/A'} | Grado: ${c.grado || 'N/A'} | Vacantes: ${c.vacantes || 1}
+   Área: ${c.area_estudio || 'No especificada'}
+   Posgrado: ${c.requiere_posgrado ? 'Sí' : 'No'} | Tarjeta prof.: ${c.requiere_tarjeta ? 'Sí' : 'No'}
+   Educación: ${c.estudio_texto || 'Ver resolución'}
+   Experiencia: ${c.exp_texto || 'Ver resolución'}${c.exp_anios ? ` (mínimo ${c.exp_anios} años)` : ''}
+   ${c.conocimientos?.length ? `Conocimientos: ${c.conocimientos.join(', ')}` : ''}`
+    ).join('\n\n')
 
-    const prompt = `Eres un experto en selección de personal para el sector público colombiano. Analiza el perfil del candidato y recomienda exactamente los 5 cargos más compatibles con su perfil.
+    const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-CONVOCATORIA: ${convNombre} — ${entidadNombre}
+    const userPrompt = `CONVOCATORIA: ${convNombre} — ${entidadNombre}
+Total de cargos en esta convocatoria: ${todosOpec.length} (todos incluidos abajo).
 
-PERFIL DEL CANDIDATO:
-${perfil_texto || 'No proporcionado'}
-${cvText ? `\nHOJA DE VIDA (extracto):\n${cvText.slice(0, 5000)}` : ''}
+══════════════════════════════════════════
+PERFIL DEL CANDIDATO
+══════════════════════════════════════════
+${perfil_texto || 'No proporcionado por texto directo'}
+${cvText ? `\nHOJA DE VIDA (texto extraído del PDF):\n${cvText}` : ''}
 
-CARGOS DISPONIBLES:
+══════════════════════════════════════════
+CARGOS A EVALUAR
+══════════════════════════════════════════
 ${cargosTexto}
 
-Selecciona los 5 cargos más compatibles con el perfil. Responde ÚNICAMENTE con JSON válido, sin texto adicional:
-{"resumen_perfil":"análisis de 2-3 oraciones del perfil","cargos_recomendados":[{"nombre_cargo":"nombre exacto","compatibilidad":85,"fortalezas":["fortaleza 1"],"brechas":["brecha 1"],"recomendacion":"qué estudiar"}],"recomendacion_general":"consejo general en 2-3 oraciones"}`
+══════════════════════════════════════════
+INSTRUCCIONES DE RESPUESTA
+══════════════════════════════════════════
+Selecciona los 5 cargos con mayor compatibilidad real. Responde ÚNICAMENTE con este JSON:
+{
+  "resumen_perfil": "análisis detallado del perfil en 3-4 oraciones: formación, experiencia, fortalezas principales",
+  "nivel_perfil": "Auxiliar|Asistencial|Técnico|Profesional|Ejecutivo|Asesor|Directivo",
+  "cargos_recomendados": [
+    {
+      "num_convocatoria": "01-2026",
+      "nombre_cargo": "nombre exacto",
+      "compatibilidad": 85,
+      "nivel": "Profesional",
+      "grado": 18,
+      "vacantes": 3,
+      "fortalezas": ["por qué encaja - sea específico"],
+      "brechas": ["qué le falta - sea concreto"],
+      "recomendacion": "qué hacer para mejorar sus chances en este cargo específico"
+    }
+  ],
+  "recomendacion_general": "consejo estratégico global en 2-3 oraciones: qué priorizar, qué estudiar, qué certificar"
+}`
 
-    const result = await deepseekTexto(prompt)
+    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt)
     let analisis
     try {
       const match = result.texto.match(/\{[\s\S]*\}/)
@@ -1222,17 +1263,32 @@ Selecciona los 5 cargos más compatibles con el perfil. Responde ÚNICAMENTE con
   }
 }
 
-// ── CRUD OPECs Procuraduría (admin) ──────────────────────────────────────────
+// ── Convocatorias ─────────────────────────────────────────────────────────────
+
+export async function listConvocatorias(req, res) {
+  const { data, error } = await supabase
+    .from('convocatorias')
+    .select('id, codigo, nombre, entidad, anio, descripcion, is_active')
+    .eq('is_active', true)
+    .order('anio', { ascending: false })
+    .order('nombre')
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ convocatorias: data || [] })
+}
+
+// ── CRUD OPECs maestro (admin) ───────────────────────────────────────────────
 
 export async function listProcuraduriaOpecs(req, res) {
-  const { q = '', page = 1, limit = 50, nivel = '' } = req.query
+  const { q = '', page = 1, limit = 50, nivel = '', convocatoria_id } = req.query
+  if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
   const from = (parseInt(page) - 1) * parseInt(limit)
   const to   = from + parseInt(limit) - 1
 
-  let query = supabase.from('procuraduria_opecs').select('*', { count: 'exact' })
-  if (q)     query = query.or(`cargo.ilike.%${q}%,area.ilike.%${q}%,educacion.ilike.%${q}%`)
+  let query = supabase.from('opec_maestro').select('*', { count: 'exact' })
+    .eq('convocatoria_id', parseInt(convocatoria_id))
+  if (q)     query = query.or(`denominacion.ilike.%${q}%,area_estudio.ilike.%${q}%,estudio_texto.ilike.%${q}%`)
   if (nivel) query = query.eq('nivel', nivel)
-  query = query.order('cargo').range(from, to)
+  query = query.order('num_convocatoria').range(from, to)
 
   const { data, count, error } = await query
   if (error) return res.status(500).json({ error: error.message })
@@ -1240,11 +1296,18 @@ export async function listProcuraduriaOpecs(req, res) {
 }
 
 export async function createProcuraduriaOpec(req, res) {
-  const { cargo, nivel, grado, area, vacantes, educacion, experiencia, funciones, codigo } = req.body
-  if (!cargo?.trim()) return res.status(400).json({ error: 'El nombre del cargo es requerido.' })
+  const { denominacion, nivel, grado, area_estudio, vacantes, estudio_texto, exp_texto, codigo,
+          num_convocatoria, requiere_posgrado, requiere_tarjeta, exp_anios, exp_tipo, dependencia,
+          convocatoria_id, entidad = 'Procuraduría General de la Nación' } = req.body
+  if (!denominacion?.trim()) return res.status(400).json({ error: 'El nombre del cargo es requerido.' })
+  if (!convocatoria_id)      return res.status(400).json({ error: 'convocatoria_id es requerido.' })
   const { data, error } = await supabase
-    .from('procuraduria_opecs')
-    .insert({ cargo: cargo.trim(), nivel, grado: grado ? parseInt(grado) : null, area, vacantes: vacantes ? parseInt(vacantes) : 1, educacion, experiencia, funciones, codigo })
+    .from('opec_maestro')
+    .insert({ denominacion: denominacion.trim(), nivel, grado: grado ? parseInt(grado) : null,
+              area_estudio, vacantes: vacantes ? parseInt(vacantes) : 1, estudio_texto, exp_texto,
+              codigo, num_convocatoria, requiere_posgrado: !!requiere_posgrado,
+              requiere_tarjeta: !!requiere_tarjeta, exp_anios: exp_anios ? parseInt(exp_anios) : 0,
+              exp_tipo, dependencia, convocatoria_id: parseInt(convocatoria_id), entidad })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.status(201).json({ opec: data })
@@ -1252,10 +1315,16 @@ export async function createProcuraduriaOpec(req, res) {
 
 export async function updateProcuraduriaOpec(req, res) {
   const { id } = req.params
-  const { cargo, nivel, grado, area, vacantes, educacion, experiencia, funciones, codigo, is_active } = req.body
+  const { denominacion, nivel, grado, area_estudio, vacantes, estudio_texto, exp_texto, codigo,
+          num_convocatoria, requiere_posgrado, requiere_tarjeta, exp_anios, exp_tipo, dependencia,
+          is_active } = req.body
   const { data, error } = await supabase
-    .from('procuraduria_opecs')
-    .update({ cargo, nivel, grado: grado ? parseInt(grado) : null, area, vacantes: vacantes ? parseInt(vacantes) : 1, educacion, experiencia, funciones, codigo, is_active, updated_at: new Date().toISOString() })
+    .from('opec_maestro')
+    .update({ denominacion, nivel, grado: grado ? parseInt(grado) : null, area_estudio,
+              vacantes: vacantes ? parseInt(vacantes) : 1, estudio_texto, exp_texto, codigo,
+              num_convocatoria, requiere_posgrado: !!requiere_posgrado,
+              requiere_tarjeta: !!requiere_tarjeta, exp_anios: exp_anios ? parseInt(exp_anios) : 0,
+              exp_tipo, dependencia, is_active, updated_at: new Date().toISOString() })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ opec: data })
@@ -1263,13 +1332,17 @@ export async function updateProcuraduriaOpec(req, res) {
 
 export async function deleteProcuraduriaOpec(req, res) {
   const { id } = req.params
-  const { error } = await supabase.from('procuraduria_opecs').delete().eq('id', id)
+  const { error } = await supabase.from('opec_maestro').delete().eq('id', id)
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ ok: true })
 }
 
 export async function statsProcuraduriaOpecs(req, res) {
-  const { data, error } = await supabase.from('procuraduria_opecs').select('nivel, is_active')
+  const { convocatoria_id } = req.query
+  if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
+  const { data, error } = await supabase
+    .from('opec_maestro').select('nivel, is_active')
+    .eq('convocatoria_id', parseInt(convocatoria_id))
   if (error) return res.status(500).json({ error: error.message })
   const total   = data.length
   const activos = data.filter(r => r.is_active).length
@@ -1278,4 +1351,44 @@ export async function statsProcuraduriaOpecs(req, res) {
     return acc
   }, {})
   return res.json({ total, activos, porNivel })
+}
+
+export async function importOpecMaestro(req, res) {
+  const { registros, convocatoria_id } = req.body
+  if (!Array.isArray(registros) || !registros.length) return res.status(400).json({ error: 'Se requiere un array de registros.' })
+  if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
+  if (registros.length > 500) return res.status(400).json({ error: 'Máximo 500 registros por importación.' })
+
+  // Obtener entidad de la convocatoria para desnormalizar
+  const { data: conv } = await supabase.from('convocatorias').select('entidad').eq('id', parseInt(convocatoria_id)).maybeSingle()
+  const entidad = conv?.entidad || 'Procuraduría General de la Nación'
+
+  const rows = registros.map(r => ({
+    convocatoria_id:            parseInt(convocatoria_id),
+    entidad,
+    num_convocatoria:           r.num_convocatoria           || null,
+    denominacion:               (r.denominacion || '').trim(),
+    nivel:                      r.nivel                      || null,
+    codigo:                     r.codigo                     || null,
+    grado:                      r.grado                      ? parseInt(r.grado)    : null,
+    salario:                    r.salario                    ? parseInt(r.salario)  : null,
+    vacantes:                   r.vacantes                   ? parseInt(r.vacantes) : 1,
+    dependencia:                r.dependencia                || null,
+    area_estudio:               r.area_estudio               || null,
+    requiere_posgrado:          !!r.requiere_posgrado,
+    requiere_tarjeta:           !!r.requiere_tarjeta,
+    exp_anios:                  r.exp_anios                  ? parseInt(r.exp_anios) : 0,
+    exp_tipo:                   r.exp_tipo                   || null,
+    estudio_texto:              r.estudio_texto              || null,
+    exp_texto:                  r.exp_texto                  || null,
+    conocimientos:              Array.isArray(r.conocimientos)              ? r.conocimientos              : [],
+    competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
+    competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
+    ubicaciones:                Array.isArray(r.ubicaciones)                ? r.ubicaciones                : [],
+    is_active:                  r.is_active !== false,
+  })).filter(r => r.denominacion)
+
+  const { data, error } = await supabase.from('opec_maestro').insert(rows).select('id, num_convocatoria, denominacion')
+  if (error) return res.status(500).json({ error: error.message })
+  return res.status(201).json({ insertados: data.length, registros: data })
 }
