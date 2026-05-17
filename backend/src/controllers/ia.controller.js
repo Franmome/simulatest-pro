@@ -1173,7 +1173,17 @@ export async function analizarPerfilCV(req, res) {
     const userId = req.user.id
     const { convocatoria_id, perfil_texto } = req.body
     const file = req.file
-    const cvText = file ? await extractPdfText(file.buffer) : ''
+    let cvText = ''
+    if (file) {
+      const ext = (file.originalname || '').toLowerCase().split('.').pop()
+      if (ext === 'pdf') {
+        cvText = await extractPdfText(file.buffer)
+      } else if (ext === 'txt') {
+        cvText = file.buffer.toString('utf8')
+      } else {
+        cvText = `[Se adjuntó archivo: ${file.originalname}]`
+      }
+    }
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
@@ -1251,7 +1261,7 @@ Selecciona los 5 cargos con mayor compatibilidad real. Responde ÚNICAMENTE con 
 
     try {
       await supabase.from('user_profile_analysis').upsert(
-        { user_id: userId, convocatoria_id: convocatoria_id ? parseInt(convocatoria_id) : null, analisis, updated_at: new Date().toISOString() },
+        { user_id: userId, convocatoria_id: convocatoria_id ? parseInt(convocatoria_id) : null, convocatoria_nombre: convNombre, analisis, updated_at: new Date().toISOString() },
         { onConflict: 'user_id,convocatoria_id' }
       )
     } catch { /* tabla puede no existir */ }
@@ -1424,4 +1434,17 @@ export async function importOpecMaestro(req, res) {
   const { data, error } = await supabase.from('opec_maestro').insert(rows).select('id, num_convocatoria, denominacion')
   if (error) return res.status(500).json({ error: error.message })
   return res.status(201).json({ insertados: data.length, registros: data })
+}
+
+// ── Historial de análisis de perfil del usuario ───────────────────────────────
+
+export async function getMisAnalisis(req, res) {
+  const userId = req.user.id
+  const { data, error } = await supabase
+    .from('user_profile_analysis')
+    .select('id, convocatoria_id, convocatoria_nombre, analisis, updated_at')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ analisis: data || [] })
 }

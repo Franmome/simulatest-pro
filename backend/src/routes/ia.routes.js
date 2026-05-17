@@ -2,10 +2,11 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { authMiddleware } from '../middleware/auth.middleware.js'
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, listConvocatorias, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, statsProcuraduriaOpecs, importOpecMaestro } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, listConvocatorias, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+const uploadPerfil = multer({ storage: multer.memoryStorage() }) // sin límite de tamaño
 
 router.post('/generar',         authMiddleware, upload.single('pdf'), generarBanco)
 router.post('/simulacro',       authMiddleware, upload.single('pdf'), generarSimulacroPersonal)
@@ -18,7 +19,8 @@ router.post('/analisis-resultado', authMiddleware, analizarResultadosSimulacro)
 router.post('/test-generador',     authMiddleware, upload.single('pdf'), testGenerador)
 router.post('/generar-paquete',    authMiddleware, generarPaqueteConIA)
 router.post('/practica-desde-ia',  authMiddleware, generarPracticaDesdeIA)
-router.post('/analisis-perfil',    authMiddleware, upload.single('pdf'), analizarPerfilCV)
+router.post('/analisis-perfil',    authMiddleware, uploadPerfil.single('pdf'), analizarPerfilCV)
+router.get('/mis-analisis',        authMiddleware, getMisAnalisis)
 
 // ── Convocatorias (catálogo para dropdown del usuario y admin) ───────────────
 router.get('/convocatorias',             authMiddleware, listConvocatorias)
