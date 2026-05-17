@@ -1,8 +1,35 @@
 import OpenAI, { toFile }   from 'openai'
 import { createClient }      from '@supabase/supabase-js'
-import { YoutubeTranscript } from 'youtube-transcript'
 import mammoth               from 'mammoth'
 import * as XLSX             from 'xlsx'
+
+// Extrae transcript de YouTube sin librería externa — scraping directo de la página
+async function fetchYTTranscript(videoId) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
+  }
+  const html = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers })
+    .then(r => r.text())
+
+  // Busca la URL de captions dentro de ytInitialPlayerResponse
+  const captionMatch = html.match(/"captionTracks":\s*\[\s*\{[^}]*"baseUrl"\s*:\s*"([^"]+)"/)
+  if (!captionMatch) throw new Error('Sin subtítulos automáticos')
+
+  const captionUrl = captionMatch[1]
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u003d/g, '=')
+
+  const xml = await fetch(captionUrl, { headers }).then(r => r.text())
+
+  // Parsea el XML de subtítulos a texto plano
+  return xml
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 const openai   = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
@@ -436,12 +463,10 @@ export const agregarYoutube = async (req, res) => {
 
   let transcript
   try {
-    const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'es' })
-      .catch(() => YoutubeTranscript.fetchTranscript(videoId)) // fallback a cualquier idioma
-    transcript = items.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim()
+    transcript = await fetchYTTranscript(videoId)
   } catch (err) {
     console.error('[youtube transcript]', err.message)
-    return res.status(422).json({ error: 'No se pudo obtener el transcript. El video puede no tener subtítulos o ser privado.' })
+    return res.status(422).json({ error: 'No se pudo obtener el transcript. El video puede no tener subtítulos automáticos o ser privado.' })
   }
 
   if (!transcript || transcript.length < 50)
