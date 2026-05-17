@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useReactTable, getCoreRowModel, getSortedRowModel, getFilteredRowModel, flexRender } from '@tanstack/react-table'
+import { ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
@@ -276,26 +279,48 @@ function ResumenView({ datos }) {
   )
 }
 
-// ── Vista Quiz ────────────────────────────────────────────────────────────────
+// ── Vista Quiz (con Framer Motion) ───────────────────────────────────────────
+const shakeVariants = {
+  shake: { x: [0, -10, 10, -8, 8, -4, 4, 0], transition: { duration: 0.45 } },
+  idle:  { x: 0 },
+}
+const slideVariants = {
+  enter: dir => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
+  center: { x: 0, opacity: 1, transition: { type: 'spring', stiffness: 300, damping: 28 } },
+  exit:  dir => ({ x: dir > 0 ? -60 : 60, opacity: 0, transition: { duration: 0.18 } }),
+}
+
 function QuizView({ preguntas }) {
   const [actual,     setActual]     = useState(0)
+  const [dir,        setDir]        = useState(1)
   const [respuestas, setRespuestas] = useState({})
   const [mostrar,    setMostrar]    = useState({})
+  const [shake,      setShake]      = useState(false)
   const [finalizado, setFinalizado] = useState(false)
 
   const q = preguntas?.[actual]
   if (!q) return <div className="p-6 text-sm text-slate-400">Sin preguntas disponibles.</div>
 
+  const ir = (siguiente) => {
+    setDir(siguiente > actual ? 1 : -1)
+    setActual(siguiente)
+  }
+
   const seleccionar = (letra) => {
     if (respuestas[actual]) return
     setRespuestas(p => ({ ...p, [actual]: letra }))
     setMostrar(p => ({ ...p, [actual]: true }))
+    if (letra !== q.correcta) {
+      setShake(true)
+      setTimeout(() => setShake(false), 500)
+    }
   }
 
   const score = Object.entries(respuestas).filter(([i, r]) => r === preguntas[+i]?.correcta).length
 
   if (finalizado) return (
-    <div className="flex flex-col items-center justify-center h-full gap-5 p-6">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center h-full gap-5 p-6">
       <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center">
         <span className="material-symbols-outlined text-4xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
       </div>
@@ -311,8 +336,8 @@ function QuizView({ preguntas }) {
                   style={{ fontVariationSettings: "'FILL' 1" }}>
               {respuestas[i] === p.correcta ? 'check_circle' : 'cancel'}
             </span>
-            <span className="flex-1 truncate">{p.pregunta}</span>
-            <span className="font-bold">{p.correcta}</span>
+            <span className="flex-1 truncate text-xs">{p.pregunta}</span>
+            <span className="font-bold text-xs">{p.correcta}</span>
           </div>
         ))}
       </div>
@@ -320,7 +345,7 @@ function QuizView({ preguntas }) {
         className="bg-primary text-on-primary font-bold px-6 py-2.5 rounded-full text-sm hover:shadow-md transition-all">
         Repetir quiz
       </button>
-    </div>
+    </motion.div>
   )
 
   return (
@@ -332,59 +357,73 @@ function QuizView({ preguntas }) {
           <p className="text-xs text-primary font-bold">{Object.keys(respuestas).length} respondidas</p>
         </div>
         <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((actual + 1) / preguntas.length) * 100}%` }} />
+          <motion.div className="h-full bg-primary rounded-full"
+            animate={{ width: `${((actual + 1) / preguntas.length) * 100}%` }}
+            transition={{ type: 'spring', stiffness: 200, damping: 25 }} />
         </div>
       </div>
 
-      {/* Pregunta */}
-      <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <p className="font-bold text-sm leading-relaxed">{q.pregunta}</p>
-        </div>
+      {/* Pregunta con slide + shake */}
+      <div className="flex-1 overflow-y-auto px-5 pb-5">
+        <AnimatePresence mode="wait" custom={dir}>
+          <motion.div key={actual} custom={dir}
+            variants={slideVariants} initial="enter" animate="center" exit="exit"
+            className="space-y-4">
 
-        <div className="space-y-2.5">
-          {Object.entries(q.opciones || {}).map(([letra, texto]) => {
-            const respondida = !!respuestas[actual]
-            const esSeleccionada = respuestas[actual] === letra
-            const esCorrecta = q.correcta === letra
-            let cls = 'border-slate-200 bg-white hover:border-primary/40 hover:bg-primary/5'
-            if (respondida && esCorrecta) cls = 'border-emerald-400 bg-emerald-50'
-            else if (respondida && esSeleccionada) cls = 'border-error bg-error/5'
-            else if (respondida) cls = 'border-slate-200 bg-white opacity-60'
-            return (
-              <button key={letra} onClick={() => seleccionar(letra)}
-                className={`w-full flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all text-sm ${cls} ${!respondida ? 'cursor-pointer' : 'cursor-default'}`}>
-                <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-extrabold text-xs flex-shrink-0
-                  ${respondida && esCorrecta ? 'bg-emerald-500 text-white' : respondida && esSeleccionada ? 'bg-error text-white' : 'bg-slate-100 text-slate-600'}`}>
-                  {letra}
-                </span>
-                <span className="flex-1 leading-relaxed pt-0.5">{texto}</span>
-                {respondida && esCorrecta && (
-                  <span className="material-symbols-outlined text-emerald-500 flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+            <motion.div animate={shake ? 'shake' : 'idle'} variants={shakeVariants}
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <p className="font-bold text-sm leading-relaxed">{q.pregunta}</p>
+            </motion.div>
 
-        {mostrar[actual] && (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs leading-relaxed">
-            <p className="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-sm text-primary">info</span>Justificación
-            </p>
-            <p className="text-slate-600">{q.justificacion}</p>
-          </div>
-        )}
+            <div className="space-y-2.5">
+              {Object.entries(q.opciones || {}).map(([letra, texto]) => {
+                const respondida   = !!respuestas[actual]
+                const esSeleccionada = respuestas[actual] === letra
+                const esCorrecta   = q.correcta === letra
+                let cls = 'border-slate-200 bg-white'
+                if (respondida && esCorrecta)    cls = 'border-emerald-400 bg-emerald-50'
+                else if (respondida && esSeleccionada) cls = 'border-red-400 bg-red-50'
+                else if (respondida)             cls = 'border-slate-200 bg-white opacity-60'
+                return (
+                  <motion.button key={letra}
+                    whileHover={!respondida ? { scale: 1.015 } : {}}
+                    whileTap={!respondida ? { scale: 0.98 } : {}}
+                    onClick={() => seleccionar(letra)}
+                    className={`w-full flex items-start gap-3 p-4 rounded-xl border-2 text-left text-sm transition-colors ${cls} ${!respondida ? 'cursor-pointer' : 'cursor-default'}`}>
+                    <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-extrabold text-xs flex-shrink-0
+                      ${respondida && esCorrecta ? 'bg-emerald-500 text-white' : respondida && esSeleccionada ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      {letra}
+                    </span>
+                    <span className="flex-1 leading-relaxed pt-0.5">{texto}</span>
+                    {respondida && esCorrecta && (
+                      <span className="material-symbols-outlined text-emerald-500 flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    )}
+                  </motion.button>
+                )
+              })}
+            </div>
+
+            {mostrar[actual] && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs leading-relaxed">
+                <p className="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-primary">info</span>Justificación
+                </p>
+                <p className="text-slate-600">{q.justificacion}</p>
+              </motion.div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Nav */}
       <div className="px-5 pb-5 flex gap-2 flex-shrink-0">
-        <button onClick={() => setActual(a => Math.max(0, a - 1))} disabled={actual === 0}
+        <button onClick={() => ir(actual - 1)} disabled={actual === 0}
           className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold disabled:opacity-40 hover:bg-slate-50 transition-colors">
           Anterior
         </button>
         {actual < preguntas.length - 1 ? (
-          <button onClick={() => setActual(a => a + 1)} disabled={!respuestas[actual]}
+          <button onClick={() => ir(actual + 1)} disabled={!respuestas[actual]}
             className="flex-1 bg-primary text-on-primary font-bold py-2.5 rounded-xl text-sm disabled:opacity-40 hover:shadow-md transition-all">
             Siguiente
           </button>
@@ -658,39 +697,93 @@ function MapaMentalView({ datos }) {
   )
 }
 
-// ── Vista Tabla de datos ──────────────────────────────────────────────────────
+// ── Vista Tabla de datos (TanStack Table: sort + filter) ─────────────────────
 function TablaView({ datos }) {
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [sorting, setSorting] = useState([])
+
+  const columns = useMemo(() => (datos?.columnas || []).map((col, i) => ({
+    id:         String(i),
+    header:     col,
+    accessorFn: row => row[i] ?? '',
+    cell:       info => info.getValue(),
+  })), [datos?.columnas])
+
+  const tableData = useMemo(() => datos?.filas || [], [datos?.filas])
+
+  const table = useReactTable({
+    data:    tableData,
+    columns,
+    state:   { sorting, globalFilter },
+    onSortingChange:      setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel:      getCoreRowModel(),
+    getSortedRowModel:    getSortedRowModel(),
+    getFilteredRowModel:  getFilteredRowModel(),
+  })
+
   if (!datos?.columnas?.length || !datos?.filas?.length)
     return <div className="p-6 text-sm text-slate-400">Sin datos de tabla.</div>
+
   return (
-    <div className="p-4 overflow-auto h-full">
+    <div className="p-4 flex flex-col gap-3 h-full overflow-hidden">
       {datos.titulo && (
-        <h3 className="font-extrabold text-base mb-4 text-slate-800">{datos.titulo}</h3>
+        <h3 className="font-extrabold text-base text-slate-800 flex-shrink-0">{datos.titulo}</h3>
       )}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+
+      {/* Buscador */}
+      <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2 flex-shrink-0">
+        <Search size={14} className="text-slate-400 flex-shrink-0" />
+        <input value={globalFilter} onChange={e => setGlobalFilter(e.target.value)}
+          placeholder="Buscar en la tabla…"
+          className="flex-1 bg-transparent text-sm outline-none placeholder-slate-400" />
+        {globalFilter && (
+          <button onClick={() => setGlobalFilter('')} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+        )}
+      </div>
+
+      {/* Tabla */}
+      <div className="overflow-auto rounded-xl border border-slate-200 shadow-sm flex-1">
         <table className="w-full text-sm min-w-max">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-primary/10">
-              {datos.columnas.map((col, i) => (
-                <th key={i} className="text-left px-4 py-3 font-extrabold text-xs text-primary uppercase tracking-wider whitespace-nowrap border-b border-primary/20">
-                  {col}
-                </th>
-              ))}
+              {table.getHeaderGroups()[0]?.headers.map(header => {
+                const sorted = header.column.getIsSorted()
+                return (
+                  <th key={header.id}
+                    onClick={header.column.getToggleSortingHandler()}
+                    className="text-left px-4 py-3 font-extrabold text-xs text-primary uppercase tracking-wider whitespace-nowrap border-b border-primary/20 cursor-pointer select-none hover:bg-primary/20 transition-colors">
+                    <div className="flex items-center gap-1.5">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {sorted === 'asc'  ? <ArrowUp size={12} />   :
+                       sorted === 'desc' ? <ArrowDown size={12} /> :
+                       <ArrowUpDown size={11} className="opacity-30" />}
+                    </div>
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {datos.filas.map((fila, i) => (
-              <tr key={i} className={`transition-colors hover:bg-slate-50 ${i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}>
-                {fila.map((celda, j) => (
-                  <td key={j} className={`px-4 py-3 text-sm leading-snug ${j === 0 ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
-                    {celda}
+            {table.getRowModel().rows.length === 0 ? (
+              <tr><td colSpan={columns.length} className="text-center py-8 text-slate-400 text-sm">Sin resultados para "{globalFilter}"</td></tr>
+            ) : table.getRowModel().rows.map((row, i) => (
+              <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.03 }}
+                className={`transition-colors hover:bg-primary/5 ${i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}>
+                {row.getVisibleCells().map((cell, j) => (
+                  <td key={cell.id} className={`px-4 py-3 leading-snug ${j === 0 ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
-              </tr>
+              </motion.tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="text-[11px] text-slate-400 flex-shrink-0">
+        {table.getRowModel().rows.length} de {tableData.length} filas
+      </p>
     </div>
   )
 }
