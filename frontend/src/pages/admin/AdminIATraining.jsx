@@ -420,7 +420,7 @@ function ConvocatoriaModal({ conv, onClose, onSaved }) {
 
 // ── OPECs Panel ───────────────────────────────────────────────────────────────
 
-const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo']
+const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo', 'Administrativo', 'Operativo']
 
 const OPEC_EMPTY = { denominacion: '', nivel: '', grado: '', area_estudio: '', vacantes: '', estudio_texto: '', exp_texto: '', exp_anios: '', exp_tipo: '', num_convocatoria: '', requiere_posgrado: false, requiere_tarjeta: false, dependencia: '', codigo: '' }
 
