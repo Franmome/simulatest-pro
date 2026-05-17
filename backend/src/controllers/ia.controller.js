@@ -1266,14 +1266,47 @@ Selecciona los 5 cargos con mayor compatibilidad real. Responde ÚNICAMENTE con 
 // ── Convocatorias ─────────────────────────────────────────────────────────────
 
 export async function listConvocatorias(req, res) {
-  const { data, error } = await supabase
+  const { todas } = req.query
+  let query = supabase
     .from('convocatorias')
     .select('id, codigo, nombre, entidad, anio, descripcion, is_active')
-    .eq('is_active', true)
     .order('anio', { ascending: false })
     .order('nombre')
+  if (!todas) query = query.eq('is_active', true)
+  const { data, error } = await query
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ convocatorias: data || [] })
+}
+
+export async function createConvocatoria(req, res) {
+  const { codigo, nombre, entidad, anio, descripcion } = req.body
+  if (!codigo?.trim()) return res.status(400).json({ error: 'El código es requerido.' })
+  if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido.' })
+  if (!entidad?.trim()) return res.status(400).json({ error: 'La entidad es requerida.' })
+  const { data, error } = await supabase
+    .from('convocatorias')
+    .insert({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim(), entidad: entidad.trim(), anio: anio ? parseInt(anio) : null, descripcion: descripcion?.trim() || null })
+    .select('*').single()
+  if (error) return res.status(500).json({ error: error.message })
+  return res.status(201).json({ convocatoria: data })
+}
+
+export async function updateConvocatoria(req, res) {
+  const { id } = req.params
+  const { nombre, entidad, anio, descripcion, is_active } = req.body
+  const { data, error } = await supabase
+    .from('convocatorias')
+    .update({ nombre, entidad, anio: anio ? parseInt(anio) : null, descripcion, is_active })
+    .eq('id', id).select('*').single()
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ convocatoria: data })
+}
+
+export async function deleteConvocatoria(req, res) {
+  const { id } = req.params
+  const { error } = await supabase.from('convocatorias').delete().eq('id', id)
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ ok: true })
 }
 
 // ── CRUD OPECs maestro (admin) ───────────────────────────────────────────────

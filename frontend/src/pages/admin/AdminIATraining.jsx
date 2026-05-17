@@ -301,7 +301,124 @@ function AsignacionCerebros({ records, onCambiar }) {
   )
 }
 
-// ── OPECs Procuraduría Panel ─────────────────────────────────────────────────
+// ── Modal nueva/editar convocatoria ──────────────────────────────────────────
+
+const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '' }
+
+const ENTIDADES_COMUNES = [
+  'Procuraduría General de la Nación',
+  'Contraloría General de la República',
+  'DIAN',
+  'Fiscalía General de la Nación',
+  'Defensoría del Pueblo',
+  'Consejo de Estado',
+]
+
+function ConvocatoriaModal({ conv, onClose, onSaved }) {
+  const [form, setForm] = useState(conv ? { ...conv } : { ...CONV_EMPTY })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]     = useState('')
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.codigo?.trim()) { setErr('El código es requerido (ej: TERRITORIAL-12-2025).'); return }
+    if (!form.nombre?.trim()) { setErr('El nombre es requerido.'); return }
+    if (!form.entidad?.trim()) { setErr('La entidad es requerida.'); return }
+    setSaving(true); setErr('')
+    try {
+      const headers = await authHeaders()
+      const isEdit = !!conv?.id
+      const url = isEdit ? `${BASE}/api/ia/convocatorias/${conv.id}` : `${BASE}/api/ia/convocatorias`
+      const res = await fetch(url, { method: isEdit ? 'PUT' : 'POST', headers, body: JSON.stringify(form) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error guardando')
+      onSaved(data.convocatoria)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-100 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-blue-600" style={{ fontVariationSettings: "'FILL' 1" }}>event_note</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-extrabold text-base">{conv?.id ? 'Editar convocatoria' : 'Nueva convocatoria'}</h3>
+            <p className="text-xs text-on-surface-variant">Se añadirá al dropdown de análisis de perfil</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
+            <span className="material-symbols-outlined text-slate-500">close</span>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{err}</p>}
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Código único *</label>
+            <input value={form.codigo} onChange={e => set('codigo', e.target.value.toUpperCase())}
+              placeholder="Ej: TERRITORIAL-12-2025"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 font-mono" />
+            <p className="text-[10px] text-on-surface-variant mt-1">Sin espacios, en mayúsculas. Se usa internamente para identificar la convocatoria.</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Nombre visible *</label>
+            <input value={form.nombre} onChange={e => set('nombre', e.target.value)}
+              placeholder="Ej: Procuraduría — Territorial 12 (2025)"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+            <p className="text-[10px] text-on-surface-variant mt-1">Este es el texto que ve el usuario en el dropdown.</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Entidad *</label>
+            <input list="entidades-list" value={form.entidad} onChange={e => set('entidad', e.target.value)}
+              placeholder="Ej: Procuraduría General de la Nación"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+            <datalist id="entidades-list">
+              {ENTIDADES_COMUNES.map(e => <option key={e} value={e} />)}
+            </datalist>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Año</label>
+              <input type="number" value={form.anio} onChange={e => set('anio', e.target.value)}
+                placeholder="2025"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Descripción <span className="font-normal text-on-surface-variant">(opcional)</span></label>
+            <textarea value={form.descripcion} onChange={e => set('descripcion', e.target.value)}
+              rows={2} placeholder="Ej: Convocatoria regional 2025 — 45 cargos"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 resize-none" />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {saving ? 'Guardando...' : conv?.id ? 'Guardar cambios' : 'Crear convocatoria'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── OPECs Panel ───────────────────────────────────────────────────────────────
 
 const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo']
 
@@ -486,24 +603,27 @@ function ProcuraduriaOpecPanel() {
   const [modal,          setModal]          = useState(null)
   const [deleting,       setDeleting]       = useState(null)
   const [importing,      setImporting]      = useState(false)
+  const [convModal,      setConvModal]      = useState(null)
   const searchTimer                         = useRef(null)
   const importRef                           = useRef(null)
   const LIMIT = 50
 
+  const fetchConvocatorias = useCallback(async (selectId = null) => {
+    const headers = await authHeaders()
+    const res = await fetch(`${BASE}/api/ia/convocatorias?todas=1`, { headers })
+    const d = await res.json()
+    const list = d.convocatorias || []
+    setConvocatorias(list)
+    if (selectId) {
+      setConvId(String(selectId))
+    } else if (!convId && list.length > 0) {
+      setConvId(String(list[0].id))
+    }
+    setLoadingConvs(false)
+  }, [convId]) // eslint-disable-line
+
   // Carga catálogo de convocatorias al montar
-  useEffect(() => {
-    authHeaders().then(headers =>
-      fetch(`${BASE}/api/ia/convocatorias`, { headers })
-        .then(r => r.json())
-        .then(d => {
-          const list = d.convocatorias || []
-          setConvocatorias(list)
-          if (list.length > 0) setConvId(String(list[0].id))
-        })
-        .catch(console.error)
-        .finally(() => setLoadingConvs(false))
-    )
-  }, [])
+  useEffect(() => { fetchConvocatorias() }, []) // eslint-disable-line
 
   const fetchData = useCallback(async (search, niv, pg, cid) => {
     if (!cid) return
@@ -616,21 +736,40 @@ function ProcuraduriaOpecPanel() {
       )}
 
       {/* Selector de convocatoria */}
-      <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-        <span className="material-symbols-outlined text-slate-500 shrink-0">event_note</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mb-0.5">Convocatoria</p>
-          {loadingConvs ? (
-            <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
-          ) : (
-            <select value={convId} onChange={e => { setConvId(e.target.value); setPage(1); setQ(''); setNivel('') }}
-              className="w-full text-sm font-semibold bg-transparent focus:outline-none text-on-surface">
-              {convocatorias.length === 0 && <option value="">Sin convocatorias activas</option>}
-              {convocatorias.map(c => <option key={c.id} value={String(c.id)}>{c.nombre}</option>)}
-            </select>
-          )}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex-1 min-w-0">
+          <span className="material-symbols-outlined text-slate-500 shrink-0">event_note</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mb-0.5">Convocatoria activa</p>
+            {loadingConvs ? (
+              <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
+            ) : (
+              <select value={convId} onChange={e => { setConvId(e.target.value); setPage(1); setQ(''); setNivel('') }}
+                className="w-full text-sm font-semibold bg-transparent focus:outline-none text-on-surface">
+                {convocatorias.length === 0 && <option value="">Sin convocatorias</option>}
+                {convocatorias.map(c => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.nombre}{!c.is_active ? ' (inactiva)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
+        <button onClick={() => setConvModal({})}
+          title="Crear nueva convocatoria"
+          className="w-11 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 transition-colors shadow-sm">
+          <span className="material-symbols-outlined text-xl">add</span>
+        </button>
       </div>
+
+      {convModal !== null && (
+        <ConvocatoriaModal
+          conv={convModal?.id ? convModal : null}
+          onClose={() => setConvModal(null)}
+          onSaved={nueva => { setConvModal(null); fetchConvocatorias(nueva.id) }}
+        />
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">

@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { authMiddleware } from '../middleware/auth.middleware.js'
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, listConvocatorias, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, statsProcuraduriaOpecs, importOpecMaestro } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, listConvocatorias, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, statsProcuraduriaOpecs, importOpecMaestro } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -20,8 +20,11 @@ router.post('/generar-paquete',    authMiddleware, generarPaqueteConIA)
 router.post('/practica-desde-ia',  authMiddleware, generarPracticaDesdeIA)
 router.post('/analisis-perfil',    authMiddleware, upload.single('pdf'), analizarPerfilCV)
 
-// ── Convocatorias (catálogo para dropdown del usuario) ───────────────────────
+// ── Convocatorias (catálogo para dropdown del usuario y admin) ───────────────
 router.get('/convocatorias',             authMiddleware, listConvocatorias)
+router.post('/convocatorias',            authMiddleware, createConvocatoria)
+router.put('/convocatorias/:id',         authMiddleware, updateConvocatoria)
+router.delete('/convocatorias/:id',      authMiddleware, deleteConvocatoria)
 
 // ── OPECs maestro (admin CRUD + importación masiva) ──────────────────────────
 router.get('/procuraduria-opecs/stats',  authMiddleware, statsProcuraduriaOpecs)
