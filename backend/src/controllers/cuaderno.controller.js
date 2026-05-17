@@ -328,7 +328,7 @@ export const generarArtefacto = async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4.1-mini',
       max_tokens: 3000,
-      response_format: OBJECT_TIPOS.has(tipo) ? { type: 'json_object' } : undefined,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',

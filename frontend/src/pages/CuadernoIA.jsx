@@ -1198,6 +1198,7 @@ export default function CuadernoIA() {
   const [nuevaNota,   setNuevaNota]   = useState('')
   const [addingNota,  setAddingNota]  = useState(false)
   const [expandidas,  setExpandidas]  = useState({})
+  const [errorNota,   setErrorNota]   = useState('')
 
   useEffect(() => { cargarTodo() }, [packageId])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes])
@@ -1365,7 +1366,6 @@ export default function CuadernoIA() {
   // ── Helpers para notas de artefactos ──
   const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen','mapa_mental','tabla','guia'])
 
-  // Normaliza respuesta de la IA: si el modelo envolvió un array en un objeto, lo extrae
   function normalizarDatos(tipo, datos) {
     const ARRAY_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia'])
     if (!ARRAY_TIPOS.has(tipo)) return datos
@@ -1377,10 +1377,21 @@ export default function CuadernoIA() {
     return datos
   }
 
+  // Parse robusto: limpia code fences de markdown + intento de rescate si JSON está parcialmente roto
+  function limpiarYParsear(str) {
+    if (typeof str !== 'string') return str
+    let s = str.trim()
+    s = s.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
+    try { return JSON.parse(s) } catch {}
+    const m = s.match(/(\[[\s\S]*\]|\{[\s\S]*\})/)
+    if (m) return JSON.parse(m[1])
+    throw new SyntaxError('JSON inválido en artefacto')
+  }
+
   function getArtefactoResumen(nota) {
     try {
       if (nota.fuente === 'audio')       return 'Podcast IA generado'
-      const d = JSON.parse(nota.contenido)
+      const d = limpiarYParsear(nota.contenido)
       const nd = normalizarDatos(nota.fuente, d)
       if (nota.fuente === 'resumen')     return `${nd?.ejes?.length || '?'} ejes temáticos · glosario · puntos críticos`
       if (nota.fuente === 'quiz')        return `${Array.isArray(nd) ? nd.length : '?'} preguntas de práctica`
@@ -1403,13 +1414,16 @@ export default function CuadernoIA() {
         setTabMobile('chat')
         return
       }
-      let datos = JSON.parse(nota.contenido)
+      let datos = limpiarYParsear(nota.contenido)
       datos = normalizarDatos(nota.fuente, datos)
       setVistaData(datos)
       setVista(nota.fuente)
       setTabMobile('chat')
+      setErrorNota('')
     } catch (e) {
       console.error('[abrirArtefacto]', e)
+      setErrorNota('Este artefacto tiene un formato inválido. Genera uno nuevo con el botón correspondiente.')
+      setTimeout(() => setErrorNota(''), 5000)
     }
   }
 
@@ -1421,7 +1435,7 @@ export default function CuadernoIA() {
     let texto = nota.contenido
     if (nota.fuente !== 'resumen') {
       try {
-        const d = normalizarDatos(nota.fuente, JSON.parse(nota.contenido))
+        const d = normalizarDatos(nota.fuente, limpiarYParsear(nota.contenido))
         if (nota.fuente === 'quiz' && Array.isArray(d))
           texto = d.map((q, i) => `Pregunta ${q.n || i+1}: ${q.pregunta}\nA) ${q.opciones?.A}\nB) ${q.opciones?.B}\nC) ${q.opciones?.C}\nD) ${q.opciones?.D}\nRespuesta: ${q.correcta}\nJustificación: ${q.justificacion}`).join('\n\n')
         else if (nota.fuente === 'flashcards' && Array.isArray(d))
@@ -1728,6 +1742,19 @@ export default function CuadernoIA() {
               <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">{notas.length}</span>
             )}
           </div>
+
+          {/* Error artefacto */}
+          <AnimatePresence>
+            {errorNota && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="px-3 py-2 bg-red-50 border-b border-red-100 flex items-start gap-2 text-[11px] text-red-600"
+              >
+                <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
+                <span>{errorNota}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Input nueva nota */}
           <div className="p-3 border-b border-slate-100 flex-shrink-0">
