@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useReactTable, getCoreRowModel, getSortedRowModel, getFilteredRowModel, flexRender } from '@tanstack/react-table'
-import { ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, Search, Play, Pause, SkipBack, Download } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
@@ -479,7 +479,7 @@ function FlashcardsView({ cards }) {
   )
 }
 
-// ── Vista Plan de estudio ─────────────────────────────────────────────────────
+// ── Vista Plan de estudio (Roadmap + Framer Motion) ──────────────────────────
 function PlanView({ semanas, packageId }) {
   const KEY = `plan_${packageId}`
   const [checks, setChecks] = useState(() => {
@@ -492,53 +492,105 @@ function PlanView({ semanas, packageId }) {
     localStorage.setItem(KEY, JSON.stringify(next))
   }
 
+  const totalGlobal  = semanas.reduce((a, s) => a + (s.dias?.length || 0), 0)
+  const hechosGlobal = semanas.reduce((a, s) =>
+    a + (s.dias?.filter((_, di) => checks[`${s.semana}-${di}`]).length || 0), 0)
+  const pctGlobal = totalGlobal ? Math.round((hechosGlobal / totalGlobal) * 100) : 0
+
   return (
-    <div className="p-4 overflow-y-auto h-full space-y-4">
-      {semanas.map((s) => {
-        const total  = s.dias?.length || 0
-        const hechos = s.dias?.filter((_, di) => checks[`${s.semana}-${di}`]).length || 0
-        return (
-          <div key={s.semana} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 bg-primary/5 border-b border-primary/10">
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-bold text-sm">Semana {s.semana}: {s.titulo}</p>
-                <span className="text-xs font-bold text-primary">{hechos}/{total}</span>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Barra de progreso global */}
+      <div className="px-5 pt-5 pb-4 flex-shrink-0 bg-white border-b border-slate-100">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold text-slate-600">Progreso total del plan</p>
+          <motion.span key={pctGlobal} initial={{ scale: 1.3 }} animate={{ scale: 1 }}
+            className="text-sm font-extrabold text-primary">{pctGlobal}%
+          </motion.span>
+        </div>
+        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+          <motion.div className="h-full bg-primary rounded-full"
+            animate={{ width: `${pctGlobal}%` }}
+            transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1.5">{hechosGlobal} de {totalGlobal} tareas completadas</p>
+      </div>
+
+      {/* Semanas */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {semanas.map((s) => {
+          const total  = s.dias?.length || 0
+          const hechos = s.dias?.filter((_, di) => checks[`${s.semana}-${di}`]).length || 0
+          const pct    = total ? (hechos / total) * 100 : 0
+          const done   = hechos === total && total > 0
+
+          return (
+            <div key={s.semana} className={`bg-white border-2 rounded-2xl overflow-hidden transition-colors ${done ? 'border-emerald-300' : 'border-slate-200'}`}>
+              <div className={`px-4 py-3 border-b ${done ? 'bg-emerald-50 border-emerald-100' : 'bg-primary/5 border-primary/10'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    {done && <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400 }}
+                      className="material-symbols-outlined text-emerald-500 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      check_circle
+                    </motion.span>}
+                    <p className="font-bold text-sm">Semana {s.semana}: {s.titulo}</p>
+                  </div>
+                  <span className={`text-xs font-extrabold ${done ? 'text-emerald-600' : 'text-primary'}`}>{hechos}/{total}</span>
+                </div>
+                <div className="h-1.5 bg-white/70 rounded-full overflow-hidden">
+                  <motion.div className={`h-full rounded-full ${done ? 'bg-emerald-500' : 'bg-primary'}`}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ type: 'spring', stiffness: 150, damping: 22 }} />
+                </div>
+                {s.objetivo && <p className="text-[11px] text-slate-500 mt-1.5 leading-snug">{s.objetivo}</p>}
               </div>
-              <div className="h-1.5 bg-white rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full transition-all"
-                     style={{ width: total ? `${(hechos / total) * 100}%` : '0%' }} />
-              </div>
-              {s.objetivo && <p className="text-xs text-on-surface-variant mt-1.5">{s.objetivo}</p>}
-            </div>
-            <div className="divide-y divide-slate-100">
-              {s.dias?.map((d, di) => {
-                const k = `${s.semana}-${di}`
-                return (
-                  <label key={di} className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all
-                      ${checks[k] ? 'bg-primary border-primary' : 'border-slate-300'}`}
-                      onClick={() => toggle(k)}>
-                      {checks[k] && <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className={`text-xs font-bold ${checks[k] ? 'line-through text-slate-400' : 'text-primary'}`}>{d.dia}</p>
-                        {d.horas && <span className="text-[10px] text-slate-400">{d.horas}</span>}
+
+              <div className="divide-y divide-slate-100">
+                {s.dias?.map((d, di) => {
+                  const k    = `${s.semana}-${di}`
+                  const hecho = !!checks[k]
+                  return (
+                    <motion.label key={di} layout
+                      className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
+                      {/* Checkbox animado */}
+                      <motion.div
+                        onClick={() => toggle(k)}
+                        animate={hecho ? { scale: [1, 1.25, 1], backgroundColor: '#6366f1' } : { scale: 1, backgroundColor: '#ffffff' }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${hecho ? 'border-primary' : 'border-slate-300'}`}>
+                        <AnimatePresence>
+                          {hecho && (
+                            <motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }}
+                              className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>
+                              check
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className={`text-xs font-bold ${hecho ? 'line-through text-slate-400' : 'text-primary'}`}>
+                            {typeof d.dia === 'number' ? `Día ${d.dia}` : d.dia}
+                          </p>
+                          {d.horas && <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{d.horas}</span>}
+                        </div>
+                        <p className={`text-sm mt-0.5 leading-snug ${hecho ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                          {d.tarea}
+                        </p>
                       </div>
-                      <p className={`text-sm mt-0.5 leading-snug ${checks[k] ? 'line-through text-slate-400' : ''}`}>{d.tarea}</p>
-                    </div>
-                  </label>
-                )
-              })}
+                    </motion.label>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-// ── Vista FAQ ─────────────────────────────────────────────────────────────────
+// ── Vista FAQ (Acordeón Framer Motion + buscador) ─────────────────────────────
 const CAT_COLOR = {
   Inscripción: 'bg-blue-100 text-blue-700',
   Pruebas:     'bg-violet-100 text-violet-700',
@@ -549,43 +601,87 @@ const CAT_COLOR = {
 
 function FaqView({ items }) {
   const [abierta, setAbierta] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
+
   if (!items?.length) return <div className="p-6 text-sm text-slate-400">Sin preguntas disponibles.</div>
+
+  const filtrados = busqueda.trim()
+    ? items.filter(it =>
+        it.pregunta.toLowerCase().includes(busqueda.toLowerCase()) ||
+        it.respuesta?.toLowerCase().includes(busqueda.toLowerCase()))
+    : items
+
   return (
-    <div className="p-4 overflow-y-auto h-full space-y-2">
-      <p className="text-xs text-slate-400 font-semibold mb-3">
-        {items.length} preguntas frecuentes · toca para ver la respuesta
-      </p>
-      {items.map((item, i) => {
-        const open = abierta === i
-        const catCls = CAT_COLOR[item.categoria] || 'bg-slate-100 text-slate-600'
-        return (
-          <div key={i} className={`border rounded-xl overflow-hidden transition-all ${open ? 'border-primary/30 bg-primary/5' : 'border-slate-200 bg-white'}`}>
-            <button onClick={() => setAbierta(open ? null : i)}
-              className="w-full flex items-start gap-3 px-4 py-3 text-left">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 font-extrabold text-xs
-                ${open ? 'bg-primary text-on-primary' : 'bg-slate-100 text-slate-500'}`}>
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold leading-snug ${open ? 'text-primary' : ''}`}>{item.pregunta}</p>
-                {item.categoria && (
-                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${catCls}`}>
-                    {item.categoria}
-                  </span>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Buscador */}
+      <div className="px-4 pt-4 pb-3 flex-shrink-0">
+        <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2">
+          <Search size={14} className="text-slate-400 flex-shrink-0" />
+          <input value={busqueda} onChange={e => { setBusqueda(e.target.value); setAbierta(null) }}
+            placeholder={`Buscar entre ${items.length} preguntas…`}
+            className="flex-1 bg-transparent text-sm outline-none placeholder-slate-400" />
+          {busqueda && <button onClick={() => setBusqueda('')} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>}
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1.5 ml-1">
+          {filtrados.length} {filtrados.length === 1 ? 'resultado' : 'resultados'}
+        </p>
+      </div>
+
+      {/* Lista acordeón */}
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+        <AnimatePresence>
+          {filtrados.length === 0 && (
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="text-center text-slate-400 text-sm py-8">
+              Sin resultados para "{busqueda}"
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        {filtrados.map((item, i) => {
+          const open   = abierta === i
+          const catCls = CAT_COLOR[item.categoria] || 'bg-slate-100 text-slate-600'
+          return (
+            <motion.div key={i} layout
+              className={`border rounded-xl overflow-hidden ${open ? 'border-primary/40' : 'border-slate-200 bg-white'}`}>
+              <button onClick={() => setAbierta(open ? null : i)}
+                className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${open ? 'bg-primary/5' : 'hover:bg-slate-50'}`}>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 font-extrabold text-xs transition-colors
+                  ${open ? 'bg-primary text-on-primary' : 'bg-slate-100 text-slate-500'}`}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold leading-snug ${open ? 'text-primary' : 'text-slate-800'}`}>{item.pregunta}</p>
+                  {item.categoria && (
+                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${catCls}`}>
+                      {item.categoria}
+                    </span>
+                  )}
+                </div>
+                <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.25 }}
+                  className={`material-symbols-outlined text-base flex-shrink-0 mt-0.5 ${open ? 'text-primary' : 'text-slate-300'}`}>
+                  expand_more
+                </motion.span>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {open && (
+                  <motion.div key="body"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}>
+                    <div className="px-4 pb-4 pt-2 border-t border-primary/10">
+                      <p className="text-sm leading-relaxed text-slate-700">{item.respuesta}</p>
+                    </div>
+                  </motion.div>
                 )}
-              </div>
-              <span className={`material-symbols-outlined text-base flex-shrink-0 mt-0.5 transition-transform ${open ? 'rotate-180 text-primary' : 'text-slate-300'}`}>
-                expand_more
-              </span>
-            </button>
-            {open && (
-              <div className="px-4 pb-4 pt-1 border-t border-primary/10">
-                <p className="text-sm leading-relaxed text-slate-700">{item.respuesta}</p>
-              </div>
-            )}
-          </div>
-        )
-      })}
+              </AnimatePresence>
+            </motion.div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -836,7 +932,69 @@ function GuiaView({ datos }) {
 }
 
 // ── Vista Audio Overview ──────────────────────────────────────────────────────
+const SPEEDS = [1, 1.25, 1.5, 2]
+
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) return '0:00'
+  const m = Math.floor(s / 60)
+  const ss = Math.floor(s % 60).toString().padStart(2, '0')
+  return `${m}:${ss}`
+}
+
 function AudioView({ audioUrl, generando }) {
+  const audioRef  = useRef(null)
+  const [playing,     setPlaying]     = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration,    setDuration]    = useState(0)
+  const [speedIdx,    setSpeedIdx]    = useState(0)
+  const [loaded,      setLoaded]      = useState(false)
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    const onTime = () => setCurrentTime(el.currentTime)
+    const onMeta = () => { setDuration(el.duration); setLoaded(true) }
+    const onEnd  = () => setPlaying(false)
+    el.addEventListener('timeupdate', onTime)
+    el.addEventListener('loadedmetadata', onMeta)
+    el.addEventListener('ended', onEnd)
+    return () => {
+      el.removeEventListener('timeupdate', onTime)
+      el.removeEventListener('loadedmetadata', onMeta)
+      el.removeEventListener('ended', onEnd)
+    }
+  }, [audioUrl])
+
+  const togglePlay = () => {
+    const el = audioRef.current
+    if (!el) return
+    if (playing) { el.pause(); setPlaying(false) }
+    else         { el.play();  setPlaying(true)  }
+  }
+
+  const restart = () => {
+    const el = audioRef.current
+    if (!el) return
+    el.currentTime = 0
+    setCurrentTime(0)
+  }
+
+  const seek = (e) => {
+    const el = audioRef.current
+    if (!el || !duration) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    el.currentTime = pct * duration
+  }
+
+  const cycleSpeed = () => {
+    const next = (speedIdx + 1) % SPEEDS.length
+    setSpeedIdx(next)
+    if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next]
+  }
+
+  const pct = duration > 0 ? (currentTime / duration) * 100 : 0
+
   if (generando) return (
     <div className="flex flex-col items-center justify-center h-full gap-5 p-6 text-center">
       <div className="relative w-20 h-20">
@@ -866,19 +1024,94 @@ function AudioView({ audioUrl, generando }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
-      <div className="w-24 h-24 bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl flex items-center justify-center shadow-xl">
+      {/* Hidden native audio element */}
+      <audio ref={audioRef} src={audioUrl} preload="metadata" />
+
+      {/* Artwork pulsante */}
+      <motion.div
+        animate={playing ? { scale: [1, 1.04, 1] } : { scale: 1 }}
+        transition={playing ? { repeat: Infinity, duration: 2, ease: 'easeInOut' } : {}}
+        className="w-28 h-28 bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl flex items-center justify-center shadow-2xl"
+      >
         <span className="material-symbols-outlined text-white text-5xl" style={{ fontVariationSettings: "'FILL' 1" }}>headphones</span>
-      </div>
+      </motion.div>
+
+      {/* Títulos */}
       <div className="text-center">
-        <p className="font-extrabold text-xl">Audio Overview</p>
+        <p className="font-extrabold text-xl text-slate-800">Audio Overview</p>
         <p className="text-sm text-slate-500 mt-1">Podcast generado por IA · Valentina &amp; Andrés</p>
       </div>
-      <audio controls autoPlay className="w-full max-w-md rounded-xl" src={audioUrl}>
-        Tu navegador no soporta audio HTML5.
-      </audio>
-      <a href={audioUrl} download="audio-overview.mp3"
-        className="flex items-center gap-2 text-sm font-bold text-primary hover:underline">
-        <span className="material-symbols-outlined text-sm">download</span>Descargar MP3
+
+      {/* Player card */}
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-100 p-5 flex flex-col gap-4">
+        {/* Progress bar */}
+        <div className="flex flex-col gap-1.5">
+          <div
+            className="h-2 bg-slate-100 rounded-full cursor-pointer relative overflow-hidden"
+            onClick={seek}
+          >
+            <motion.div
+              className="absolute left-0 top-0 h-full bg-primary rounded-full"
+              animate={{ width: `${pct}%` }}
+              transition={{ type: 'tween', duration: 0.1 }}
+            />
+          </div>
+          <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+            <span>{fmtTime(currentTime)}</span>
+            <span>{loaded ? fmtTime(duration) : '--:--'}</span>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-between">
+          {/* Restart */}
+          <motion.button
+            whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+            onClick={restart}
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-colors"
+            title="Reiniciar"
+          >
+            <SkipBack size={16} />
+          </motion.button>
+
+          {/* Play / Pause */}
+          <motion.button
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+            onClick={togglePlay}
+            className="w-14 h-14 rounded-full bg-slate-900 hover:bg-slate-700 flex items-center justify-center text-white shadow-lg transition-colors"
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={playing ? 'pause' : 'play'}
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1,   opacity: 1 }}
+                exit={{    scale: 0.6, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {playing ? <Pause size={22} /> : <Play size={22} className="ml-0.5" />}
+              </motion.span>
+            </AnimatePresence>
+          </motion.button>
+
+          {/* Speed */}
+          <motion.button
+            whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+            onClick={cycleSpeed}
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 text-[11px] font-extrabold transition-colors"
+            title="Velocidad"
+          >
+            {SPEEDS[speedIdx]}x
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Descargar */}
+      <a
+        href={audioUrl}
+        download="audio-overview.mp3"
+        className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-primary transition-colors"
+      >
+        <Download size={14} /> Descargar MP3
       </a>
     </div>
   )
