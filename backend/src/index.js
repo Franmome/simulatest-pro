@@ -20,7 +20,7 @@ app.use(cors({
     'https://simulatest-pro-production.up.railway.app'
   ]
 }))
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 
 // ─── Rutas ────────────────────────────────────────────────
 app.use('/api/auth',        authRoutes)

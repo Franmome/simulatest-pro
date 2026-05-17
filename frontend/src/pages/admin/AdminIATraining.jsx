@@ -694,7 +694,7 @@ function ProcuraduriaOpecPanel() {
                       {total === 0 && !q && !nivel ? 'La base de datos está vacía' : 'Sin resultados'}
                     </p>
                     <p className="text-xs text-on-surface-variant mt-1">
-                      {total === 0 && !q && !nivel ? 'Agrega cargos de la convocatoria de Procuraduría.' : 'Prueba con otros términos de búsqueda.'}
+                      {total === 0 && !q && !nivel ? 'Importa el JSON de esta convocatoria para cargar los cargos.' : 'Prueba con otros términos de búsqueda.'}
                     </p>
                   </td>
                 </tr>
@@ -1007,18 +1007,18 @@ export default function AdminIATraining() {
         {/* ── Panel principal ── */}
         <div className="lg:col-span-3 space-y-5">
 
-        {/* ── OPECs Procuraduría ── */}
+        {/* ── Datos de Convocatorias ── */}
         {vistaActiva === 'procuraduria' && (
           <>
             <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl">
               <div className="flex items-center gap-2 mb-2">
                 <span className="material-symbols-outlined text-emerald-600 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>database</span>
-                <h2 className="font-extrabold text-lg text-emerald-700">OPECs Procuraduría</h2>
+                <h2 className="font-extrabold text-lg text-emerald-700">Datos de Convocatorias</h2>
               </div>
               <p className="text-sm text-on-surface-variant leading-relaxed">
-                Base de datos maestra de cargos de la convocatoria de la Procuraduría General de la Nación.
-                Estos cargos son usados por el <strong>Análisis de Perfil</strong> cuando el usuario selecciona el modo Procuraduría.
-                Agrega, edita o desactiva cargos para mantener la base actualizada.
+                Base de datos maestra de cargos OPEC por convocatoria. Selecciona una convocatoria para ver,
+                importar o editar sus cargos. El <strong>Análisis de Perfil</strong> usa estos datos para
+                recomendar los cargos más compatibles con la hoja de vida del usuario.
               </p>
             </div>
             <ProcuraduriaOpecPanel />
