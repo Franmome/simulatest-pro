@@ -899,6 +899,57 @@ export default function CuadernoIA() {
     })
   }
 
+  // ── Helpers para notas de artefactos ──
+  const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen'])
+
+  function getArtefactoResumen(nota) {
+    try {
+      if (nota.fuente === 'resumen') return 'Resumen ejecutivo generado por IA'
+      const d = JSON.parse(nota.contenido)
+      if (nota.fuente === 'quiz')       return `${Array.isArray(d) ? d.length : '?'} preguntas de práctica`
+      if (nota.fuente === 'flashcards') return `${Array.isArray(d) ? d.length : '?'} tarjetas de memoria`
+      if (nota.fuente === 'plan')       return `${Array.isArray(d) ? d.length : '?'} semanas de estudio`
+      if (nota.fuente === 'faq')        return `${Array.isArray(d) ? d.length : '?'} preguntas frecuentes`
+      if (nota.fuente === 'cronologia') return `${Array.isArray(d) ? d.length : '?'} hitos del proceso`
+    } catch {}
+    return 'Artefacto generado por IA'
+  }
+
+  function abrirArtefactoDesdeNota(nota) {
+    try {
+      const datos = nota.fuente === 'resumen' ? nota.contenido : JSON.parse(nota.contenido)
+      setVistaData(datos)
+      setVista(nota.fuente)
+      setTabMobile('chat')
+    } catch {}
+  }
+
+  function descargarArtefacto(nota) {
+    let texto = nota.contenido
+    if (nota.fuente !== 'resumen') {
+      try {
+        const d = JSON.parse(nota.contenido)
+        if (nota.fuente === 'quiz' && Array.isArray(d))
+          texto = d.map((q, i) => `Pregunta ${q.n || i+1}: ${q.pregunta}\nA) ${q.opciones?.A}\nB) ${q.opciones?.B}\nC) ${q.opciones?.C}\nD) ${q.opciones?.D}\nRespuesta: ${q.correcta}\nJustificación: ${q.justificacion}`).join('\n\n')
+        else if (nota.fuente === 'flashcards' && Array.isArray(d))
+          texto = d.map((c, i) => `[${i+1}] ${c.frente}\n→ ${c.reverso}`).join('\n\n')
+        else if (nota.fuente === 'faq' && Array.isArray(d))
+          texto = d.map((f, i) => `${i+1}. ${f.pregunta}\n${f.respuesta}`).join('\n\n')
+        else if (nota.fuente === 'cronologia' && Array.isArray(d))
+          texto = d.map(h => `${h.orden}. ${h.hito}\n${h.descripcion}${h.norma ? '\nNorma: ' + h.norma : ''}`).join('\n\n')
+        else if (nota.fuente === 'plan' && Array.isArray(d))
+          texto = d.map(s => `SEMANA ${s.semana}: ${s.titulo}\n${s.dias?.map(dd => `  ${dd.dia}: ${dd.tarea} (${dd.horas})`).join('\n')}`).join('\n\n')
+        else
+          texto = JSON.stringify(d, null, 2)
+      } catch {}
+    }
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' })),
+      download: `praxia-${nota.fuente}.txt`,
+    })
+    a.click(); URL.revokeObjectURL(a.href)
+  }
+
   const agotado = tokensUsados >= tokensLimite
   const fuentesAdmin = fuentes.filter(f => f.origen === 'admin')
   const fuentesUser  = fuentes.filter(f => f.origen === 'user')
@@ -1197,10 +1248,12 @@ export default function CuadernoIA() {
               </div>
             )}
             {notas.map(nota => {
-              const meta = FUENTE_META[nota.fuente] || FUENTE_META.manual
-              const exp  = !!expandidas[nota.id]
+              const meta       = FUENTE_META[nota.fuente] || FUENTE_META.manual
+              const esArtef    = ARTIFACT_TIPOS.has(nota.fuente)
+              const exp        = !!expandidas[nota.id]
               return (
                 <div key={nota.id} className={`bg-white border rounded-xl overflow-hidden transition-all ${nota.fijada ? 'border-primary/30' : 'border-slate-200'}`}>
+                  {/* ── Cabecera ── */}
                   <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-100">
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meta.cls}`}>
                       <span className="material-symbols-outlined text-[10px]">{meta.icon}</span>
@@ -1216,23 +1269,45 @@ export default function CuadernoIA() {
                       <span className="material-symbols-outlined text-xs"
                             style={{ fontVariationSettings: nota.fijada ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                     </button>
-                    <button onClick={() => setInput(nota.contenido.slice(0, 300))} title="Usar en chat"
-                      className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-primary hover:bg-slate-100 transition-colors">
-                      <span className="material-symbols-outlined text-xs">reply</span>
-                    </button>
-                    <button onClick={() => setExpandidas(p => ({ ...p, [nota.id]: !p[nota.id] }))}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:bg-slate-100 transition-colors">
-                      <span className="material-symbols-outlined text-xs">{exp ? 'expand_less' : 'expand_more'}</span>
-                    </button>
+                    {!esArtef && (
+                      <>
+                        <button onClick={() => setInput(nota.contenido.slice(0, 300))} title="Usar en chat"
+                          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-primary hover:bg-slate-100 transition-colors">
+                          <span className="material-symbols-outlined text-xs">reply</span>
+                        </button>
+                        <button onClick={() => setExpandidas(p => ({ ...p, [nota.id]: !p[nota.id] }))}
+                          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:bg-slate-100 transition-colors">
+                          <span className="material-symbols-outlined text-xs">{exp ? 'expand_less' : 'expand_more'}</span>
+                        </button>
+                      </>
+                    )}
                     <button onClick={() => borrarNota(nota.id)}
                       className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-error hover:bg-error/10 transition-colors">
                       <span className="material-symbols-outlined text-xs">delete</span>
                     </button>
                   </div>
-                  <div className={`px-3 text-xs leading-relaxed whitespace-pre-wrap text-slate-700 transition-all overflow-hidden
-                    ${exp ? 'py-3 max-h-96' : 'py-2 max-h-14 line-clamp-3'}`}>
-                    {nota.contenido}
-                  </div>
+
+                  {/* ── Cuerpo ── */}
+                  {esArtef ? (
+                    <div className="px-3 py-3 space-y-2">
+                      <p className="text-[11px] text-slate-500">{getArtefactoResumen(nota)}</p>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => abrirArtefactoDesdeNota(nota)}
+                          className="flex-1 flex items-center justify-center gap-1 bg-primary/10 text-primary font-bold text-[11px] py-2 rounded-lg hover:bg-primary/20 transition-colors">
+                          <span className="material-symbols-outlined text-xs">open_in_new</span>Abrir
+                        </button>
+                        <button onClick={() => descargarArtefacto(nota)} title="Descargar como .txt"
+                          className="flex items-center gap-1 bg-slate-100 text-slate-600 font-bold text-[11px] px-3 py-2 rounded-lg hover:bg-slate-200 transition-colors">
+                          <span className="material-symbols-outlined text-xs">download</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`px-3 text-xs leading-relaxed whitespace-pre-wrap text-slate-700 transition-all overflow-hidden
+                      ${exp ? 'py-3 max-h-96' : 'py-2 max-h-14 line-clamp-3'}`}>
+                      {nota.contenido}
+                    </div>
+                  )}
                 </div>
               )
             })}
