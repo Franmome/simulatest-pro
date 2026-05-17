@@ -1198,7 +1198,7 @@ export default function CuadernoIA() {
   const [nuevaNota,   setNuevaNota]   = useState('')
   const [addingNota,  setAddingNota]  = useState(false)
   const [expandidas,  setExpandidas]  = useState({})
-  const [errorNota,   setErrorNota]   = useState('')
+  const [errorNota,   setErrorNota]   = useState(null)   // null | { msg, notaId }
 
   useEffect(() => { cargarTodo() }, [packageId])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes])
@@ -1419,11 +1419,10 @@ export default function CuadernoIA() {
       setVistaData(datos)
       setVista(nota.fuente)
       setTabMobile('chat')
-      setErrorNota('')
+      setErrorNota(null)
     } catch (e) {
-      console.error('[abrirArtefacto]', e)
-      setErrorNota('Este artefacto tiene un formato inválido. Genera uno nuevo con el botón correspondiente.')
-      setTimeout(() => setErrorNota(''), 5000)
+      console.warn('[abrirArtefacto] JSON inválido en nota guardada:', e.message)
+      setErrorNota({ msg: 'Este artefacto quedó dañado. Elimínalo y genera uno nuevo.', notaId: nota.id })
     }
   }
 
@@ -1743,15 +1742,29 @@ export default function CuadernoIA() {
             )}
           </div>
 
-          {/* Error artefacto */}
+          {/* Error artefacto dañado */}
           <AnimatePresence>
             {errorNota && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                className="px-3 py-2 bg-red-50 border-b border-red-100 flex items-start gap-2 text-[11px] text-red-600"
+                className="px-3 py-2.5 bg-red-50 border-b border-red-100 flex flex-col gap-2"
               >
-                <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
-                <span>{errorNota}</span>
+                <div className="flex items-start gap-2 text-[11px] text-red-700">
+                  <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
+                  <span className="flex-1">{errorNota.msg}</span>
+                  <button onClick={() => setErrorNota(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
+                {errorNota.notaId && (
+                  <button
+                    onClick={() => { borrarNota(errorNota.notaId); setErrorNota(null) }}
+                    className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold py-1.5 rounded-lg transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-xs">delete</span>
+                    Eliminar nota dañada
+                  </button>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

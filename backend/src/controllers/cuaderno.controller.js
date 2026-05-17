@@ -270,10 +270,10 @@ const PROMPTS = {
 Devuelve SOLO el siguiente objeto JSON sin texto extra:
 {"ejes":[{"titulo":"Nombre del eje temático","puntos":["punto 1","punto 2"]}],"glosario":[{"termino":"término","definicion":"definición concisa"}],"criticos":["Punto crítico para el examen 1","..."],"ejecutivo":"Párrafo de resumen ejecutivo de 3-4 oraciones."}`,
 
-  quiz: `Genera exactamente 10 preguntas tipo juicio de situación estilo CNSC/concurso de méritos.
-IMPORTANTE: distribuye las respuestas correctas de forma equilibrada entre A, B, C y D. No repitas la misma letra más de 3 veces. El orden correcto debe ser impredecible (ej: B, D, A, C, A, D, B, C, D, A).
-Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
-[{"n":1,"pregunta":"Enunciado completo de la situación","opciones":{"A":"opción A","B":"opción B","C":"opción C","D":"opción D"},"correcta":"B","justificacion":"Justificación legal o técnica concisa."}]`,
+  quiz: `Genera exactamente 5 preguntas tipo juicio de situación estilo CNSC/concurso de méritos. Enunciados concisos (máx 2 oraciones). Opciones de respuesta cortas (máx 15 palabras cada una). Justificación breve (máx 1 oración).
+IMPORTANTE: distribuye las respuestas correctas de forma equilibrada entre A, B, C y D (ej: B, D, A, C, B).
+Devuelve el siguiente objeto JSON con el array dentro de la clave "preguntas":
+{"preguntas":[{"n":1,"pregunta":"Enunciado de la situación","opciones":{"A":"opción A","B":"opción B","C":"opción C","D":"opción D"},"correcta":"B","justificacion":"Justificación legal concisa."}]}`,
 
   flashcards: `Genera exactamente 12 flashcards sobre los conceptos clave de este concurso de méritos.
 Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
@@ -327,7 +327,7 @@ export const generarArtefacto = async (req, res) => {
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4.1-mini',
-      max_tokens: 3000,
+      max_tokens: 4096,
       response_format: { type: 'json_object' },
       messages: [
         {
