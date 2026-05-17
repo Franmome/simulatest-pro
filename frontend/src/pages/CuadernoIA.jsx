@@ -1364,7 +1364,7 @@ export default function CuadernoIA() {
   }
 
   // ── Helpers para notas de artefactos ──
-  const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen','mapa_mental','tabla','guia'])
+  const ARTIFACT_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia','resumen','mapa_mental','tabla','guia','audio'])
 
   function normalizarDatos(tipo, datos) {
     const ARRAY_TIPOS = new Set(['quiz','flashcards','plan','faq','cronologia'])
@@ -1390,7 +1390,7 @@ export default function CuadernoIA() {
 
   function getArtefactoResumen(nota) {
     try {
-      if (nota.fuente === 'audio')       return 'Podcast IA generado'
+      if (nota.fuente === 'audio')       return 'Podcast · Valentina & Andrés'
       const d = limpiarYParsear(nota.contenido)
       const nd = normalizarDatos(nota.fuente, d)
       if (nota.fuente === 'resumen')     return `${nd?.ejes?.length || '?'} ejes temáticos · glosario · puntos críticos`
@@ -1479,15 +1479,22 @@ export default function CuadernoIA() {
       </div>
     )
 
-    if (vista === 'resumen'    && vistaData)                return <ResumenView    datos={vistaData} />
-    if (vista === 'quiz'       && Array.isArray(vistaData)) return <QuizView       preguntas={vistaData} />
-    if (vista === 'flashcards' && Array.isArray(vistaData)) return <FlashcardsView cards={vistaData} />
-    if (vista === 'plan'       && Array.isArray(vistaData)) return <PlanView       semanas={vistaData} packageId={packageId} />
-    if (vista === 'faq'        && Array.isArray(vistaData)) return <FaqView        items={vistaData} />
-    if (vista === 'cronologia' && Array.isArray(vistaData)) return <CronologiaView hitos={vistaData} />
-    if (vista === 'mapa_mental'&& vistaData)                return <MapaMentalView datos={vistaData} />
-    if (vista === 'tabla'      && vistaData)                return <TablaView      datos={vistaData} />
-    if (vista === 'guia'       && vistaData)                return <GuiaView       datos={vistaData} />
+    // Función inline para asegurar array aunque vistaData sea un objeto wrapper
+    const toArr = (tipo, d) => {
+      if (!d) return []
+      const n = normalizarDatos(tipo, d)
+      return Array.isArray(n) ? n : []
+    }
+
+    if (vista === 'resumen'    && vistaData)  return <ResumenView    datos={vistaData} />
+    if (vista === 'quiz'       && vistaData)  return <QuizView       preguntas={toArr('quiz',       vistaData)} />
+    if (vista === 'flashcards' && vistaData)  return <FlashcardsView cards={toArr('flashcards',    vistaData)} />
+    if (vista === 'plan'       && vistaData)  return <PlanView       semanas={toArr('plan',         vistaData)} packageId={packageId} />
+    if (vista === 'faq'        && vistaData)  return <FaqView        items={toArr('faq',            vistaData)} />
+    if (vista === 'cronologia' && vistaData)  return <CronologiaView hitos={toArr('cronologia',     vistaData)} />
+    if (vista === 'mapa_mental'&& vistaData)  return <MapaMentalView datos={vistaData} />
+    if (vista === 'tabla'      && vistaData)  return <TablaView      datos={vistaData} />
+    if (vista === 'guia'       && vistaData)  return <GuiaView       datos={vistaData} />
     if (vista === 'audio') return <AudioView audioUrl={audioUrl} generando={generando === 'audio'} />
 
     // Chat (default)
