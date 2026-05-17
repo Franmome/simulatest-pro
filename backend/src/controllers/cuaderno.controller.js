@@ -59,7 +59,7 @@ async function extraerContenido(buffer, mimetype, originalname) {
       })
       return completion.choices[0].message.content?.trim() || null
     } finally {
-      if (fileId) await openai.files.del(fileId).catch(() => {})
+      if (fileId) await openai.files.delete(fileId).catch(() => {})
     }
   }
 
