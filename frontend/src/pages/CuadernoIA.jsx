@@ -937,7 +937,10 @@ export default function CuadernoIA() {
         const h = await hdrs()
         const res  = await fetch(`${BASE}/api/cuaderno/${packageId}/audio-overview`, { method: 'POST', headers: h })
         const data = await res.json()
-        if (res.ok) setAudioUrl(data.audioUrl)
+        if (res.ok) {
+          setAudioUrl(data.audioUrl)
+          if (data.nota) setNotas(prev => [data.nota, ...prev])
+        }
       } catch {}
       finally { setGenerando(null) }
       return
@@ -1050,10 +1053,10 @@ export default function CuadernoIA() {
 
   function getArtefactoResumen(nota) {
     try {
-      if (nota.fuente === 'resumen')     return 'Resumen ejecutivo generado por IA'
       if (nota.fuente === 'audio')       return 'Podcast IA generado'
-      const d = nota.fuente !== 'resumen' ? JSON.parse(nota.contenido) : nota.contenido
+      const d = JSON.parse(nota.contenido)
       const nd = normalizarDatos(nota.fuente, d)
+      if (nota.fuente === 'resumen')     return `${nd?.ejes?.length || '?'} ejes temáticos · glosario · puntos críticos`
       if (nota.fuente === 'quiz')        return `${Array.isArray(nd) ? nd.length : '?'} preguntas de práctica`
       if (nota.fuente === 'flashcards')  return `${Array.isArray(nd) ? nd.length : '?'} tarjetas de memoria`
       if (nota.fuente === 'plan')        return `${Array.isArray(nd) ? nd.length : '?'} semanas de estudio`
@@ -1068,7 +1071,13 @@ export default function CuadernoIA() {
 
   function abrirArtefactoDesdeNota(nota) {
     try {
-      let datos = nota.fuente === 'resumen' ? nota.contenido : JSON.parse(nota.contenido)
+      if (nota.fuente === 'audio') {
+        setAudioUrl(nota.contenido)
+        setVista('audio')
+        setTabMobile('chat')
+        return
+      }
+      let datos = JSON.parse(nota.contenido)
       datos = normalizarDatos(nota.fuente, datos)
       setVistaData(datos)
       setVista(nota.fuente)
@@ -1079,6 +1088,10 @@ export default function CuadernoIA() {
   }
 
   function descargarArtefacto(nota) {
+    if (nota.fuente === 'audio') {
+      window.open(nota.contenido, '_blank')
+      return
+    }
     let texto = nota.contenido
     if (nota.fuente !== 'resumen') {
       try {

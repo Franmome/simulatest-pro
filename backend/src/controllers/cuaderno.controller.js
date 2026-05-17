@@ -344,15 +344,13 @@ export const generarArtefacto = async (req, res) => {
     return res.status(502).json({ error: 'Error al generar. Intenta de nuevo.' })
   }
 
-  // resumen: texto plano. Resto: parsear JSON (objeto o array)
+  // Todos los tipos devuelven JSON — parsear siempre
   let datos = raw
   let contenidoNota = raw
-  if (tipo !== 'resumen') {
-    const parsed = parseJsonBlock(raw)
-    if (parsed) {
-      datos = parsed
-      contenidoNota = JSON.stringify(parsed)
-    }
+  const parsed = parseJsonBlock(raw)
+  if (parsed) {
+    datos = parsed
+    contenidoNota = JSON.stringify(parsed)
   }
 
   const { data: nota } = await supabase
@@ -566,5 +564,11 @@ Devuelve SOLO el guion, sin introducción ni cierre:`,
 
   const { data: { publicUrl } } = supabase.storage.from('cuaderno-audio').getPublicUrl(filename)
 
-  return res.json({ audioUrl: publicUrl, segmentos: segmentos.length })
+  // Guardar nota con la URL del audio para que aparezca en el panel de notas
+  const { data: nota } = await supabase
+    .from('user_notebook_entries')
+    .insert({ user_id: userId, package_id: packageId, contenido: publicUrl, fuente: 'audio' })
+    .select('id, contenido, fuente, fijada, created_at').single()
+
+  return res.json({ audioUrl: publicUrl, segmentos: segmentos.length, nota })
 }
