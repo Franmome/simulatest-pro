@@ -276,20 +276,20 @@ Devuelve el siguiente objeto JSON con el array dentro de la clave "preguntas":
 {"preguntas":[{"n":1,"pregunta":"Enunciado de la situación","opciones":{"A":"opción A","B":"opción B","C":"opción C","D":"opción D"},"correcta":"B","justificacion":"Justificación legal concisa."}]}`,
 
   flashcards: `Genera exactamente 12 flashcards sobre los conceptos clave de este concurso de méritos.
-Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
-[{"frente":"Concepto o pregunta corta","reverso":"Definición o respuesta completa"}]`,
+Devuelve el siguiente objeto JSON con el array dentro de la clave "tarjetas":
+{"tarjetas":[{"frente":"Concepto o pregunta corta","reverso":"Definición o respuesta completa"}]}`,
 
   plan: `Genera un plan de estudio de 4 semanas para preparar este concurso de méritos.
-Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
-[{"semana":1,"titulo":"Nombre de la semana","objetivo":"Objetivo principal de la semana","dias":[{"dia":"Lunes","tarea":"Descripción concreta de la actividad","horas":"2h"}]}]`,
+Devuelve el siguiente objeto JSON con el array dentro de la clave "semanas":
+{"semanas":[{"semana":1,"titulo":"Nombre de la semana","objetivo":"Objetivo principal de la semana","dias":[{"dia":"Lunes","tarea":"Descripción concreta de la actividad","horas":"2h"}]}]}`,
 
   faq: `Genera exactamente 12 preguntas frecuentes que hacen los candidatos sobre este concurso de méritos.
-Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
-[{"pregunta":"¿Pregunta concreta del candidato?","respuesta":"Respuesta clara y completa basada en la norma o el material.","categoria":"Inscripción|Pruebas|Empleo|Normativa|Proceso"}]`,
+Devuelve el siguiente objeto JSON con el array dentro de la clave "preguntas":
+{"preguntas":[{"pregunta":"¿Pregunta concreta del candidato?","respuesta":"Respuesta clara y completa basada en la norma o el material.","categoria":"Inscripción|Pruebas|Empleo|Normativa|Proceso"}]}`,
 
   cronologia: `Genera una cronología con los hitos más importantes del proceso de selección de este concurso de méritos (etapas, plazos, actuaciones legales).
-Devuelve SOLO el siguiente array JSON (sin envoltura, sin texto extra):
-[{"orden":1,"hito":"Nombre del hito","descripcion":"Descripción detallada de qué ocurre en esta etapa","norma":"Artículo o norma aplicable si existe","tipo":"convocatoria|inscripcion|prueba|lista|empleo"}]`,
+Devuelve el siguiente objeto JSON con el array dentro de la clave "hitos":
+{"hitos":[{"orden":1,"hito":"Nombre del hito","descripcion":"Descripción detallada de qué ocurre en esta etapa","norma":"Artículo o norma aplicable si existe","tipo":"convocatoria|inscripcion|prueba|lista|empleo"}]}`,
 
   mapa_mental: `Genera un mapa mental estructurado con los temas y conceptos clave de este concurso de méritos.
 Devuelve SOLO el siguiente objeto JSON sin texto extra:
