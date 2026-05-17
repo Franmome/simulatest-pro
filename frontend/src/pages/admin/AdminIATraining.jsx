@@ -1,6 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../utils/supabase'
 import { useAuth } from '../../context/AuthContext'
+
+const BASE = import.meta.env.VITE_API_URL || ''
+
+async function authHeaders() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` }
+}
 
 // ── Módulos entrenables ───────────────────────────────────────────────────────
 
@@ -263,11 +270,368 @@ function AsignacionCerebros({ records, onCambiar }) {
   )
 }
 
+// ── OPECs Procuraduría Panel ─────────────────────────────────────────────────
+
+const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo']
+
+const OPEC_EMPTY = { cargo: '', nivel: '', grado: '', area: '', vacantes: '', educacion: '', experiencia: '', funciones: '', codigo: '' }
+
+function OpecModal({ opec, onClose, onSaved }) {
+  const [form, setForm] = useState(opec ? { ...opec } : { ...OPEC_EMPTY })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.cargo?.trim()) { setErr('El nombre del cargo es requerido.'); return }
+    setSaving(true); setErr('')
+    try {
+      const headers = await authHeaders()
+      const isEdit = !!opec?.id
+      const url = isEdit ? `${BASE}/api/ia/procuraduria-opecs/${opec.id}` : `${BASE}/api/ia/procuraduria-opecs`
+      const res = await fetch(url, { method: isEdit ? 'PUT' : 'POST', headers, body: JSON.stringify(form) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error guardando')
+      onSaved(data.opec)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>work</span>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-extrabold text-base">{opec?.id ? 'Editar cargo' : 'Agregar cargo OPEC'}</h3>
+            <p className="text-xs text-on-surface-variant">Procuraduría General de la Nación</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
+            <span className="material-symbols-outlined text-slate-500">close</span>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{err}</p>}
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Cargo *</label>
+            <input value={form.cargo} onChange={e => set('cargo', e.target.value)}
+              placeholder="Ej: Procurador Judicial II"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Nivel</label>
+              <select value={form.nivel} onChange={e => set('nivel', e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 bg-white">
+                <option value="">Seleccionar...</option>
+                {NIVELES.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Grado</label>
+              <input type="number" value={form.grado} onChange={e => set('grado', e.target.value)}
+                placeholder="Ej: 18"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Código</label>
+              <input value={form.codigo} onChange={e => set('codigo', e.target.value)}
+                placeholder="Ej: 030"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Vacantes</label>
+              <input type="number" value={form.vacantes} onChange={e => set('vacantes', e.target.value)}
+                placeholder="1"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Área / Dependencia</label>
+            <input value={form.area} onChange={e => set('area', e.target.value)}
+              placeholder="Ej: Procuraduría Delegada para Asuntos Civiles"
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Educación requerida</label>
+            <textarea value={form.educacion} onChange={e => set('educacion', e.target.value)}
+              rows={2} placeholder="Ej: Título profesional en Derecho, Ciencias Políticas..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Experiencia requerida</label>
+            <textarea value={form.experiencia} onChange={e => set('experiencia', e.target.value)}
+              rows={2} placeholder="Ej: 36 meses de experiencia profesional relacionada..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Funciones principales</label>
+            <textarea value={form.funciones} onChange={e => set('funciones', e.target.value)}
+              rows={3} placeholder="Descripción de las funciones principales del cargo..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {saving ? 'Guardando...' : opec?.id ? 'Guardar cambios' : 'Agregar cargo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProcuraduriaOpecPanel() {
+  const [opecs, setOpecs]       = useState([])
+  const [total, setTotal]       = useState(0)
+  const [stats, setStats]       = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [q, setQ]               = useState('')
+  const [nivel, setNivel]       = useState('')
+  const [page, setPage]         = useState(1)
+  const [modal, setModal]       = useState(null) // null | { opec: null } | { opec: {...} }
+  const [deleting, setDeleting] = useState(null)
+  const searchTimer             = useRef(null)
+  const LIMIT = 50
+
+  const fetchData = useCallback(async (search, niv, pg) => {
+    setLoading(true)
+    try {
+      const headers = await authHeaders()
+      const params = new URLSearchParams({ q: search, nivel: niv, page: pg, limit: LIMIT })
+      const [listRes, statsRes] = await Promise.all([
+        fetch(`${BASE}/api/ia/procuraduria-opecs?${params}`, { headers }),
+        fetch(`${BASE}/api/ia/procuraduria-opecs/stats`, { headers }),
+      ])
+      const listData  = await listRes.json()
+      const statsData = await statsRes.json()
+      setOpecs(listData.opecs || [])
+      setTotal(listData.total || 0)
+      setStats(statsData)
+    } catch (e) {
+      console.error('OPECs fetch:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchData(q, nivel, page) }, [nivel, page]) // eslint-disable-line
+
+  const handleSearchChange = (val) => {
+    setQ(val)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => { setPage(1); fetchData(val, nivel, 1) }, 400)
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('¿Eliminar este cargo? Esta acción no se puede deshacer.')) return
+    setDeleting(id)
+    try {
+      const headers = await authHeaders()
+      await fetch(`${BASE}/api/ia/procuraduria-opecs/${id}`, { method: 'DELETE', headers })
+      fetchData(q, nivel, page)
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const handleToggle = async (opec) => {
+    try {
+      const headers = await authHeaders()
+      await fetch(`${BASE}/api/ia/procuraduria-opecs/${opec.id}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ ...opec, is_active: !opec.is_active }),
+      })
+      fetchData(q, nivel, page)
+    } catch (e) { console.error(e) }
+  }
+
+  const totalPages = Math.ceil(total / LIMIT)
+
+  return (
+    <div className="space-y-5">
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
+            <p className="text-2xl font-extrabold text-emerald-700">{stats.total.toLocaleString()}</p>
+            <p className="text-xs text-emerald-600 font-semibold mt-0.5">Total cargos</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
+            <p className="text-2xl font-extrabold text-blue-700">{stats.activos.toLocaleString()}</p>
+            <p className="text-xs text-blue-600 font-semibold mt-0.5">Activos</p>
+          </div>
+          {Object.entries(stats.porNivel || {}).slice(0, 2).map(([niv, cnt]) => (
+            <div key={niv} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">
+              <p className="text-2xl font-extrabold text-slate-700">{cnt}</p>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">{niv}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="relative flex-1 min-w-0">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+          <input value={q} onChange={e => handleSearchChange(e.target.value)}
+            placeholder="Buscar cargo, área, educación..."
+            className="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 transition-colors" />
+        </div>
+        <select value={nivel} onChange={e => { setNivel(e.target.value); setPage(1) }}
+          className="px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 bg-white shrink-0">
+          <option value="">Todos los niveles</option>
+          {NIVELES.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <button onClick={() => setModal({ opec: null })}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors shrink-0">
+          <span className="material-symbols-outlined text-lg">add</span>
+          Agregar cargo
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Cargo</th>
+                <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Nivel</th>
+                <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Grado</th>
+                <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide hidden md:table-cell">Área</th>
+                <th className="text-center px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Vac.</th>
+                <th className="text-center px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Activo</th>
+                <th className="px-3 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    {[180, 80, 60, 160, 50, 50, 80].map((w, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : opecs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center">
+                    <span className="material-symbols-outlined text-slate-300 text-5xl block mb-3">folder_open</span>
+                    <p className="text-sm font-bold text-on-surface">
+                      {total === 0 && !q && !nivel ? 'La base de datos está vacía' : 'Sin resultados'}
+                    </p>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      {total === 0 && !q && !nivel ? 'Agrega cargos de la convocatoria de Procuraduría.' : 'Prueba con otros términos de búsqueda.'}
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                opecs.map(op => (
+                  <tr key={op.id} className={`hover:bg-slate-50 transition-colors ${!op.is_active ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-on-surface text-sm leading-tight">{op.cargo}</p>
+                      {op.codigo && <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">Código {op.codigo}</p>}
+                    </td>
+                    <td className="px-3 py-3">
+                      {op.nivel ? (
+                        <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{op.nivel}</span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-on-surface-variant font-mono">{op.grado || '—'}</td>
+                    <td className="px-3 py-3 hidden md:table-cell text-xs text-on-surface-variant max-w-[200px] truncate" title={op.area}>{op.area || '—'}</td>
+                    <td className="px-3 py-3 text-center text-sm font-bold text-on-surface">{op.vacantes || 1}</td>
+                    <td className="px-3 py-3 text-center">
+                      <button onClick={() => handleToggle(op)}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${op.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${op.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </button>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => setModal({ opec: op })}
+                          className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors" title="Editar">
+                          <span className="material-symbols-outlined text-slate-500 text-base">edit</span>
+                        </button>
+                        <button onClick={() => handleDelete(op.id)} disabled={deleting === op.id}
+                          className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors" title="Eliminar">
+                          {deleting === op.id
+                            ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                            : <span className="material-symbols-outlined text-red-400 text-base">delete</span>}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+            <p className="text-xs text-on-surface-variant">
+              Mostrando {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, total)} de {total.toLocaleString()} cargos
+            </p>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                <span className="material-symbols-outlined text-sm">chevron_left</span>
+              </button>
+              <span className="w-8 h-8 flex items-center justify-center text-xs font-bold">{page}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                <span className="material-symbols-outlined text-sm">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {modal && (
+        <OpecModal
+          opec={modal.opec}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); fetchData(q, nivel, page) }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function AdminIATraining() {
   const { user } = useAuth()
 
+  const [vistaActiva,    setVistaActiva]    = useState('prompts') // 'prompts' | 'procuraduria'
   const [moduloActivo,   setModuloActivo]   = useState(MODULOS[0])
   const [cerebroEditor,  setCerebroEditor]  = useState('gemini')
   const [records,        setRecords]        = useState({})
@@ -449,10 +813,10 @@ export default function AdminIATraining() {
             {MODULOS.map(mod => {
               const rec       = records[mod.key]
               const modificado = rec && rec.system_prompt !== mod.defaultPrompt
-              const activo    = mod.key === m.key
+              const activo    = vistaActiva === 'prompts' && mod.key === m.key
               return (
                 <button key={mod.key}
-                  onClick={() => { setModuloActivo(mod); setCerebroEditor('gemini') }}
+                  onClick={() => { setVistaActiva('prompts'); setModuloActivo(mod); setCerebroEditor('gemini') }}
                   className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3
                     ${activo
                       ? `${mod.bgLight} ${mod.border} shadow-sm`
@@ -468,6 +832,22 @@ export default function AdminIATraining() {
                 </button>
               )
             })}
+
+            {/* OPECs Procuraduría — módulo de datos */}
+            <button
+              onClick={() => setVistaActiva('procuraduria')}
+              className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all flex items-center gap-3
+                ${vistaActiva === 'procuraduria'
+                  ? 'bg-emerald-50 border-emerald-200 shadow-sm'
+                  : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50'}`}>
+              <span className="text-2xl shrink-0">📋</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-bold ${vistaActiva === 'procuraduria' ? 'text-emerald-700' : 'text-on-surface'}`}>
+                  OPECs Procuraduría
+                </p>
+                <p className="text-[10px] text-on-surface-variant truncate">Base de datos de cargos</p>
+              </div>
+            </button>
           </div>
 
           {/* ── Asignación de cerebros ── */}
@@ -476,8 +856,29 @@ export default function AdminIATraining() {
           )}
         </div>
 
-        {/* ── Editor principal ── */}
+        {/* ── Panel principal ── */}
         <div className="lg:col-span-3 space-y-5">
+
+        {/* ── OPECs Procuraduría ── */}
+        {vistaActiva === 'procuraduria' && (
+          <>
+            <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-emerald-600 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>database</span>
+                <h2 className="font-extrabold text-lg text-emerald-700">OPECs Procuraduría</h2>
+              </div>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                Base de datos maestra de cargos de la convocatoria de la Procuraduría General de la Nación.
+                Estos cargos son usados por el <strong>Análisis de Perfil</strong> cuando el usuario selecciona el modo Procuraduría.
+                Agrega, edita o desactiva cargos para mantener la base actualizada.
+              </p>
+            </div>
+            <ProcuraduriaOpecPanel />
+          </>
+        )}
+
+        {/* ── Editor de prompts ── */}
+        {vistaActiva === 'prompts' && <>
 
           {/* Info del módulo */}
           <div className={`p-5 ${m.bgLight} border ${m.border} rounded-2xl`}>
@@ -650,6 +1051,7 @@ export default function AdminIATraining() {
               Última actualización: {new Date(recActivo.updated_at).toLocaleString('es-CO')}
             </p>
           )}
+        </>}
         </div>
       </div>
 
