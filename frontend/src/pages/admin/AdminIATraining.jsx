@@ -422,7 +422,7 @@ function ConvocatoriaModal({ conv, onClose, onSaved }) {
 
 const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesional', 'Ejecutivo', 'Asesor', 'Directivo', 'Administrativo', 'Operativo']
 
-const OPEC_EMPTY = { denominacion: '', nivel: '', grado: '', area_estudio: '', vacantes: '', estudio_texto: '', exp_texto: '', exp_anios: '', exp_tipo: '', num_convocatoria: '', requiere_posgrado: false, requiere_tarjeta: false, dependencia: '', codigo: '' }
+const OPEC_EMPTY = { denominacion: '', nivel: '', grado: '', area_estudio: '', vacantes: '', estudio_texto: '', exp_texto: '', exp_anios: '', exp_tipo: '', num_convocatoria: '', requiere_posgrado: false, requiere_tarjeta: false, dependencia: '', codigo: '', proceso: '', funciones: [] }
 
 function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
   const [form, setForm] = useState(opec ? { ...opec } : { ...OPEC_EMPTY })
@@ -530,6 +530,13 @@ function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
           </div>
 
           <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">Proceso</label>
+            <input value={form.proceso || ''} onChange={e => set('proceso', e.target.value)}
+              placeholder="Ej: Disciplinario, Preventivo..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
+          </div>
+
+          <div>
             <label className="text-xs font-bold text-on-surface mb-1 block">Educación requerida</label>
             <textarea value={form.estudio_texto} onChange={e => set('estudio_texto', e.target.value)}
               rows={2} placeholder="Ej: Título profesional en Derecho, Ciencias Políticas..."
@@ -557,6 +564,18 @@ function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
                   className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400" />
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-on-surface mb-1 block">
+              Funciones del cargo
+              <span className="font-normal text-on-surface-variant ml-1">(una por línea)</span>
+            </label>
+            <textarea
+              value={Array.isArray(form.funciones) ? form.funciones.join('\n') : (form.funciones || '')}
+              onChange={e => set('funciones', e.target.value ? e.target.value.split('\n') : [])}
+              rows={4} placeholder="Asesorar en la formulación de políticas..."
+              className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-emerald-400 resize-none" />
           </div>
 
           <div className="flex gap-4">
@@ -602,6 +621,8 @@ function ProcuraduriaOpecPanel() {
   const [page,           setPage]           = useState(1)
   const [modal,          setModal]          = useState(null)
   const [deleting,       setDeleting]       = useState(null)
+  const [selected,       setSelected]       = useState(new Set())
+  const [deletingBulk,   setDeletingBulk]   = useState(false)
   const [importing,      setImporting]      = useState(false)
   const [convModal,      setConvModal]      = useState(null)
   const searchTimer                         = useRef(null)
@@ -661,9 +682,42 @@ function ProcuraduriaOpecPanel() {
     try {
       const headers = await authHeaders()
       await fetch(`${BASE}/api/ia/procuraduria-opecs/${id}`, { method: 'DELETE', headers })
+      setSelected(s => { const next = new Set(s); next.delete(id); return next })
       fetchData(q, nivel, page, convId)
     } finally {
       setDeleting(null)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (!selected.size) return
+    if (!window.confirm(`¿Eliminar ${selected.size} cargo${selected.size > 1 ? 's' : ''} seleccionado${selected.size > 1 ? 's' : ''}? Esta acción no se puede deshacer.`)) return
+    setDeletingBulk(true)
+    try {
+      const headers = await authHeaders()
+      const ids = Array.from(selected)
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500)
+        await fetch(`${BASE}/api/ia/procuraduria-opecs`, {
+          method: 'DELETE', headers,
+          body: JSON.stringify({ ids: chunk }),
+        })
+      }
+      setSelected(new Set())
+      fetchData(q, nivel, page, convId)
+    } catch (e) {
+      alert('Error eliminando: ' + e.message)
+    } finally {
+      setDeletingBulk(false)
+    }
+  }
+
+  const allOnPageSelected = opecs.length > 0 && opecs.every(op => selected.has(op.id))
+  const toggleSelectAll = () => {
+    if (allOnPageSelected) {
+      setSelected(s => { const next = new Set(s); opecs.forEach(op => next.delete(op.id)); return next })
+    } else {
+      setSelected(s => { const next = new Set(s); opecs.forEach(op => next.add(op.id)); return next })
     }
   }
 
@@ -785,6 +839,15 @@ function ProcuraduriaOpecPanel() {
           {NIVELES.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
         <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+        {selected.size > 0 && (
+          <button onClick={handleDeleteSelected} disabled={deletingBulk}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
+            {deletingBulk
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <span className="material-symbols-outlined text-lg">delete_sweep</span>}
+            {deletingBulk ? 'Eliminando...' : `Eliminar ${selected.size}`}
+          </button>
+        )}
         <button onClick={() => importRef.current?.click()} disabled={importing || !convId}
           className="flex items-center gap-2 px-4 py-2.5 border-2 border-slate-200 hover:border-slate-300 bg-white text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
           {importing
@@ -805,6 +868,10 @@ function ProcuraduriaOpecPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-4 py-3 w-8">
+                  <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded accent-emerald-600 cursor-pointer" />
+                </th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Cargo</th>
                 <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Nivel</th>
                 <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Grado</th>
@@ -818,7 +885,7 @@ function ProcuraduriaOpecPanel() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    {[180, 80, 60, 160, 50, 50, 80].map((w, j) => (
+                    {[32, 180, 80, 60, 160, 50, 50, 80].map((w, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
                       </td>
@@ -827,7 +894,7 @@ function ProcuraduriaOpecPanel() {
                 ))
               ) : opecs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center">
+                  <td colSpan={8} className="py-16 text-center">
                     <span className="material-symbols-outlined text-slate-300 text-5xl block mb-3">folder_open</span>
                     <p className="text-sm font-bold text-on-surface">
                       {total === 0 && !q && !nivel ? 'La base de datos está vacía' : 'Sin resultados'}
@@ -839,7 +906,12 @@ function ProcuraduriaOpecPanel() {
                 </tr>
               ) : (
                 opecs.map(op => (
-                  <tr key={op.id} className={`hover:bg-slate-50 transition-colors ${!op.is_active ? 'opacity-50' : ''}`}>
+                  <tr key={op.id} className={`hover:bg-slate-50 transition-colors ${selected.has(op.id) ? 'bg-emerald-50/60' : ''} ${!op.is_active ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3 w-8">
+                      <input type="checkbox" checked={selected.has(op.id)}
+                        onChange={() => setSelected(s => { const next = new Set(s); next.has(op.id) ? next.delete(op.id) : next.add(op.id); return next })}
+                        className="w-4 h-4 rounded accent-emerald-600 cursor-pointer" />
+                    </td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-on-surface text-sm leading-tight">{op.denominacion}</p>
                       {op.num_convocatoria && <p className="text-[10px] text-emerald-600 font-mono mt-0.5">Conv. {op.num_convocatoria}</p>}

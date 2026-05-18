@@ -1380,6 +1380,15 @@ export async function deleteProcuraduriaOpec(req, res) {
   return res.json({ ok: true })
 }
 
+export async function deleteOpecsMasivo(req, res) {
+  const { ids } = req.body
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Se requiere un array de ids.' })
+  if (ids.length > 500) return res.status(400).json({ error: 'Máximo 500 ids por operación.' })
+  const { error } = await supabase.from('opec_maestro').delete().in('id', ids.map(Number))
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ ok: true, eliminados: ids.length })
+}
+
 export async function statsProcuraduriaOpecs(req, res) {
   const { convocatoria_id } = req.query
   if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
@@ -1424,10 +1433,12 @@ export async function importOpecMaestro(req, res) {
     exp_tipo:                   r.exp_tipo                   || null,
     estudio_texto:              r.estudio_texto              || null,
     exp_texto:                  r.exp_texto                  || null,
+    proceso:                    r.proceso                    || null,
     conocimientos:              Array.isArray(r.conocimientos)              ? r.conocimientos              : [],
     competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
     competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
     ubicaciones:                Array.isArray(r.ubicaciones)                ? r.ubicaciones                : [],
+    funciones:                  Array.isArray(r.funciones)                  ? r.funciones                  : [],
     is_active:                  r.is_active !== false,
   })).filter(r => r.denominacion)
 
