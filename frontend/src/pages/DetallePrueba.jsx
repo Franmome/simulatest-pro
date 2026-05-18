@@ -1186,6 +1186,95 @@ export default function DetallePrueba() {
             </div>
           </div>
 
+          {/* ── Herramientas mobile (sidebar visible solo en desktop) ── */}
+          <div className="lg:hidden space-y-3">
+
+            {/* Chat Praxia */}
+            <IAPraxia evaluacionNombre={ev?.title} tienePlan={tienePlan && hasAiChat} />
+
+            {/* Cuaderno Praxia */}
+            {tienePlan && packageId && (
+              <button
+                onClick={() => navigate(`/cuaderno/${packageId}`)}
+                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 transition-all duration-300 group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-lg group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  <p className="font-bold text-sm">Cuaderno Praxia</p>
+                  <span className="material-symbols-outlined text-white/40 group-hover:text-white group-hover:translate-x-1 text-base ml-auto transition-all duration-300">arrow_forward</span>
+                </div>
+                <p className="text-white/70 text-xs group-hover:text-white/90 transition-colors duration-300">Chatea con Praxia · Notas · Artefactos</p>
+              </button>
+            )}
+
+            {/* Análisis de perfil (si tiene convocatoria vinculada) */}
+            {tienePlan && convocatoriaId && (
+              <button
+                onClick={() => navigate(`/analisis-perfil?conv=${convocatoriaId}`)}
+                className="w-full bg-primary/5 border-2 border-primary/20 hover:border-primary hover:bg-primary/10 rounded-2xl p-4 text-left transition-all duration-300 group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-primary text-lg group-hover:scale-110 transition-transform duration-300"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>manage_accounts</span>
+                  <p className="font-bold text-sm text-primary">Mi perfil vs cargos</p>
+                  <span className="material-symbols-outlined text-primary/40 group-hover:text-primary group-hover:translate-x-1 text-base ml-auto transition-all duration-300">arrow_forward</span>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  Praxia analiza qué cargos de {convocatoriaNombre || 'la convocatoria'} van con tu perfil
+                </p>
+              </button>
+            )}
+
+            {/* Stats nivel activo */}
+            {nivelActual && (
+              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Nivel activo</p>
+                <p className="font-extrabold text-base mb-3">{nivelActual.name}</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: 'Preguntas', val: pregsNivel || '—', color: 'text-primary', bg: 'bg-primary/10' },
+                    { label: 'Duración',  val: formatTiempo(nivelActual.time_limit), color: 'text-tertiary', bg: 'bg-tertiary/10' },
+                    { label: 'Aprobación', val: `${nivelActual.passing_score ?? 70}%`, color: 'text-secondary', bg: 'bg-secondary/10' },
+                  ].map(s => (
+                    <div key={s.label} className={`rounded-xl p-2.5 ${s.bg}`}>
+                      <p className={`font-extrabold text-lg ${s.color}`}>{s.val}</p>
+                      <p className="text-[10px] text-on-surface-variant font-semibold mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ranking */}
+            {ranking.length > 0 && (
+              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-primary"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+                  Mejores resultados
+                </p>
+                <div className="space-y-2">
+                  {ranking.slice(0, 5).map((r, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center font-extrabold text-[10px] flex-shrink-0 ${
+                        i === 0 ? 'bg-amber-100 text-amber-600' : i === 1 ? 'bg-slate-100 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-surface-container text-on-surface-variant'
+                      }`}>{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{r.users?.full_name?.split(' ')[0] || 'Candidato'}</p>
+                        <p className="text-on-surface-variant truncate text-[10px]">{r.cargo}</p>
+                      </div>
+                      <span className={`font-extrabold flex-shrink-0 ${r.score_pct >= 70 ? 'text-secondary' : 'text-error'}`}>
+                        {r.score_pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+
         </div>
 
         {/* ═══════════════════ SIDEBAR DESKTOP ═══════════════════ */}
