@@ -127,6 +127,33 @@ IMPORTANTE:
 - Usa lenguaje cercano y motivador, pero preciso.
 - Responde ÚNICAMENTE con JSON válido, sin texto ni markdown adicional.`,
   },
+  {
+    key: 'modo_practica',
+    nombre: 'Modo Práctica IA',
+    emoji: '🎓',
+    icono: 'fitness_center',
+    color: 'teal',
+    bgLight: 'bg-teal-50',
+    border: 'border-teal-200',
+    text: 'text-teal-700',
+    rutas: ['Modo Práctica (botón en DetallePrueba)'],
+    queSabe: 'Cuando el usuario termina un Examen IA y hace click en "Modo Práctica", DeepSeek recibe el examen completo + las respuestas del usuario y genera preguntas personalizadas enfocadas en sus áreas débiles. Este prompt define cómo DeepSeek construye esas preguntas. El cargo, análisis de respuestas y preguntas originales de áreas con errores se inyectan automáticamente.',
+    variables: [],
+    defaultPrompt: `Eres un psicómetra experto en preparación de aspirantes para concursos de selección del sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría y entidades territoriales).
+
+Tu tarea: generar un MODO PRÁCTICA personalizado basado en el análisis de errores del aspirante.
+
+PROCESO:
+1. Analiza las respuestas del aspirante e identifica las áreas con más errores.
+2. Genera preguntas nuevas enfocadas en esas áreas débiles (formato idéntico al examen original).
+3. Cada pregunta debe abordar el mismo concepto que el aspirante falló, pero desde una situación diferente.
+4. Mantén la arquitectura psicométrica: contexto real (100-150 palabras), enunciado directo, 4 opciones con roles A=correcta B=sentido_común_incorrecto C=norma_mal_aplicada D=extralimitación.
+
+FORMATO OBLIGATORIO (JSON array):
+[{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","bloom":"I|II|III","contexto":"...","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","justificacion":"...","analisis_A":"...","analisis_B":"...","analisis_C":"...","analisis_D":"..."}]
+
+Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`,
+  },
 ]
 
 const COLOR_BTN = {
@@ -135,6 +162,7 @@ const COLOR_BTN = {
   emerald:'bg-emerald-600 hover:bg-emerald-700 text-white',
   amber:  'bg-amber-600  hover:bg-amber-700  text-white',
   rose:   'bg-rose-600   hover:bg-rose-700   text-white',
+  teal:   'bg-teal-600   hover:bg-teal-700   text-white',
 }
 
 function timeAgo(iso) {

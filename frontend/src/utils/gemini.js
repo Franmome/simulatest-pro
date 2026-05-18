@@ -104,6 +104,19 @@ export async function getAdminUsersInfo(userIds = []) {
   return res.json()
 }
 
+// POST /api/ia/modo-practica — genera práctica personalizada con DeepSeek
+export async function generarModoPractica({ simulacro_id, evaluacion_id }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${BASE}/api/ia/modo-practica`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ simulacro_id, evaluacion_id }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Error generando práctica personalizada.')
+  return json // { simulacro_id, total, areas_cubiertas }
+}
+
 // POST /api/ia/generar (multipart con PDF opcional)
 export async function generarBancoDesdeIA({ pdf, evaluacion_id, nivel_id, cargo, modelo = 'gemini' }) {
   const headers = await authHeaders()

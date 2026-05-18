@@ -3,7 +3,7 @@
 // Las preguntas vienen en formato JSON {area,dificultad,enunciado,A,B,C,correcta,explicacion}.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 import { analizarResultadoSimulacro } from '../utils/gemini'
@@ -520,10 +520,13 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir,
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function SimulacroIA() {
-  const navigate    = useNavigate()
-  const { id }      = useParams()
-  const location    = useLocation()
-  const { user }    = useAuth()
+  const navigate      = useNavigate()
+  const { id }        = useParams()
+  const location      = useLocation()
+  const [searchParams] = useSearchParams()
+  const modoExamen    = searchParams.get('modo') === 'examen'
+  const modoPractica  = searchParams.get('modo') === 'practica'
+  const { user }      = useAuth()
 
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
@@ -570,7 +573,9 @@ export default function SimulacroIA() {
       tppRef.current = tpp
       setTiempoPorPregunta(tpp)
 
-      let lista = shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
+      let lista = modoExamen
+        ? data.preguntas.map((p, i) => parsearPregunta(p, i))   // examen: orden original
+        : shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
       if (preStart?.cantidad > 0 && preStart.cantidad < lista.length) {
         lista = lista.slice(0, preStart.cantidad)
       }
@@ -772,7 +777,9 @@ export default function SimulacroIA() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-bold text-on-surface-variant">{pregActual + 1}/{total}</span>
-              {cargo && <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full truncate max-w-[150px]">{cargo}</span>}
+              {modoExamen && <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">Modo Examen</span>}
+              {modoPractica && <span className="text-[10px] bg-secondary/10 text-secondary font-bold px-2 py-0.5 rounded-full">Modo Práctica</span>}
+              {cargo && <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full truncate max-w-[120px]">{cargo}</span>}
             </div>
             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />

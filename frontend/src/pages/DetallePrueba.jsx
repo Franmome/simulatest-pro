@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationsContext'
 import { useFetch } from '../hooks/useFetch'
 import IAPraxia, { ModelSelector } from '../components/IAPraxia'
-import { generarSimulacroPersonal, verificarOpec } from '../utils/gemini'
+import { generarSimulacroPersonal, verificarOpec, generarModoPractica } from '../utils/gemini'
 
 // ── Constantes visuales ───────────────────────────────────────────────────────
 
@@ -555,6 +555,16 @@ export default function DetallePrueba() {
   const cargoFondoRef      = useRef('')
   const segundoPlanoNotifIdRef = useRef(null)
 
+  // ── Modo Examen IA ──────────────────────────────────────────────────────────
+  const [modalExamenIA,    setModalExamenIA]    = useState(false)
+  const [simsExamen,       setSimsExamen]       = useState([])
+  const [simSelExamen,     setSimSelExamen]     = useState(null)
+  const [loadingSimsEx,    setLoadingSimsEx]    = useState(false)
+
+  // ── Modo Práctica IA ────────────────────────────────────────────────────────
+  const [generandoPractica, setGenerandoPractica] = useState(false)
+  const [errorPractica,     setErrorPractica]     = useState('')
+
   useEffect(() => {
     if (!generandoIA) { setLoadingMsg(''); setLoadingProgress(0); return }
 
@@ -854,6 +864,56 @@ export default function DetallePrueba() {
     navigate('/salas')
   }
 
+  async function abrirModalExamenIA() {
+    if (!user) { navigate('/login'); return }
+    if (!tienePlan) { navigate('/planes'); return }
+    setLoadingSimsEx(true)
+    setModalExamenIA(true)
+    try {
+      const { data } = await supabase
+        .from('user_simulacros')
+        .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, completado, created_at, tiempo_por_pregunta')
+        .eq('evaluacion_id', parseInt(id))
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(15)
+      const lista = (data || []).filter(s => s.dificultad_config !== 'practica')
+      setSimsExamen(lista)
+      if (lista.length) setSimSelExamen(lista[0].id)
+    } catch { setSimsExamen([]) }
+    setLoadingSimsEx(false)
+  }
+
+  async function abrirModoPracticaIA() {
+    if (!user) { navigate('/login'); return }
+    if (!tienePlan) { navigate('/planes'); return }
+    setErrorPractica('')
+    // Buscar el simulacro completado más reciente (que no sea practica)
+    const { data } = await supabase
+      .from('user_simulacros')
+      .select('id, cargo')
+      .eq('evaluacion_id', parseInt(id))
+      .eq('user_id', user.id)
+      .eq('completado', true)
+      .neq('dificultad_config', 'practica')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!data) {
+      setErrorPractica('Primero completa una Prueba Praxia para generar tu práctica personalizada.')
+      return
+    }
+    setGenerandoPractica(true)
+    try {
+      const result = await generarModoPractica({ simulacro_id: data.id, evaluacion_id: parseInt(id) })
+      navigate(`/simulacro-ia/${result.simulacro_id}?modo=practica`)
+    } catch (e) {
+      setErrorPractica(e.message)
+    } finally {
+      setGenerandoPractica(false)
+    }
+  }
+
   // ── Loading / Error ─────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -887,31 +947,35 @@ export default function DetallePrueba() {
     <div className="space-y-3">
       {tienePlan ? (
         <>
-          {/* Práctica */}
-          <button onClick={() => abrirModal('practica')} disabled={pregsNivel === 0}
+          {/* Práctica IA */}
+          <button onClick={abrirModoPracticaIA} disabled={generandoPractica}
             className="w-full group text-left p-4 rounded-2xl border-2 border-secondary/20 bg-white hover:border-secondary hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300 disabled:opacity-50">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                <span className="material-symbols-outlined text-white text-xl"
-                  style={{ fontVariationSettings: "'FILL' 1" }}>school</span>
+                {generandoPractica
+                  ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>school</span>}
               </div>
               <div className="flex-1">
                 <p className="font-extrabold text-secondary text-sm">Modo Práctica</p>
-                <p className="text-xs text-on-surface-variant">Con retro · Timer config. · Flexible</p>
+                <p className="text-xs text-on-surface-variant">
+                  {generandoPractica ? 'DeepSeek generando tu práctica...' : 'IA adapta a tus áreas débiles · Automático'}
+                </p>
               </div>
-              <span className="material-symbols-outlined text-secondary/40 group-hover:text-secondary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
+              {!generandoPractica && <span className="material-symbols-outlined text-secondary/40 group-hover:text-secondary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>}
             </div>
-            {pregsNivel > 0 && (
+            {errorPractica && <p className="text-[10px] text-red-600 font-semibold mt-1">{errorPractica}</p>}
+            {!generandoPractica && !errorPractica && (
               <div className="flex gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Hasta {pregsNivel} pregs.</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Retroalimentación</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">DeepSeek</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Enfocado en errores</span>
               </div>
             )}
           </button>
 
-          {/* Examen */}
-          <button onClick={() => abrirModal('examen')} disabled={pregsNivel === 0}
-            className="w-full group text-left p-4 rounded-2xl border-2 border-primary/20 bg-white hover:border-primary hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300 disabled:opacity-50">
+          {/* Examen IA */}
+          <button onClick={abrirModalExamenIA}
+            className="w-full group text-left p-4 rounded-2xl border-2 border-primary/20 bg-white hover:border-primary hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                 <span className="material-symbols-outlined text-white text-xl"
@@ -923,12 +987,10 @@ export default function DetallePrueba() {
               </div>
               <span className="material-symbols-outlined text-primary/40 group-hover:text-primary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
             </div>
-            {pregsNivel > 0 && nivelActual && (
-              <div className="flex gap-1.5 flex-wrap">
-                {nivelActual.time_limit > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{formatTiempo(nivelActual.time_limit)}</span>}
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Aprobación {nivelActual.passing_score ?? 70}%</span>
-              </div>
-            )}
+            <div className="flex gap-1.5 flex-wrap">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Prueba Praxia</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Sin retro</span>
+            </div>
           </button>
 
           {/* Sala en línea */}
@@ -1920,6 +1982,79 @@ export default function DetallePrueba() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Modo Examen IA ── */}
+      {modalExamenIA && (
+        <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setModalExamenIA(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-extrabold text-base">Modo Examen</h3>
+                <p className="text-xs text-on-surface-variant">Selecciona tu Prueba Praxia para correr</p>
+              </div>
+              <button onClick={() => setModalExamenIA(false)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
+                <span className="material-symbols-outlined text-slate-500">close</span>
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-4 py-4">
+              {loadingSimsEx ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : simsExamen.length === 0 ? (
+                <div className="text-center py-10">
+                  <span className="material-symbols-outlined text-slate-300 text-5xl block mb-2" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                  <p className="font-bold text-sm text-on-surface">Sin pruebas disponibles</p>
+                  <p className="text-xs text-on-surface-variant mt-1 max-w-xs mx-auto leading-relaxed">Genera una Prueba Praxia primero usando el botón "Prueba personalizada Praxia" de abajo.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {simsExamen.map(s => (
+                    <button key={s.id} onClick={() => setSimSelExamen(s.id)}
+                      className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all ${simSelExamen === s.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${simSelExamen === s.id ? 'bg-primary' : 'bg-slate-100'}`}>
+                          {simSelExamen === s.id
+                            ? <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
+                            : <span className="material-symbols-outlined text-slate-400 text-sm">description</span>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-on-surface truncate">{s.cargo}</p>
+                          <div className="flex gap-2 mt-0.5 flex-wrap">
+                            <span className="text-[10px] text-on-surface-variant">{s.cantidad_preguntas} pregs.</span>
+                            <span className={`text-[10px] font-semibold ${s.completado ? 'text-secondary' : 'text-amber-600'}`}>
+                              {s.completado ? `Score: ${s.score_pct ?? 0}%` : 'Sin completar'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">{tiempoRelativo(s.created_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setModalExamenIA(false)}
+                className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
+                Cancelar
+              </button>
+              <button
+                onClick={() => { navigate(`/simulacro-ia/${simSelExamen}?modo=examen`); setModalExamenIA(false) }}
+                disabled={!simSelExamen}
+                className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-primary via-primary to-tertiary text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/30">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
+                Empezar examen
+              </button>
+            </div>
           </div>
         </div>
       )}

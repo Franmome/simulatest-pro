@@ -1380,6 +1380,123 @@ export async function deleteProcuraduriaOpec(req, res) {
   return res.json({ ok: true })
 }
 
+// ── Modo Práctica personalizado por DeepSeek ─────────────────────────────────
+
+const DEFAULT_PRACTICA_SYSTEM = `Eres un psicómetra experto en preparación de aspirantes para concursos de selección del sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría y entidades territoriales).
+
+Tu tarea: generar un MODO PRÁCTICA personalizado basado en el análisis de errores del aspirante.
+
+PROCESO:
+1. Analiza las respuestas del aspirante e identifica las áreas con más errores.
+2. Genera preguntas nuevas enfocadas en esas áreas débiles (formato idéntico al examen original).
+3. Cada pregunta debe abordar el mismo concepto que el aspirante falló, pero desde una situación diferente.
+4. Mantén la arquitectura psicométrica: contexto real (100-150 palabras), enunciado directo, 4 opciones con roles A=correcta B=sentido_común_incorrecto C=norma_mal_aplicada D=extralimitación.
+
+FORMATO OBLIGATORIO (JSON array):
+[{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","bloom":"I|II|III","contexto":"...","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","justificacion":"...","analisis_A":"...","analisis_B":"...","analisis_C":"...","analisis_D":"..."}]
+
+Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`
+
+export async function generarModoPractica(req, res) {
+  const userId = req.user.id
+  const { simulacro_id, evaluacion_id } = req.body
+  if (!simulacro_id) return res.status(400).json({ error: 'simulacro_id es requerido.' })
+
+  // 1. Cargar simulacro origen
+  const { data: sim } = await supabase
+    .from('user_simulacros')
+    .select('preguntas, cargo, completado, evaluacion_id')
+    .eq('id', parseInt(simulacro_id))
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (!sim) return res.status(404).json({ error: 'Simulacro no encontrado.' })
+  if (!sim.completado) return res.status(400).json({ error: 'El simulacro debe estar completado para generar práctica.' })
+
+  // 2. Cargar respuestas del usuario
+  const { data: respuestas } = await supabase
+    .from('user_simulacro_answers')
+    .select('pregunta_idx, area, dificultad, opcion_elegida, opcion_correcta, es_correcta, tiempo_segundos')
+    .eq('simulacro_id', parseInt(simulacro_id))
+    .eq('user_id', userId)
+
+  // 3. Verificar tokens
+  const compra = await getActivePurchase(userId)
+  if (!compra) return res.status(402).json({ error: 'No tienes tokens disponibles.' })
+  const balance = await checkTokenBalance(userId, compra.id)
+  if (balance <= 0) return res.status(402).json({ error: 'Sin saldo de tokens. Adquiere un paquete.' })
+
+  // 4. Calcular áreas débiles
+  const errores = (respuestas || []).filter(r => !r.es_correcta)
+  const areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))].slice(0, 6)
+  const totalPregs = (respuestas || []).length
+  const pctError = totalPregs > 0 ? Math.round((errores.length / totalPregs) * 100) : 0
+  const cantidadPractica = Math.min(40, Math.max(10, errores.length + 5))
+
+  // 5. Cargar prompt configurable desde DB
+  const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
+
+  // 6. Construir prompt de usuario con todos los datos
+  const preguntasDeAreasDebiles = (sim.preguntas || [])
+    .filter(p => areasDebiles.length === 0 || areasDebiles.includes(p.area))
+    .slice(0, 25)
+
+  const userPrompt = `CARGO: ${sim.cargo}
+
+ESTADÍSTICAS DEL ASPIRANTE:
+- Preguntas respondidas: ${totalPregs}
+- Errores: ${errores.length} (${pctError}%)
+- Áreas con más errores: ${areasDebiles.join(', ') || 'No identificadas — generar preguntas de refuerzo general'}
+
+RESPUESTAS DEL ASPIRANTE (para analizar patrones de error):
+${JSON.stringify((respuestas || []).slice(0, 60), null, 2)}
+
+PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel y estilo):
+${JSON.stringify(preguntasDeAreasDebiles, null, 2)}
+
+TAREA: Genera exactamente ${cantidadPractica} preguntas de práctica nuevas, enfocadas en las áreas donde el aspirante cometió errores. Las preguntas deben ser diferentes a las del examen original pero del mismo nivel de dificultad y sobre los mismos conceptos fallados.`
+
+  // 7. Llamar a DeepSeek
+  let texto, tokensIn, tokensOut
+  try {
+    ;({ texto, tokensIn, tokensOut } = await deepseekAnalisisPerfil(systemPrompt, userPrompt))
+  } catch (e) {
+    return res.status(502).json({ error: 'Error llamando a DeepSeek: ' + e.message })
+  }
+
+  // 8. Parsear JSON de respuesta
+  let preguntas
+  try {
+    const match = texto.match(/\[[\s\S]*\]/)
+    preguntas = JSON.parse(match ? match[0] : texto)
+    if (!Array.isArray(preguntas) || !preguntas.length) throw new Error('Array vacío')
+  } catch {
+    return res.status(500).json({ error: 'DeepSeek no generó preguntas válidas. Intenta de nuevo.' })
+  }
+
+  // 9. Guardar como nuevo simulacro de práctica
+  const evalId = evaluacion_id || sim.evaluacion_id
+  const { data: nuevo, error: insErr } = await supabase
+    .from('user_simulacros')
+    .insert({
+      user_id:              userId,
+      evaluacion_id:        evalId ? parseInt(evalId) : null,
+      cargo:                sim.cargo,
+      preguntas,
+      cantidad_preguntas:   preguntas.length,
+      tiempo_por_pregunta:  90,
+      dificultad_config:    'practica',
+      simulacro_origen_id:  parseInt(simulacro_id),
+    })
+    .select('id')
+    .single()
+  if (insErr) return res.status(500).json({ error: insErr.message })
+
+  // 10. Registrar tokens
+  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'modo_practica', modelo: 'deepseek' })
+
+  return res.status(201).json({ simulacro_id: nuevo.id, total: preguntas.length, areas_cubiertas: areasDebiles })
+}
+
 export async function deleteOpecsMasivo(req, res) {
   const { ids } = req.body
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Se requiere un array de ids.' })
