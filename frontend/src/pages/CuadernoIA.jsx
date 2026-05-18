@@ -11,11 +11,11 @@ const TOUR_KEY = 'praxia_tour_cuaderno_v1'
 const PAD      = 10
 
 const PASOS_TOUR = [
-  { sel: null,                         icon: 'auto_stories',   side: 'center', titulo: '¡Bienvenido al Cuaderno IA!',    desc: 'Tu espacio personal de estudio con inteligencia artificial. En los próximos pasos te mostramos cómo funciona cada sección.' },
-  { sel: '[data-tour="fuentes-admin"]', icon: 'folder',        side: 'right',  titulo: 'Fuentes del paquete',            desc: 'Documentos oficiales del concurso cargados por el administrador. La IA los lee completos y los cita cuando te responde.' },
-  { sel: '[data-tour="mis-docs"]',      icon: 'upload_file',   side: 'right',  titulo: 'Mis documentos',                 desc: 'Sube tus propios PDFs: acuerdos, normativas, apuntes. La IA puede leer hasta 40 páginas completas por documento y usarlos en todas las funciones.' },
-  { sel: '[data-tour="generar-ia"]',    icon: 'auto_awesome',  side: 'right',  titulo: 'Generar material con IA',        desc: 'Con un clic genera 7 tipos de material: Resumen ejecutivo, Quiz interactivo, Flashcards 3D, Plan de estudio, FAQ, Cronología del proceso y un Podcast real con dos locutores.' },
-  { sel: '[data-tour="chat-input"]',    icon: 'smart_toy',     side: 'top',    titulo: 'Tutor IA',                       desc: 'Pregúntale lo que quieras. Cita tus fuentes automáticamente con 【Archivo】. Puedes guardar cualquier respuesta como nota con un clic.' },
+  { sel: null,                         icon: 'auto_stories',   side: 'center', titulo: '¡Bienvenido al Cuaderno Praxia!', desc: 'Tu espacio personal de estudio con el Asistente Praxia. En los próximos pasos te mostramos cómo funciona cada sección.' },
+  { sel: '[data-tour="fuentes-admin"]', icon: 'folder',        side: 'right',  titulo: 'Fuentes del paquete',            desc: 'Documentos oficiales del concurso cargados por el administrador. Praxia los lee completos y los cita cuando te responde.' },
+  { sel: '[data-tour="mis-docs"]',      icon: 'upload_file',   side: 'right',  titulo: 'Mis documentos',                 desc: 'Sube tus propios PDFs: acuerdos, normativas, apuntes. El Asistente Praxia puede leer hasta 40 páginas completas por documento y usarlos en todas las funciones.' },
+  { sel: '[data-tour="generar-ia"]',    icon: 'auto_awesome',  side: 'right',  titulo: 'Generar material con Praxia',    desc: 'Con un clic genera 7 tipos de material: Resumen ejecutivo, Quiz interactivo, Flashcards 3D, Plan de estudio, FAQ, Cronología del proceso y un Podcast real con dos locutores.' },
+  { sel: '[data-tour="chat-input"]',    icon: 'smart_toy',     side: 'top',    titulo: 'Asistente Praxia',               desc: 'Pregúntale lo que quieras. Cita tus fuentes automáticamente con 【Archivo】. Puedes guardar cualquier respuesta como nota con un clic.' },
   { sel: '[data-tour="panel-notas"]',   icon: 'sticky_note_2', side: 'left',   titulo: 'Mis notas',                      desc: 'Guarda ideas, respuestas del chat y artefactos generados. Fija 📌 las más importantes y úsalas directamente en el chat con "Usar en chat".' },
   { sel: '[data-tour="token-counter"]', icon: 'token',         side: 'bottom', titulo: 'Tus tokens disponibles',         desc: 'Tienes 2 millones de tokens por mes por paquete. Cada mensaje y artefacto los consume. Se renuevan automáticamente el día 1 de cada mes.' },
 ]
@@ -1010,7 +1010,7 @@ function AudioView({ audioUrl, generando }) {
         </p>
       </div>
       <div className="flex items-center gap-2 text-xs text-slate-400">
-        <span className="material-symbols-outlined text-sm animate-pulse">mic</span> Generando voces con IA…
+        <span className="material-symbols-outlined text-sm animate-pulse">mic</span> Generando voces con Praxia…
       </div>
     </div>
   )
@@ -1506,7 +1506,7 @@ export default function CuadernoIA() {
               <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
                 <span className="material-symbols-outlined text-3xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
               </div>
-              <p className="font-bold text-slate-600 mb-1">Pregúntale al tutor IA</p>
+              <p className="font-bold text-slate-600 mb-1">Pregúntale al Asistente Praxia</p>
               <p className="text-xs max-w-xs leading-relaxed mb-5">
                 Explícame un artículo, hazme un resumen, dame preguntas de práctica o pídeme que te evalúe.
               </p>
@@ -1553,7 +1553,7 @@ export default function CuadernoIA() {
             <div className="flex gap-2 items-end">
               <textarea rows={1} value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
-                placeholder="Pregunta al tutor IA… (Enter para enviar)"
+                placeholder="Pregunta al Asistente Praxia… (Enter para enviar)"
                 className="flex-1 resize-none bg-slate-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-36 overflow-y-auto"
                 style={{ lineHeight: '1.5' }} />
               <button onClick={() => enviar()} disabled={!input.trim() || enviando}
@@ -1568,7 +1568,7 @@ export default function CuadernoIA() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-slate-50 overflow-hidden max-w-full">
 
       {/* ── Header ── */}
       <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 flex-shrink-0 shadow-sm z-10">
@@ -1580,19 +1580,25 @@ export default function CuadernoIA() {
           <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-sm leading-tight truncate">Cuaderno IA</p>
+          <p className="font-extrabold text-sm leading-tight truncate">Cuaderno Praxia</p>
           <p className="text-xs text-on-surface-variant truncate">{pkgNombre || '…'}</p>
         </div>
         {vista !== 'chat' && (
           <button onClick={() => { setVista('chat'); setVistaData(null) }}
-            className="flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors">
-            <span className="material-symbols-outlined text-sm">chat</span>Volver al chat
+            className="flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-2 sm:px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors flex-shrink-0">
+            <span className="material-symbols-outlined text-sm">chat</span>
+            <span className="hidden sm:inline">Volver al chat</span>
           </button>
         )}
-        <div data-tour="token-counter" className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full
+        <div data-tour="token-counter" className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full flex-shrink-0
           ${tokensUsados >= tokensLimite * 0.8 ? 'bg-error/10 text-error' : 'bg-slate-100 text-slate-500'}`}>
           <span className="material-symbols-outlined text-xs">token</span>
-          {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}/{(tokensLimite/1_000_000).toFixed(0)}M
+          <span className="hidden sm:inline">
+            {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}/{(tokensLimite/1_000_000).toFixed(0)}M
+          </span>
+          <span className="sm:hidden">
+            {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}
+          </span>
         </div>
         <button onClick={() => { localStorage.removeItem(TOUR_KEY); setTourActivo(true) }} title="Ver tutorial"
           className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-shrink-0 font-extrabold text-sm">
@@ -1708,7 +1714,7 @@ export default function CuadernoIA() {
           {/* Generar */}
           <div data-tour="generar-ia" className="p-3 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">auto_awesome</span>Generar con IA
+              <span className="material-symbols-outlined text-xs">auto_awesome</span>Generar con Praxia
             </p>
             <div className="space-y-1.5">
               {ACCIONES.map(a => (
@@ -1794,7 +1800,7 @@ export default function CuadernoIA() {
               <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
                 <span className="material-symbols-outlined text-4xl opacity-30 mb-2">sticky_note_2</span>
                 <p className="text-xs font-semibold">Sin notas aún</p>
-                <p className="text-[11px] mt-1 max-w-[180px]">Guarda respuestas del chat o genera artefactos IA.</p>
+                <p className="text-[11px] mt-1 max-w-[180px]">Guarda respuestas del chat o genera artefactos Praxia.</p>
               </div>
             )}
             {notas.map(nota => {
