@@ -562,8 +562,24 @@ export default function DetallePrueba() {
   const [loadingSimsEx,    setLoadingSimsEx]    = useState(false)
 
   // ── Modo Práctica IA ────────────────────────────────────────────────────────
+  const [practicaLista,     setPracticaLista]     = useState(null)   // práctica pre-generada
   const [generandoPractica, setGenerandoPractica] = useState(false)
   const [errorPractica,     setErrorPractica]     = useState('')
+
+  // Carga la práctica pre-generada (si existe) cuando vuelven a esta página
+  useEffect(() => {
+    if (!user?.id || !id) return
+    supabase
+      .from('user_simulacros')
+      .select('id, cargo, cantidad_preguntas, created_at, simulacro_origen_id')
+      .eq('evaluacion_id', parseInt(id))
+      .eq('user_id', user.id)
+      .eq('dificultad_config', 'practica')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setPracticaLista(data || null))
+  }, [user?.id, id, recargarSims]) // eslint-disable-line
 
   useEffect(() => {
     if (!generandoIA) { setLoadingMsg(''); setLoadingProgress(0); return }
@@ -872,7 +888,7 @@ export default function DetallePrueba() {
     try {
       const { data } = await supabase
         .from('user_simulacros')
-        .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, completado, created_at, tiempo_por_pregunta')
+        .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, score_correctas, score_total, completado, created_at, tiempo_por_pregunta')
         .eq('evaluacion_id', parseInt(id))
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -888,7 +904,14 @@ export default function DetallePrueba() {
     if (!user) { navigate('/login'); return }
     if (!tienePlan) { navigate('/planes'); return }
     setErrorPractica('')
-    // Buscar el simulacro completado más reciente (que no sea practica)
+
+    // Si ya hay práctica pre-generada, ir directo
+    if (practicaLista) {
+      navigate(`/simulacro-ia/${practicaLista.id}?modo=practica`)
+      return
+    }
+
+    // Fallback: generar on-demand si no hay ninguna aún
     const { data } = await supabase
       .from('user_simulacros')
       .select('id, cargo')
@@ -900,7 +923,7 @@ export default function DetallePrueba() {
       .limit(1)
       .maybeSingle()
     if (!data) {
-      setErrorPractica('Primero completa una Prueba Praxia para generar tu práctica personalizada.')
+      setErrorPractica('Completa tu Prueba Praxia para desbloquear la práctica personalizada.')
       return
     }
     setGenerandoPractica(true)
@@ -949,26 +972,44 @@ export default function DetallePrueba() {
         <>
           {/* Práctica IA */}
           <button onClick={abrirModoPracticaIA} disabled={generandoPractica}
-            className="w-full group text-left p-4 rounded-2xl border-2 border-secondary/20 bg-white hover:border-secondary hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300 disabled:opacity-50">
+            className={`w-full group text-left p-4 rounded-2xl border-2 transition-all duration-300
+              ${practicaLista
+                ? 'border-secondary bg-secondary/5 hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1'
+                : 'border-secondary/20 bg-white hover:border-secondary hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1'}
+              active:scale-[0.99] disabled:opacity-50`}>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6
+                ${practicaLista ? 'bg-secondary' : 'bg-secondary/70'}`}>
                 {generandoPractica
                   ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>school</span>}
+                  : <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {practicaLista ? 'fitness_center' : 'school'}
+                    </span>}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="font-extrabold text-secondary text-sm">Modo Práctica</p>
                 <p className="text-xs text-on-surface-variant">
-                  {generandoPractica ? 'DeepSeek generando tu práctica...' : 'IA adapta a tus áreas débiles · Automático'}
+                  {generandoPractica
+                    ? 'Praxia preparando tu práctica...'
+                    : practicaLista
+                      ? `${practicaLista.cantidad_preguntas} pregs. · Áreas débiles · Lista`
+                      : 'Praxia adapta a tus errores · Auto al terminar examen'}
                 </p>
               </div>
               {!generandoPractica && <span className="material-symbols-outlined text-secondary/40 group-hover:text-secondary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>}
             </div>
             {errorPractica && <p className="text-[10px] text-red-600 font-semibold mt-1">{errorPractica}</p>}
-            {!generandoPractica && !errorPractica && (
+            {practicaLista && !errorPractica && (
               <div className="flex gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">DeepSeek</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Enfocado en errores</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary text-white">Lista</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Retroalimentación</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Personalizada</span>
+              </div>
+            )}
+            {!practicaLista && !generandoPractica && !errorPractica && (
+              <div className="flex gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Auto-generada</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/10 text-secondary">Retroalimentación</span>
               </div>
             )}
           </button>
@@ -2015,29 +2056,50 @@ export default function DetallePrueba() {
                   <p className="text-xs text-on-surface-variant mt-1 max-w-xs mx-auto leading-relaxed">Genera una Prueba Praxia primero usando el botón "Prueba personalizada Praxia" de abajo.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {simsExamen.map(s => (
+                <div className="space-y-3">
+                  {simsExamen.map(s => {
+                    const sel = simSelExamen === s.id
+                    const LABEL_DIF_EX = { mixta: 'Mixta', facil: 'Facil', medio: 'Medio', dificil: 'Dificil' }
+                    const tiempoTotal = s.tiempo_por_pregunta > 0
+                      ? Math.round(s.cantidad_preguntas * s.tiempo_por_pregunta / 60) + ' min'
+                      : '60 min'
+                    return (
                     <button key={s.id} onClick={() => setSimSelExamen(s.id)}
-                      className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all ${simSelExamen === s.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${simSelExamen === s.id ? 'bg-primary' : 'bg-slate-100'}`}>
-                          {simSelExamen === s.id
-                            ? <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
-                            : <span className="material-symbols-outlined text-slate-400 text-sm">description</span>}
+                      className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${sel ? 'border-primary bg-primary/5 shadow-md' : 'border-slate-200 bg-white hover:border-primary/30 hover:bg-slate-50'}`}>
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${sel ? 'bg-primary' : 'bg-slate-100'}`}>
+                          {sel
+                            ? <span className="material-symbols-outlined text-white text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
+                            : <span className="material-symbols-outlined text-slate-400 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>description</span>}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-on-surface truncate">{s.cargo}</p>
-                          <div className="flex gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] text-on-surface-variant">{s.cantidad_preguntas} pregs.</span>
-                            <span className={`text-[10px] font-semibold ${s.completado ? 'text-secondary' : 'text-amber-600'}`}>
-                              {s.completado ? `Score: ${s.score_pct ?? 0}%` : 'Sin completar'}
-                            </span>
-                            <span className="text-[10px] text-slate-400">{tiempoRelativo(s.created_at)}</span>
-                          </div>
+                          <p className={`font-extrabold text-sm leading-tight ${sel ? 'text-primary' : 'text-on-surface'}`}>{s.cargo}</p>
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">{tiempoRelativo(s.created_at)}</p>
                         </div>
+                        {s.completado && (
+                          <div className={`text-right shrink-0 ${(s.score_pct ?? 0) >= 70 ? 'text-secondary' : 'text-error'}`}>
+                            <p className="font-extrabold text-lg leading-none">{s.score_pct ?? 0}%</p>
+                            <p className="text-[9px] font-bold opacity-70">{s.score_correctas ?? 0}/{s.score_total ?? s.cantidad_preguntas}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { icon: 'quiz',    val: s.cantidad_preguntas + '',                      label: 'Preguntas' },
+                          { icon: 'timer',   val: tiempoTotal,                                    label: 'Duracion' },
+                          { icon: 'tune',    val: LABEL_DIF_EX[s.dificultad_config] || 'Mixta',   label: 'Dificultad' },
+                          { icon: s.completado ? 'task_alt' : 'pending', val: s.completado ? 'Hecha' : 'Pendiente', label: 'Estado', err: !s.completado },
+                        ].map(st => (
+                          <div key={st.label} className={`rounded-xl p-2 text-center ${sel ? 'bg-primary/10' : 'bg-slate-50'}`}>
+                            <span className={`material-symbols-outlined text-sm block mb-0.5 ${sel ? 'text-primary' : st.err ? 'text-amber-500' : 'text-slate-400'}`}
+                              style={{ fontVariationSettings: "'FILL' 1" }}>{st.icon}</span>
+                            <p className={`text-[10px] font-extrabold ${sel ? 'text-primary' : 'text-on-surface'}`}>{st.val}</p>
+                            <p className="text-[8px] text-on-surface-variant uppercase tracking-wide">{st.label}</p>
+                          </div>
+                        ))}
                       </div>
                     </button>
-                  ))}
+                  )})}
                 </div>
               )}
             </div>

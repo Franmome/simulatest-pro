@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
-import { analizarResultadoSimulacro } from '../utils/gemini'
+import { analizarResultadoSimulacro, generarModoPractica } from '../utils/gemini'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -528,13 +528,16 @@ export default function SimulacroIA() {
   const modoPractica  = searchParams.get('modo') === 'practica'
   const { user }      = useAuth()
 
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [preguntas, setPreguntas] = useState([])
-  const [cargo,     setCargo]     = useState('')
-  const [pregActual,setPregActual]= useState(0)
-  const [seleccion, setSeleccion] = useState({})
-  const [marcadas,  setMarcadas]  = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState(null)
+  const [preguntas,     setPreguntas]     = useState([])
+  const [cargo,         setCargo]         = useState('')
+  const [evaluacionId,  setEvaluacionId]  = useState(null)
+  const [pregActual,    setPregActual]    = useState(0)
+  const [seleccion,     setSeleccion]     = useState({})
+  const [marcadas,      setMarcadas]      = useState([])
+  const [retroVisible,  setRetroVisible]  = useState(false)
+  const practicaGeneradaRef = useRef(false)
   const [enviado,          setEnviado]          = useState(false)
   const [segundos,         setSegundos]         = useState(60 * 60)
   const [timerWarn,        setTimerWarn]        = useState(false)
@@ -567,6 +570,8 @@ export default function SimulacroIA() {
       if (err) throw new Error(err.message)
       if (!data) throw new Error('Simulacro no encontrado o no te pertenece.')
       if (!data.preguntas?.length) throw new Error('Este simulacro no tiene preguntas.')
+
+      setEvaluacionId(data.evaluacion_id || null)
 
       const preStart = location.state?.preStartConfig
       const tpp = (preStart?.tiempo > 0) ? preStart.tiempo : (data.tiempo_por_pregunta || 0)
@@ -641,10 +646,21 @@ export default function SimulacroIA() {
   function seleccionar(letra) {
     if (enviado) return
     if (seleccion[pregActual]) return   // respuesta fija — no se cambia
+    registrarTiempoPregActual()
     setSeleccion(prev => ({ ...prev, [pregActual]: letra }))
-    // Auto-avanzar: si no es la última pregunta, ir a la siguiente tras 550ms
+    if (modoPractica) {
+      setRetroVisible(true)  // modo práctica: mostrar retro antes de avanzar
+    } else {
+      if (pregActual < preguntas.length - 1) {
+        setTimeout(() => irA(pregActual + 1), 550)
+      }
+    }
+  }
+
+  function continuarPractica() {
+    setRetroVisible(false)
     if (pregActual < preguntas.length - 1) {
-      setTimeout(() => irA(pregActual + 1), 550)
+      irA(pregActual + 1)
     }
   }
 
@@ -665,6 +681,7 @@ export default function SimulacroIA() {
 
   function irA(i) {
     if (i < 0 || i >= preguntas.length) return
+    setRetroVisible(false)
     registrarTiempoPregActual()
     setVisible(false)
     setTimeout(() => { setPregActual(i); setVisible(true) }, 160)
@@ -709,6 +726,13 @@ export default function SimulacroIA() {
         p_total:           preguntas.length,
         p_tiempo_segundos: tiempoUsado,
       })
+
+      // Auto-generar práctica en segundo plano (solo si no es ya una práctica y no se ha generado)
+      if (!modoPractica && !practicaGeneradaRef.current) {
+        practicaGeneradaRef.current = true
+        generarModoPractica({ simulacro_id: parseInt(id), evaluacion_id: evaluacionId })
+          .catch(e => console.warn('[Praxia] práctica bg:', e.message))
+      }
     } catch { /* falla silenciosa */ }
   }
 
@@ -839,25 +863,55 @@ export default function SimulacroIA() {
 
         {/* Opciones */}
         {(() => {
-          const respondida = !!seleccion[pregActual]
+          const respondida    = !!seleccion[pregActual]
+          const respuestaUser = seleccion[pregActual]
+          const correcta      = pActual.correcta
           return (
             <div className="space-y-3">
               {pActual.opciones.map(op => {
-                const sel = seleccion[pregActual] === op.letter
+                const sel      = respuestaUser === op.letter
+                const esCorr   = op.letter === correcta
+                const esErrSel = retroVisible && sel && !esCorr
+                const esCorrectaRetro = retroVisible && esCorr
+
+                let btnClass = 'border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]'
+                if (retroVisible) {
+                  if (esCorrectaRetro) btnClass = 'border-secondary bg-secondary/10 shadow-md'
+                  else if (esErrSel)   btnClass = 'border-error bg-error/10 shadow-md'
+                  else                  btnClass = 'border-slate-100 bg-white opacity-40 cursor-default'
+                } else if (sel) {
+                  btnClass = 'border-primary bg-primary/5 shadow-md'
+                } else if (respondida) {
+                  btnClass = 'border-slate-100 bg-white opacity-40 cursor-default'
+                }
+
+                let iconBg = sel ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'
+                if (retroVisible) {
+                  if (esCorrectaRetro) iconBg = 'bg-secondary text-white'
+                  else if (esErrSel)   iconBg = 'bg-error text-white'
+                  else                  iconBg = 'bg-slate-100 text-slate-400'
+                }
+
+                const icon = retroVisible
+                  ? esCorrectaRetro ? 'check' : esErrSel ? 'close' : op.letter
+                  : sel ? 'check' : op.letter
+
                 return (
-                  <button key={op.letter} onClick={() => seleccionar(op.letter)}
-                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center gap-3
-                      ${sel
-                        ? 'border-primary bg-primary/5 shadow-md'
-                        : respondida
-                          ? 'border-slate-100 bg-white opacity-40 cursor-default'
-                          : 'border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5 active:scale-[0.99]'
-                      }`}>
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 transition-colors
-                      ${sel ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
-                      {sel ? <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check</span> : op.letter}
+                  <button key={op.letter}
+                    onClick={() => !retroVisible && seleccionar(op.letter)}
+                    disabled={retroVisible && !esCorrectaRetro && !esErrSel}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center gap-3 ${btnClass}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 transition-colors ${iconBg}`}>
+                      {(retroVisible || sel) && icon !== op.letter
+                        ? <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
+                        : op.letter}
                     </div>
-                    <span className={`text-sm leading-relaxed ${sel ? 'font-semibold text-primary' : 'text-on-surface'}`}>
+                    <span className={`text-sm leading-relaxed ${
+                      retroVisible && esCorrectaRetro ? 'font-bold text-secondary'
+                      : retroVisible && esErrSel      ? 'font-bold text-error'
+                      : sel                            ? 'font-semibold text-primary'
+                      : 'text-on-surface'
+                    }`}>
                       {op.text}
                     </span>
                   </button>
@@ -866,6 +920,37 @@ export default function SimulacroIA() {
             </div>
           )
         })()}
+
+        {/* Retroalimentación modo práctica */}
+        {modoPractica && retroVisible && seleccion[pregActual] && (
+          <div className={`rounded-2xl border-2 overflow-hidden ${seleccion[pregActual] === pActual.correcta ? 'border-secondary/40 bg-secondary/5' : 'border-error/30 bg-error/5'}`}>
+            <div className="px-4 py-3 flex items-center gap-3 border-b border-inherit">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${seleccion[pregActual] === pActual.correcta ? 'bg-secondary' : 'bg-error'}`}>
+                <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  {seleccion[pregActual] === pActual.correcta ? 'check' : 'close'}
+                </span>
+              </div>
+              <div>
+                <p className={`font-extrabold text-sm ${seleccion[pregActual] === pActual.correcta ? 'text-secondary' : 'text-error'}`}>
+                  {seleccion[pregActual] === pActual.correcta ? '¡Correcto!' : `Incorrecto — La respuesta era ${pActual.correcta}`}
+                </p>
+              </div>
+            </div>
+            {pActual.justificacion && (
+              <div className="px-4 py-3">
+                <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest mb-1.5">Retroalimentación Praxia</p>
+                <p className="text-sm text-on-surface leading-relaxed">{pActual.justificacion}</p>
+              </div>
+            )}
+            <div className="px-4 pb-4">
+              <button onClick={continuarPractica}
+                className="w-full py-2.5 rounded-full bg-secondary text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary/90 active:scale-95 transition-all">
+                <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                {pregActual < preguntas.length - 1 ? 'Siguiente pregunta' : 'Ver resultados'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Mapa de preguntas */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">

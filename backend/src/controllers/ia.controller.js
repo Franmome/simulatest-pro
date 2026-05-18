@@ -1430,7 +1430,6 @@ export async function generarModoPractica(req, res) {
   const areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))].slice(0, 6)
   const totalPregs = (respuestas || []).length
   const pctError = totalPregs > 0 ? Math.round((errores.length / totalPregs) * 100) : 0
-  const cantidadPractica = Math.min(40, Math.max(10, errores.length + 5))
 
   // 5. Cargar prompt configurable desde DB
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
@@ -1453,7 +1452,6 @@ ${JSON.stringify((respuestas || []).slice(0, 60), null, 2)}
 PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel y estilo):
 ${JSON.stringify(preguntasDeAreasDebiles, null, 2)}
 
-TAREA: Genera exactamente ${cantidadPractica} preguntas de práctica nuevas, enfocadas en las áreas donde el aspirante cometió errores. Las preguntas deben ser diferentes a las del examen original pero del mismo nivel de dificultad y sobre los mismos conceptos fallados.`
 
   // 7. Llamar a DeepSeek
   let texto, tokensIn, tokensOut
