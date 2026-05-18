@@ -54,7 +54,7 @@ const TIPS_CARGA = [
   { icon: 'account_balance', texto: 'Las preguntas siguen el Manual de Funciones real del cargo en el sector público colombiano.' },
   { icon: 'groups', texto: 'El 65% de las preguntas son funcionales, enfocadas en el área técnica específica del cargo.' },
   { icon: 'verified', texto: 'Los distractores se construyen igual que en el examen real: plausibles, nunca obviamente erróneos.' },
-  { icon: 'psychology', texto: 'La IA aplica criterios psicométricos certificados para que cada pregunta sea clara y sin ambigüedades.' },
+  { icon: 'psychology', texto: 'Praxia aplica criterios psicométricos certificados para que cada pregunta sea clara y sin ambigüedades.' },
 ]
 const MODULOS_OPEC = [
   { label: 'Funcionales',      pct: 70 },
@@ -89,7 +89,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
 
   const borrar = useCallback(async (e, simId) => {
     e.stopPropagation()
-    if (!window.confirm('¿Borrar este simulacro IA? No se puede deshacer.')) return
+    if (!window.confirm('¿Borrar esta prueba Praxia? No se puede deshacer.')) return
     await supabase.from('user_simulacros').delete().eq('id', simId)
     setSims(prev => prev.filter(s => s.id !== simId))
   }, [])
@@ -109,9 +109,9 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
     <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
       <span className="material-symbols-outlined text-slate-300 text-5xl"
         style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-      <p className="font-bold text-sm text-on-surface">Sin simulacros IA aún</p>
+      <p className="font-bold text-sm text-on-surface">Sin pruebas Praxia aún</p>
       <p className="text-xs text-on-surface-variant max-w-xs leading-relaxed">
-        Usa el botón "Simulacro personalizado IA" para crear tu primera prueba adaptada a tu cargo OPEC.
+        Usa el botón "Prueba personalizada Praxia" para crear tu primera prueba adaptada a tu cargo OPEC.
       </p>
     </div>
   )
@@ -146,7 +146,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
             {/* Info */}
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm text-white truncate">
-                {cargoFondo || 'Generando prueba IA…'}
+                {cargoFondo || 'Praxia generando tu prueba…'}
               </p>
               <div className="flex items-center justify-between mt-1.5">
                 <p className="text-[11px] text-white/60 truncate max-w-[80%]">
@@ -174,7 +174,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
       <div className="space-y-3">
         {sims.map(s => (
           <div key={s.id}
-            className="group relative flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+            className="group relative flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 hover:bg-white transition-all duration-300 cursor-pointer"
             onClick={() => abrirPreStart(s)}>
 
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0 shadow-sm">
@@ -183,7 +183,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">
-                {s.cargo || 'Simulacro IA'}
+                {s.cargo || 'Prueba Praxia'}
               </p>
               <div className="flex items-center gap-1.5 flex-wrap mt-1">
                 <span className="text-[10px] font-semibold bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full">
@@ -233,8 +233,8 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                     style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mb-0.5">Simulacro IA · OPEC</p>
-                  <h3 className="font-extrabold text-base leading-snug">{simToStart.cargo || 'Simulacro IA'}</h3>
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mb-0.5">Prueba Praxia · OPEC</p>
+                  <h3 className="font-extrabold text-base leading-snug">{simToStart.cargo || 'Prueba Praxia'}</h3>
                 </div>
                 <button onClick={() => setSimToStart(null)}
                   className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0">
@@ -328,8 +328,8 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   Cancelar
                 </button>
                 <button onClick={iniciar}
-                  className="flex-[2] py-3.5 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">
-                  <span className="material-symbols-outlined text-base"
+                  className="flex-[2] py-3.5 rounded-full bg-gradient-to-r from-primary via-primary to-tertiary text-white font-bold text-sm active:scale-95 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/40 transition-all duration-300 flex items-center justify-center gap-2 shadow-lg group">
+                  <span className="material-symbols-outlined text-base group-hover:scale-110 transition-transform duration-300"
                     style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
                   Iniciar prueba
                 </button>
@@ -383,21 +383,21 @@ function TabMaterial({ packageId, tienePlan, evaluacionId, userId, convocatoriaI
       <div>
         <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>smart_toy</span>
-          Herramientas IA
+          Asistente Praxia
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-          {/* Cuaderno IA — OpenAI */}
+          {/* Cuaderno Praxia */}
           <button
             onClick={() => navigate(`/cuaderno/${packageId}`)}
-            className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
+            className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 transition-all duration-300 group"
           >
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-              <p className="font-bold text-sm">Cuaderno IA</p>
-              <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
+              <span className="material-symbols-outlined text-lg group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+              <p className="font-bold text-sm">Cuaderno Praxia</p>
+              <span className="material-symbols-outlined text-white/40 group-hover:text-white group-hover:translate-x-1 text-base ml-auto transition-all duration-300">arrow_forward</span>
             </div>
-            <p className="text-white/70 text-xs">Chat con el tutor IA · Guarda tus notas personales</p>
+            <p className="text-white/70 text-xs group-hover:text-white/90 transition-colors duration-300">Chatea con Praxia · Guarda tus notas personales</p>
           </button>
 
           {/* Análisis de perfil vs convocatoria */}
@@ -412,7 +412,7 @@ function TabMaterial({ packageId, tienePlan, evaluacionId, userId, convocatoriaI
                 <span className="material-symbols-outlined text-primary/40 group-hover:text-primary text-base ml-auto transition-colors">arrow_forward</span>
               </div>
               <p className="text-xs text-on-surface-variant">
-                DeepSeek analiza qué cargos de {convocatoriaNombre || 'la convocatoria'} van con tu perfil
+                Praxia analiza qué cargos de {convocatoriaNombre || 'la convocatoria'} van con tu perfil
               </p>
             </button>
           ) : (
@@ -656,7 +656,7 @@ export default function DetallePrueba() {
   function ejecutarEnSegundoPlano() {
     const notifId = addNotif({
       tipo:   'generando',
-      titulo: 'Generando prueba IA…',
+      titulo: 'Praxia generando tu prueba…',
       cuerpo: `${cargo} · ${configIA.cantidad} preguntas`,
       icon:   'auto_awesome',
     })
@@ -889,9 +889,9 @@ export default function DetallePrueba() {
         <>
           {/* Práctica */}
           <button onClick={() => abrirModal('practica')} disabled={pregsNivel === 0}
-            className="w-full group text-left p-4 rounded-2xl border-2 border-secondary/20 bg-white hover:border-secondary hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50">
+            className="w-full group text-left p-4 rounded-2xl border-2 border-secondary/20 bg-white hover:border-secondary hover:shadow-xl hover:shadow-secondary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300 disabled:opacity-50">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                 <span className="material-symbols-outlined text-white text-xl"
                   style={{ fontVariationSettings: "'FILL' 1" }}>school</span>
               </div>
@@ -899,7 +899,7 @@ export default function DetallePrueba() {
                 <p className="font-extrabold text-secondary text-sm">Modo Práctica</p>
                 <p className="text-xs text-on-surface-variant">Con retro · Timer config. · Flexible</p>
               </div>
-              <span className="material-symbols-outlined text-secondary/40 group-hover:text-secondary transition-colors">arrow_forward</span>
+              <span className="material-symbols-outlined text-secondary/40 group-hover:text-secondary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
             </div>
             {pregsNivel > 0 && (
               <div className="flex gap-1.5 flex-wrap">
@@ -911,9 +911,9 @@ export default function DetallePrueba() {
 
           {/* Examen */}
           <button onClick={() => abrirModal('examen')} disabled={pregsNivel === 0}
-            className="w-full group text-left p-4 rounded-2xl border-2 border-primary/20 bg-white hover:border-primary hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50">
+            className="w-full group text-left p-4 rounded-2xl border-2 border-primary/20 bg-white hover:border-primary hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300 disabled:opacity-50">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                 <span className="material-symbols-outlined text-white text-xl"
                   style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
               </div>
@@ -921,7 +921,7 @@ export default function DetallePrueba() {
                 <p className="font-extrabold text-primary text-sm">Modo Examen</p>
                 <p className="text-xs text-on-surface-variant">Sin ayudas · Condiciones reales</p>
               </div>
-              <span className="material-symbols-outlined text-primary/40 group-hover:text-primary transition-colors">arrow_forward</span>
+              <span className="material-symbols-outlined text-primary/40 group-hover:text-primary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
             </div>
             {pregsNivel > 0 && nivelActual && (
               <div className="flex gap-1.5 flex-wrap">
@@ -933,9 +933,9 @@ export default function DetallePrueba() {
 
           {/* Sala en línea */}
           <button onClick={irASala}
-            className="w-full group text-left p-4 rounded-2xl border-2 border-tertiary/20 bg-white hover:border-tertiary hover:shadow-md active:scale-[0.99] transition-all">
+            className="w-full group text-left p-4 rounded-2xl border-2 border-tertiary/20 bg-white hover:border-tertiary hover:shadow-xl hover:shadow-tertiary/20 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-tertiary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-tertiary flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                 <span className="material-symbols-outlined text-white text-xl"
                   style={{ fontVariationSettings: "'FILL' 1" }}>groups</span>
               </div>
@@ -943,7 +943,7 @@ export default function DetallePrueba() {
                 <p className="font-extrabold text-tertiary text-sm">Sala en línea</p>
                 <p className="text-xs text-on-surface-variant">Compite · Código de sala · Ranking en vivo</p>
               </div>
-              <span className="material-symbols-outlined text-tertiary/40 group-hover:text-tertiary transition-colors">arrow_forward</span>
+              <span className="material-symbols-outlined text-tertiary/40 group-hover:text-tertiary group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
             </div>
           </button>
 
@@ -957,17 +957,17 @@ export default function DetallePrueba() {
           {/* Simulacro IA */}
           {hasAiChat && (
             <button onClick={() => { if (!user) { navigate('/login'); return } setModalIA(true) }}
-              className="w-full group text-left p-4 rounded-2xl border-2 border-slate-700/20 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 active:scale-[0.99] transition-all">
+              className="w-full group text-left p-4 rounded-2xl border-2 border-slate-700/20 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/40 hover:-translate-y-1 active:scale-[0.99] transition-all duration-300">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                   <span className="material-symbols-outlined text-white text-xl"
                     style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                 </div>
                 <div className="flex-1">
-                  <p className="font-extrabold text-white text-sm">Simulacro personalizado IA</p>
-                  <p className="text-white/60 text-xs">160-200 preguntas · Juicio situado · 4 opciones psicométricas</p>
+                  <p className="font-extrabold text-white text-sm">Prueba personalizada Praxia</p>
+                  <p className="text-white/60 text-xs group-hover:text-white/80 transition-colors duration-300">160-200 preguntas · Juicio situado · 4 opciones psicométricas</p>
                 </div>
-                <span className="material-symbols-outlined text-white/40 group-hover:text-white transition-colors">arrow_forward</span>
+                <span className="material-symbols-outlined text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
               </div>
             </button>
           )}
@@ -979,7 +979,7 @@ export default function DetallePrueba() {
           <p className="font-extrabold text-white text-lg mb-1">¿Listo para prepararte?</p>
           <p className="text-white/70 text-sm mb-4">Adquiere el paquete para acceder a todos los modos de práctica</p>
           <button onClick={() => navigate('/planes')}
-            className="w-full py-3 bg-white text-primary font-extrabold rounded-full hover:shadow-lg transition-all active:scale-95 text-sm">
+            className="w-full py-3 bg-white text-primary font-extrabold rounded-full hover:shadow-2xl hover:-translate-y-0.5 hover:scale-[1.02] transition-all duration-300 active:scale-95 text-sm ring-2 ring-white/20">
             Ver planes y precios →
           </button>
         </div>
@@ -1005,7 +1005,7 @@ export default function DetallePrueba() {
         <div className="lg:col-span-2 space-y-5">
 
           {/* Hero */}
-          <div className={`bg-gradient-to-br ${colorGrad} rounded-3xl p-6 md:p-8 text-white relative overflow-hidden`}>
+          <div className={`bg-gradient-to-br ${colorGrad} rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-shadow duration-500`}>
             <div className="absolute top-0 right-0 w-56 h-56 bg-white/5 rounded-full -translate-y-20 translate-x-20 pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/5 rounded-full translate-y-14 -translate-x-14 pointer-events-none" />
             <div className="relative z-10">
@@ -1050,12 +1050,12 @@ export default function DetallePrueba() {
               { val: niveles.length,    label: 'Niveles',   icon: 'layers',        color: 'text-secondary', bg: 'bg-secondary/10' },
               { val: aprobMax,          label: 'Aprobación',icon: 'verified',      color: 'text-on-surface',bg: 'bg-surface-container' },
             ].map(s => (
-              <div key={s.label} className="bg-white rounded-2xl p-4 text-center border border-slate-200 shadow-sm">
-                <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center mx-auto mb-2`}>
+              <div key={s.label} className="bg-white rounded-2xl p-4 text-center border border-slate-200 shadow-sm hover:-translate-y-1 hover:shadow-lg hover:border-primary/20 transition-all duration-300 cursor-default group">
+                <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform duration-300`}>
                   <span className={`material-symbols-outlined text-lg ${s.color}`}
                     style={{ fontVariationSettings: "'FILL' 1" }}>{s.icon}</span>
                 </div>
-                <span className={`text-xl font-extrabold block ${s.color}`}>{s.val}</span>
+                <span className={`text-xl font-extrabold block tabular-nums ${s.color}`}>{s.val}</span>
                 <p className="text-[10px] text-on-surface-variant font-semibold mt-0.5">{s.label}</p>
               </div>
             ))}
@@ -1154,7 +1154,7 @@ export default function DetallePrueba() {
                   <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm text-primary"
                       style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                    Simulacros IA personalizados
+                    Pruebas Praxia personalizadas
                   </p>
                   <TabSimulacrosIA
                     evaluacionId={id}
@@ -1207,18 +1207,18 @@ export default function DetallePrueba() {
               tienePlan={tienePlan && hasAiChat}
             />
 
-            {/* Cuaderno IA */}
+            {/* Cuaderno Praxia */}
             {tienePlan && packageId && (
               <button
                 onClick={() => navigate(`/cuaderno/${packageId}`)}
-                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 transition-all group"
+                className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 transition-all duration-300 group"
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                  <p className="font-bold text-sm">Cuaderno IA</p>
-                  <span className="material-symbols-outlined text-white/40 group-hover:text-white text-base ml-auto transition-colors">arrow_forward</span>
+                  <span className="material-symbols-outlined text-lg group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  <p className="font-bold text-sm">Cuaderno Praxia</p>
+                  <span className="material-symbols-outlined text-white/40 group-hover:text-white group-hover:translate-x-1 text-base ml-auto transition-all duration-300">arrow_forward</span>
                 </div>
-                <p className="text-white/70 text-xs">Chat con el tutor IA · Notas · Artefactos</p>
+                <p className="text-white/70 text-xs group-hover:text-white/90 transition-colors duration-300">Chatea con Praxia · Notas · Artefactos</p>
               </button>
             )}
 
@@ -1398,7 +1398,7 @@ export default function DetallePrueba() {
                 Cancelar
               </button>
               <button onClick={() => setModalConfirm(true)}
-                className="flex-1 py-3 rounded-full bg-secondary text-white font-bold text-sm active:scale-95 transition-all">
+                className="flex-1 py-3 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white font-bold text-sm active:scale-95 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30 transition-all duration-300">
                 Continuar →
               </button>
             </div>
@@ -1483,7 +1483,7 @@ export default function DetallePrueba() {
                 Cancelar
               </button>
               <button onClick={() => setModalConfirm(true)}
-                className="flex-1 py-3 rounded-full bg-primary text-white font-bold text-sm active:scale-95 transition-all">
+                className="flex-1 py-3 rounded-full bg-gradient-to-r from-primary to-primary/80 text-white font-bold text-sm active:scale-95 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/30 transition-all duration-300">
                 Iniciar examen →
               </button>
             </div>
@@ -1531,8 +1531,8 @@ export default function DetallePrueba() {
                 Volver
               </button>
               <button onClick={confirmarInicio}
-                className={`flex-1 py-3 rounded-full font-bold text-sm text-white active:scale-95 transition-all flex items-center justify-center gap-2 ${modalModo === 'practica' ? 'bg-secondary' : 'bg-primary'}`}>
-                <span className="material-symbols-outlined text-sm"
+                className={`flex-1 py-3 rounded-full font-bold text-sm text-white active:scale-95 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2 group ${modalModo === 'practica' ? 'bg-gradient-to-r from-secondary to-secondary/80 hover:shadow-secondary/40' : 'bg-gradient-to-r from-primary via-primary to-tertiary hover:shadow-primary/40'}`}>
+                <span className="material-symbols-outlined text-sm group-hover:translate-y-[-2px] group-hover:rotate-12 transition-transform duration-300"
                   style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
                 ¡Empezar!
               </button>
@@ -1593,8 +1593,8 @@ export default function DetallePrueba() {
                     Ver simulacros
                   </button>
                   <button onClick={() => navigate(`/simulacro-ia/${simulacroCreado.simulacro_id}`)}
-                    className="flex-[2] py-3 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">
-                    <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+                    className="flex-[2] py-3 rounded-full bg-gradient-to-r from-primary via-primary to-tertiary text-white font-bold text-sm active:scale-95 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-2xl hover:shadow-primary/40 transition-all duration-300 flex items-center justify-center gap-2 shadow-lg group">
+                    <span className="material-symbols-outlined text-base group-hover:scale-110 transition-transform duration-300" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
                     Iniciar ahora
                   </button>
                 </div>
@@ -1693,8 +1693,8 @@ export default function DetallePrueba() {
                       style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-xl">Simulacro IA</h3>
-                    <p className="text-xs text-on-surface-variant">Generado por Praxia · usa tus créditos IA</p>
+                    <h3 className="font-extrabold text-xl">Prueba con Praxia</h3>
+                    <p className="text-xs text-on-surface-variant">Generado por Praxia · usa tus créditos</p>
                   </div>
                 </div>
 
@@ -1766,7 +1766,7 @@ export default function DetallePrueba() {
                             <div className="mt-2 flex items-start gap-1.5 bg-blue-50 border border-blue-200 rounded-lg p-2">
                               <span className="material-symbols-outlined text-blue-600 text-sm shrink-0 mt-0.5">auto_awesome</span>
                               <p className="text-blue-800 leading-relaxed">
-                                La IA generará <strong>~{verificacion.total_preguntas} preguntas</strong> siguiendo la estructura real de esta OPEC.
+                                Praxia generará <strong>~{verificacion.total_preguntas} preguntas</strong> siguiendo la estructura real de esta OPEC.
                               </p>
                             </div>
                           )}
@@ -1824,8 +1824,8 @@ export default function DetallePrueba() {
                     Cancelar
                   </button>
                   <button onClick={lanzarSimulacroIA} disabled={!cargo.trim()}
-                    className="flex-1 py-3 rounded-full bg-slate-900 text-white font-bold text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                    className="flex-1 py-3 rounded-full bg-gradient-to-r from-primary via-primary to-tertiary text-white font-bold text-sm active:scale-95 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl hover:shadow-primary/40 transition-all duration-300 disabled:opacity-40 flex items-center justify-center gap-2 group">
+                    <span className="material-symbols-outlined text-sm group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                     Generar
                   </button>
                 </div>
