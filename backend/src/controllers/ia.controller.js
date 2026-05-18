@@ -1150,23 +1150,32 @@ INSTRUCCIONES ESPECÍFICAS:
 
 // ── Endpoint: Analizar perfil vs cargos OPEC ─────────────────────────────────
 
-const SYSTEM_PROMPT_ANALISIS_PERFIL = `Eres un experto en selección de personal para el sector público colombiano, especializado en concursos de méritos (CNSC, Procuraduría, Contraloría, DIAN, Fiscalía, etc.).
+const SYSTEM_PROMPT_ANALISIS_PERFIL = `Eres una IA agente de Praxia especializada en analisis de hojas de vida, concursos de meritos del sector publico colombiano, empleo publico, verificacion de requisitos minimos, comparacion contra OPEC y orientacion estrategica para candidatos.
 
-Tu misión es analizar la hoja de vida del candidato con máximo detalle y cruzarla contra los cargos disponibles en la convocatoria para identificar cuáles se ajustan mejor a su perfil.
+Tu funcion es ejecutar un analisis tecnico completo a partir de dos fuentes: la hoja de vida del candidato y la base de datos interna de OPEC/cargos disponibles. Debes leer, extraer, estructurar, comparar, puntuar, justificar y devolver un resultado objetivo, trazable, practico y util para el candidato. No debes inventar informacion. Si un dato no aparece, marcalo como no identificado o requiere validacion.
 
-CRITERIOS DE ANÁLISIS:
-1. Formación académica: título, nivel (pregrado/posgrado/especialización), área de conocimiento.
-2. Experiencia: años, tipo (relacionada/profesional/docencia), sector (público/privado).
-3. Conocimientos específicos: áreas técnicas, normativas, herramientas.
-4. Tarjeta profesional: si el candidato la tiene o puede obtenerla.
-5. Compatibilidad real: no infles porcentajes, sé honesto sobre brechas.
+Actua como experta en concursos de meritos del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia), Ley 909 de 2004, clasificacion de empleos por nivel, tipos de experiencia (laboral, profesional, relacionada, especifica, docente, administrativa, publica), requisitos academicos, nucleos basicos del conocimiento, tarjeta profesional y analisis de funciones certificadas.
 
-IMPORTANTE:
-- Analiza TODOS los cargos recibidos y selecciona los mejores matches.
-- Da porcentajes de compatibilidad realistas (no todo es 90%+).
-- Si hay brechas, explica exactamente qué le falta y cómo subsanarlo.
-- Usa lenguaje cercano y motivador, pero preciso.
-- Responde ÚNICAMENTE con JSON válido, sin texto ni markdown adicional.`
+FLUJO OBLIGATORIO:
+1. Leer y validar el PDF/perfil (legibilidad, fechas, funciones, formacion).
+2. Extraer perfil estructurado: profesion, nivel, titulos, posgrados, tarjeta profesional, experiencia total en meses, experiencia profesional/relacionada/especifica, sector publico/privado, areas, funciones principales, categorias funcionales, competencias, herramientas, nucleos basicos, alertas de validacion.
+3. Normalizar funciones a categorias (contratacion estatal, gestion juridica, talento humano, control interno, etc.).
+4. Revisar TODAS las OPEC con criterios tecnicos.
+5. Validar requisitos minimos habilitantes: formacion, posgrado, tarjeta, experiencia, tipo de experiencia, funciones. Clasificar: cumple / cumple parcialmente / no cumple / requiere validacion. No recomendar si no cumple formacion minima.
+6. Calcular afinidad 0-100: formacion 30%, experiencia 30%, funciones 25%, conocimientos 10%, coherencia 5%.
+7. Restricciones de porcentaje: no >70% si experiencia relacionada no demostrada; no >75% si hay dudas sobre tipo de experiencia; no >80% si coincidencia funcional baja; no >85% si tarjeta/posgrado requiere validacion; no >60% si brecha critica de experiencia; no >50% si formacion parcial.
+8. Evaluar riesgo documental (bajo/medio/alto).
+9. Generar guia practica por OPEC: decision recomendada, documentos a organizar, correcciones en HV, funciones a evidenciar, palabras clave, acciones antes de postularse.
+10. Seleccionar las 5 OPEC mas afines.
+11. Identificar hasta 5 cargos descartados con motivo y brecha.
+12. Generar recomendaciones concretas para mejorar la hoja de vida.
+
+REGLAS: No inventes datos. No confundas tipos de experiencia. No infles porcentajes. Explica cada puntaje con trazabilidad. Diferencia entre afinidad alta y cumplimiento validado.
+
+Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown, sin comentarios. Estructura exacta:
+
+{"estado_analisis":"","observacion_general":"","perfil_candidato":{"nombre":"","profesion_principal":"","nivel_formacion":"","titulos_identificados":[],"posgrados_identificados":[],"formacion_complementaria":[],"tarjeta_profesional":{"estado":"","detalle":""},"experiencia_total_estimada_meses":0,"experiencia_profesional_estimada_meses":0,"experiencia_relacionada_estimada_meses":0,"experiencia_especifica_estimada_meses":0,"experiencia_sector_publico_meses":0,"experiencia_sector_privado_meses":0,"areas_experiencia":[],"sectores_experiencia":[],"funciones_principales_identificadas":[],"categorias_funcionales_perfil":[],"competencias_clave":[],"herramientas_identificadas":[],"posibles_nucleos_basicos_conocimiento":[],"alertas_validacion":[]},"diagnostico_general":{"nivel_competitividad":"","resumen":"","fortalezas_principales":[],"debilidades_principales":[],"tipo_de_cargos_mas_convenientes":[],"tipo_de_cargos_no_recomendados":[]},"ranking_opec_recomendadas":[{"ranking":1,"codigo_opec":"","entidad":"","convocatoria":"","denominacion":"","nivel":"","codigo":"","grado":"","salario":"","vacantes":0,"dependencia":"","proceso":"","area_estudio":"","proposito":"","requisito_academico":"","experiencia_requerida":"","tipo_experiencia_requerida":"","requiere_posgrado":false,"requiere_tarjeta_profesional":false,"cumplimiento_requisitos_minimos":"","afinidad_porcentaje":0,"clasificacion_afinidad":"","puntaje_detallado":{"formacion_academica":{"puntaje":0,"justificacion":""},"experiencia_requerida":{"puntaje":0,"justificacion":""},"coincidencia_funcional":{"puntaje":0,"justificacion":""},"conocimientos_competencias":{"puntaje":0,"justificacion":""},"coherencia_requisitos_adicionales":{"puntaje":0,"justificacion":""}},"cumplimiento":{"formacion":"","experiencia":"","funciones":"","conocimientos":"","tarjeta_profesional":"","posgrado":""},"desglose_afinidad_usuario":{"formacion":{"estado":"","explicacion":""},"experiencia":{"estado":"","explicacion":""},"funciones":{"estado":"","explicacion":""},"conocimientos":{"estado":"","explicacion":""},"riesgo_documental":{"nivel":"","explicacion":""}},"categorias_funcionales_opec":[],"coincidencias_principales":[],"brechas_concretas":[],"riesgo_documental":{"nivel":"","causas":[]},"riesgo_no_cumplimiento":"","justificacion":"","recomendacion_estrategica":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","que_debe_organizar":[],"que_debe_corregir_en_hoja_de_vida":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"documentos_prioritarios":[],"acciones_antes_de_postularse":[]}}],"opec_mas_recomendada":{"ranking":1,"codigo_opec":"","entidad":"","denominacion":"","afinidad_porcentaje":0,"razon_principal":"","ventaja_frente_a_las_otras":"","riesgo_principal":"","accion_prioritaria_antes_de_postularse":""},"recomendaciones_para_mejorar_hoja_de_vida":{"perfil_profesional":[],"experiencia_laboral":[],"funciones":[],"certificaciones":[],"soportes_documentales":[],"palabras_clave":[],"preparacion_para_pruebas":[]},"acciones_prioritarias":[{"prioridad":1,"accion":"","motivo":""}],"cargos_descartados_relevantes":[{"codigo_opec":"","entidad":"","denominacion":"","motivo_descarte":"","brecha_principal":""}]}
+`
 
 export async function analizarPerfilCV(req, res) {
   try {
@@ -1201,54 +1210,47 @@ export async function analizarPerfilCV(req, res) {
     const entidadNombre = conv?.entidad || 'Entidad pública colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria pública'
 
-    // Todos los cargos — sin filtro, sin recorte. DeepSeek los lee todos y decide.
-    const cargosTexto = todosOpec.map((c, i) =>
-      `[${i + 1}] ${c.denominacion} | Conv: ${c.num_convocatoria || 'N/A'} | Nivel: ${c.nivel || 'N/A'} | Grado: ${c.grado || 'N/A'} | Vacantes: ${c.vacantes || 1}
-   Área: ${c.area_estudio || 'No especificada'}
-   Posgrado: ${c.requiere_posgrado ? 'Sí' : 'No'} | Tarjeta prof.: ${c.requiere_tarjeta ? 'Sí' : 'No'}
-   Educación: ${c.estudio_texto || 'Ver resolución'}
-   Experiencia: ${c.exp_texto || 'Ver resolución'}${c.exp_anios ? ` (mínimo ${c.exp_anios} años)` : ''}
-   ${c.conocimientos?.length ? `Conocimientos: ${c.conocimientos.join(', ')}` : ''}`
-    ).join('\n\n')
+    // Todos los cargos — datos completos para que la IA pueda comparar correctamente
+    const cargosTexto = todosOpec.map((c) => [
+      `codigo_opec: ${c.num_convocatoria || ''}`,
+      `denominacion: ${c.denominacion || ''}`,
+      `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
+      `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
+      `area_estudio: ${c.area_estudio || ''} | area_funcional: ${c.area_funcional || ''}`,
+      `proposito: ${c.proposito || ''}`,
+      `educacion_requerida: ${c.estudio_texto || ''}`,
+      `requisito_academico: ${c.req_academico || ''}`,
+      `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
+      `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
+      `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
+      `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
+      `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
+      `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
+      `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
+      `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
+    ].filter(Boolean).join('\n')).join('\n---\n')
+
 
     const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    const userPrompt = `CONVOCATORIA: ${convNombre} — ${entidadNombre}
-Total de cargos en esta convocatoria: ${todosOpec.length} (todos incluidos abajo).
+    const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}
+Total de cargos disponibles: ${todosOpec.length}
 
-══════════════════════════════════════════
-PERFIL DEL CANDIDATO
-══════════════════════════════════════════
-${perfil_texto || 'No proporcionado por texto directo'}
-${cvText ? `\nHOJA DE VIDA (texto extraído del PDF):\n${cvText}` : ''}
+==============================
+HOJA DE VIDA / PERFIL DEL CANDIDATO
+==============================
+${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}
+${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}
 
-══════════════════════════════════════════
-CARGOS A EVALUAR
-══════════════════════════════════════════
+==============================
+BASE DE DATOS DE CARGOS / OPEC
+==============================
 ${cargosTexto}
 
-══════════════════════════════════════════
-INSTRUCCIONES DE RESPUESTA
-══════════════════════════════════════════
-Selecciona los 5 cargos con mayor compatibilidad real. Responde ÚNICAMENTE con este JSON:
-{
-  "resumen_perfil": "análisis detallado del perfil en 3-4 oraciones: formación, experiencia, fortalezas principales",
-  "nivel_perfil": "Auxiliar|Asistencial|Técnico|Profesional|Ejecutivo|Asesor|Directivo",
-  "cargos_recomendados": [
-    {
-      "num_convocatoria": "01-2026",
-      "nombre_cargo": "nombre exacto",
-      "compatibilidad": 85,
-      "nivel": "Profesional",
-      "grado": 18,
-      "vacantes": 3,
-      "fortalezas": ["por qué encaja - sea específico"],
-      "brechas": ["qué le falta - sea concreto"],
-      "recomendacion": "qué hacer para mejorar sus chances en este cargo específico"
-    }
-  ],
-  "recomendacion_general": "consejo estratégico global en 2-3 oraciones: qué priorizar, qué estudiar, qué certificar"
-}`
+==============================
+INSTRUCCION
+==============================
+Ejecuta el analisis completo siguiendo todos los pasos definidos en el sistema y devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
 
     const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt)
     let analisis
@@ -1450,7 +1452,7 @@ RESPUESTAS DEL ASPIRANTE (para analizar patrones de error):
 ${JSON.stringify((respuestas || []).slice(0, 60), null, 2)}
 
 PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel y estilo):
-${JSON.stringify(preguntasDeAreasDebiles, null, 2)}
+${JSON.stringify(preguntasDeAreasDebiles, null, 2)}`
 
 
   // 7. Llamar a DeepSeek

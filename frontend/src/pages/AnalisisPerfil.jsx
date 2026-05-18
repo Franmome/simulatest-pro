@@ -19,16 +19,41 @@ function pctStyle(pct) {
   return { bar: 'bg-red-400', badge: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' }
 }
 
-function CargoCard({ cargo, index }) {
-  const [open, setOpen] = useState(index < 3)
-  const s = pctStyle(cargo.compatibilidad)
+function riesgoStyle(nivel) {
+  if (nivel === 'bajo') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+  if (nivel === 'medio') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+}
 
+function cumpleIcon(estado) {
+  if (!estado) return 'help'
+  const e = estado.toLowerCase()
+  if (e === 'cumple') return 'check_circle'
+  if (e.includes('parcial') || e.includes('validacion') || e.includes('validación')) return 'warning'
+  if (e === 'no aplica' || e === 'n/a') return 'remove_circle'
+  return 'cancel'
+}
+
+function cumpleColor(estado) {
+  if (!estado) return 'text-on-surface-variant'
+  const e = estado.toLowerCase()
+  if (e === 'cumple') return 'text-green-600 dark:text-green-400'
+  if (e.includes('parcial') || e.includes('validacion') || e.includes('validación')) return 'text-amber-600 dark:text-amber-400'
+  if (e === 'no aplica' || e === 'n/a') return 'text-on-surface-variant'
+  return 'text-red-500 dark:text-red-400'
+}
+
+function isNewFormat(analisis) {
+  return !!(analisis?.ranking_opec_recomendadas || analisis?.perfil_candidato || analisis?.diagnostico_general)
+}
+
+// ── Old format (backward compat) ───────────────────────────────────────────────
+function CargoCardOld({ cargo, index }) {
+  const [open, setOpen] = useState(index < 2)
+  const s = pctStyle(cargo.compatibilidad)
   return (
     <div className="card overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full p-4 flex items-center gap-3 hover:bg-surface-container-low/50 transition-colors text-left"
-      >
+      <button onClick={() => setOpen(o => !o)} className="w-full p-4 flex items-center gap-3 hover:bg-surface-container-low/50 transition-colors text-left">
         <span className="text-2xl select-none flex-shrink-0">{MEDALS[index] ?? '•'}</span>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm leading-snug">{cargo.nombre_cargo}</p>
@@ -37,31 +62,22 @@ function CargoCard({ cargo, index }) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${s.badge}`}>
-            {cargo.compatibilidad}%
-          </span>
-          <span className="material-symbols-outlined text-on-surface-variant text-sm">
-            {open ? 'expand_less' : 'expand_more'}
-          </span>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${s.badge}`}>{cargo.compatibilidad}%</span>
+          <span className="material-symbols-outlined text-on-surface-variant text-sm">{open ? 'expand_less' : 'expand_more'}</span>
         </div>
       </button>
-
       <div className="px-4 pb-2">
         <div className="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${s.bar}`}
-            style={{ width: `${cargo.compatibilidad}%` }}
-          />
+          <div className={`h-full rounded-full transition-all duration-700 ${s.bar}`} style={{ width: `${cargo.compatibilidad}%` }} />
         </div>
       </div>
-
       {open && (
         <div className="px-4 pb-4 pt-1 space-y-3 animate-fade-in">
           {cargo.fortalezas?.length > 0 && (
             <div>
               <p className="text-xs font-bold text-green-600 mb-1.5 flex items-center gap-1">
                 <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>thumb_up</span>
-                Tus fortalezas para este cargo
+                Fortalezas
               </p>
               <ul className="space-y-1">
                 {cargo.fortalezas.map((f, j) => (
@@ -91,10 +107,7 @@ function CargoCard({ cargo, index }) {
           )}
           {cargo.recomendacion && (
             <div className="bg-primary/5 rounded-xl p-3">
-              <p className="text-xs font-bold text-primary mb-1 flex items-center gap-1">
-                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>tips_and_updates</span>
-                Cómo prepararte
-              </p>
+              <p className="text-xs font-bold text-primary mb-1">Cómo prepararte</p>
               <p className="text-xs text-on-surface leading-relaxed">{cargo.recomendacion}</p>
             </div>
           )}
@@ -104,10 +117,392 @@ function CargoCard({ cargo, index }) {
   )
 }
 
+// ── New format OPEC card ───────────────────────────────────────────────────────
+function CargoCard({ opec, index }) {
+  const [open, setOpen] = useState(index === 0)
+  const [tab, setTab] = useState('guia')
+  const s = pctStyle(opec.afinidad_porcentaje)
+  const puntaje = opec.puntaje_detallado || {}
+  const guia = opec.guia_para_el_usuario || {}
+  const riesgo = opec.riesgo_documental || {}
+  const cumplimiento = opec.cumplimiento || {}
+
+  const CRITERIOS = [
+    { key: 'formacion_academica', label: 'Formación', max: 30 },
+    { key: 'experiencia_requerida', label: 'Experiencia', max: 30 },
+    { key: 'coincidencia_funcional', label: 'Funciones', max: 25 },
+    { key: 'conocimientos_competencias', label: 'Conocimientos', max: 10 },
+    { key: 'coherencia_requisitos_adicionales', label: 'Coherencia', max: 5 },
+  ]
+
+  const CUMPLIMIENTO_LABELS = {
+    formacion: 'Formación', experiencia: 'Experiencia', funciones: 'Funciones',
+    conocimientos: 'Conocimientos', tarjeta_profesional: 'Tarjeta', posgrado: 'Posgrado',
+  }
+
+  function TabBtn({ id, label, icon }) {
+    return (
+      <button
+        onClick={() => setTab(id)}
+        className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all ${
+          tab === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container'
+        }`}
+      >
+        <span className="material-symbols-outlined text-sm">{icon}</span>
+        <span className="hidden sm:inline">{label}</span>
+      </button>
+    )
+  }
+
+  const decisionColor = (() => {
+    const d = (guia.decision_recomendada || '').toLowerCase()
+    if (d.includes('no recomendable') || d.includes('no se recomienda')) return 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border-red-200 dark:border-red-700'
+    if (d.includes('validacion') || d.includes('validación') || d.includes('con validacion')) return 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-700'
+    return 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700'
+  })()
+
+  return (
+    <div className="card overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full p-4 flex items-center gap-3 hover:bg-surface-container-low/50 transition-colors text-left"
+      >
+        <span className="text-2xl select-none flex-shrink-0">{MEDALS[index] ?? '•'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm leading-snug">{opec.denominacion}</p>
+          <p className="text-xs text-on-surface-variant mt-0.5">
+            {opec.entidad && <span>{opec.entidad} · </span>}
+            Conv. {opec.codigo_opec ?? opec.convocatoria ?? '—'}
+            {opec.nivel ? ` · ${opec.nivel}` : ''}
+            {opec.grado ? ` grado ${opec.grado}` : ''}
+            {opec.vacantes ? ` · ${opec.vacantes} vac.` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${s.badge}`}>
+            {opec.afinidad_porcentaje}%
+          </span>
+          <span className="material-symbols-outlined text-on-surface-variant text-sm">
+            {open ? 'expand_less' : 'expand_more'}
+          </span>
+        </div>
+      </button>
+
+      {/* Progress bar */}
+      <div className="px-4 pb-2">
+        <div className="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ${s.bar}`} style={{ width: `${opec.afinidad_porcentaje}%` }} />
+        </div>
+      </div>
+
+      {/* Cumplimiento pills (always visible) */}
+      {Object.keys(cumplimiento).some(k => cumplimiento[k]) && (
+        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+          {Object.entries(cumplimiento).map(([k, v]) => {
+            if (!v) return null
+            return (
+              <span key={k} className={`flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full bg-surface-container ${cumpleColor(v)}`}>
+                <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>{cumpleIcon(v)}</span>
+                {CUMPLIMIENTO_LABELS[k] ?? k}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Expanded */}
+      {open && (
+        <div className="px-4 pb-4 pt-1 space-y-3 animate-fade-in border-t border-outline-variant/20">
+
+          {/* Meta info row */}
+          <div className="flex flex-wrap gap-2">
+            {opec.salario && (
+              <div className="flex items-center gap-1.5 bg-surface-container rounded-lg px-2.5 py-1.5">
+                <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+                <span className="text-xs font-semibold text-on-surface">{opec.salario}</span>
+              </div>
+            )}
+            {opec.proceso && (
+              <div className="flex items-center gap-1.5 bg-surface-container rounded-lg px-2.5 py-1.5">
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">account_tree</span>
+                <span className="text-xs text-on-surface">{opec.proceso}</span>
+              </div>
+            )}
+            {opec.clasificacion_afinidad && (
+              <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${s.badge}`}>
+                {opec.clasificacion_afinidad}
+              </span>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1 bg-surface-container-low rounded-xl p-1">
+            <TabBtn id="guia" label="Guía" icon="tips_and_updates" />
+            <TabBtn id="analisis" label="Análisis" icon="analytics" />
+            <TabBtn id="riesgo" label="Riesgo" icon="shield" />
+          </div>
+
+          {/* Tab: Guía */}
+          {tab === 'guia' && (
+            <div className="space-y-3">
+              {guia.mensaje_claro && (
+                <div className={`p-3 rounded-xl text-xs leading-relaxed border ${decisionColor}`}>
+                  {guia.decision_recomendada && (
+                    <span className="font-extrabold block mb-1 uppercase text-[10px] tracking-wider">{guia.decision_recomendada}</span>
+                  )}
+                  {guia.mensaje_claro}
+                </div>
+              )}
+
+              {guia.acciones_antes_de_postularse?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-primary mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
+                    Acciones antes de postularte
+                  </p>
+                  <ol className="space-y-1">
+                    {guia.acciones_antes_de_postularse.map((a, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-2 bg-surface-container rounded-lg p-2">
+                        <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">{j + 1}</span>
+                        {a}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {guia.documentos_prioritarios?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">folder_open</span>
+                    Documentos prioritarios
+                  </p>
+                  <ul className="space-y-1">
+                    {guia.documentos_prioritarios.map((d, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                        <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>folder</span>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {guia.funciones_que_debe_evidenciar?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">work</span>
+                    Funciones que debes evidenciar
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {guia.funciones_que_debe_evidenciar.map((f, j) => (
+                      <span key={j} className="text-xs bg-surface-container text-on-surface px-2 py-0.5 rounded-full">{f}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {guia.palabras_clave_sugeridas?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">label</span>
+                    Palabras clave para tu hoja de vida
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {guia.palabras_clave_sugeridas.map((p, j) => (
+                      <span key={j} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Análisis técnico */}
+          {tab === 'analisis' && (
+            <div className="space-y-3">
+              {CRITERIOS.some(c => puntaje[c.key]) && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-2">Puntaje por criterio</p>
+                  <div className="space-y-2">
+                    {CRITERIOS.map(({ key, label, max }) => {
+                      const item = puntaje[key]
+                      if (!item) return null
+                      const pct = Math.round((item.puntaje / max) * 100)
+                      const barColor = pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400'
+                      return (
+                        <div key={key}>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-xs text-on-surface">{label}</span>
+                            <span className="text-xs font-bold text-on-surface">{item.puntaje}/{max}</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          {item.justificacion && (
+                            <p className="text-xs text-on-surface-variant mt-0.5 leading-snug">{item.justificacion}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {opec.coincidencias_principales?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-green-600 mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    Coincidencias principales
+                  </p>
+                  <ul className="space-y-1">
+                    {opec.coincidencias_principales.map((c, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                        <span className="material-symbols-outlined text-green-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {opec.brechas_concretas?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-amber-600 mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">priority_high</span>
+                    Brechas identificadas
+                  </p>
+                  <ul className="space-y-1">
+                    {opec.brechas_concretas.map((b, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                        <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0">arrow_forward</span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {opec.justificacion && (
+                <div className="bg-surface-container rounded-xl p-3">
+                  <p className="text-xs font-bold text-on-surface-variant mb-1">Justificación del puntaje</p>
+                  <p className="text-xs text-on-surface leading-relaxed">{opec.justificacion}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Riesgo */}
+          {tab === 'riesgo' && (
+            <div className="space-y-3">
+              {riesgo.nivel && (
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${riesgoStyle(riesgo.nivel)}`}>
+                    Riesgo {riesgo.nivel}
+                  </span>
+                </div>
+              )}
+
+              {riesgo.causas?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-1.5">Causas del riesgo</p>
+                  <ul className="space-y-1">
+                    {riesgo.causas.map((c, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-1.5 bg-surface-container rounded-lg p-2">
+                        <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {opec.riesgo_no_cumplimiento && (
+                <div className="bg-surface-container rounded-xl p-3">
+                  <p className="text-xs font-bold text-on-surface-variant mb-1">Riesgo de no cumplimiento</p>
+                  <p className="text-xs text-on-surface leading-relaxed">{opec.riesgo_no_cumplimiento}</p>
+                </div>
+              )}
+
+              {guia.que_debe_corregir_en_hoja_de_vida?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">edit_document</span>
+                    Qué corregir en tu hoja de vida
+                  </p>
+                  <ul className="space-y-1">
+                    {guia.que_debe_corregir_en_hoja_de_vida.map((c, j) => (
+                      <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                        <span className="material-symbols-outlined text-primary text-xs mt-0.5 flex-shrink-0">edit</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Recomendaciones HV accordion ──────────────────────────────────────────────
+function RecomendacionesHV({ recomendaciones }) {
+  const [open, setOpen] = useState(false)
+  const SECTIONS = [
+    { key: 'perfil_profesional', label: 'Perfil profesional', icon: 'person' },
+    { key: 'experiencia_laboral', label: 'Experiencia laboral', icon: 'work' },
+    { key: 'funciones', label: 'Funciones', icon: 'task' },
+    { key: 'certificaciones', label: 'Certificaciones', icon: 'verified' },
+    { key: 'soportes_documentales', label: 'Soportes documentales', icon: 'folder' },
+    { key: 'palabras_clave', label: 'Palabras clave', icon: 'label' },
+    { key: 'preparacion_para_pruebas', label: 'Preparación para pruebas', icon: 'school' },
+  ].filter(s => recomendaciones[s.key]?.length > 0)
+
+  if (!SECTIONS.length) return null
+
+  return (
+    <div className="card overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full p-4 flex items-center gap-2 hover:bg-surface-container-low/50 transition-colors text-left">
+        <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>tips_and_updates</span>
+        <p className="font-bold text-sm flex-1">Cómo mejorar tu hoja de vida</p>
+        <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{SECTIONS.length} secciones</span>
+        <span className="material-symbols-outlined text-on-surface-variant text-sm">{open ? 'expand_less' : 'expand_more'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4 border-t border-outline-variant/20 pt-3">
+          {SECTIONS.map(({ key, label, icon }) => (
+            <div key={key}>
+              <p className="text-xs font-bold text-on-surface-variant mb-1.5 flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm">{icon}</span>
+                {label}
+              </p>
+              <ul className="space-y-1">
+                {recomendaciones[key].map((r, i) => (
+                  <li key={i} className="text-xs text-on-surface flex items-start gap-1.5">
+                    <span className="material-symbols-outlined text-primary text-xs mt-0.5 flex-shrink-0">arrow_right</span>
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── History sidebar card ───────────────────────────────────────────────────────
 function HistoryCard({ item, onSelect, active }) {
-  const top = item.analisis?.cargos_recomendados?.[0]
+  const top = item.analisis?.ranking_opec_recomendadas?.[0] ?? item.analisis?.cargos_recomendados?.[0]
+  const pct = top?.afinidad_porcentaje ?? top?.compatibilidad ?? 0
+  const nombre = top?.denominacion ?? top?.nombre_cargo ?? ''
   const date = new Date(item.updated_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-  const s = top ? pctStyle(top.compatibilidad) : null
+  const s = pct ? pctStyle(pct) : null
 
   return (
     <button
@@ -117,17 +512,283 @@ function HistoryCard({ item, onSelect, active }) {
     >
       <p className="text-xs font-bold text-on-surface line-clamp-2 leading-snug">{item.convocatoria_nombre ?? 'Convocatoria'}</p>
       <p className="text-xs text-on-surface-variant mt-0.5">{date}</p>
-      {top && (
+      {nombre && (
         <div className="mt-2 flex items-center gap-1.5">
           <span className="text-sm select-none">🥇</span>
-          <p className="text-xs font-semibold text-on-surface truncate flex-1">{top.nombre_cargo}</p>
-          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${s.badge}`}>{top.compatibilidad}%</span>
+          <p className="text-xs font-semibold text-on-surface truncate flex-1">{nombre}</p>
+          {s && <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${s.badge}`}>{pct}%</span>}
         </div>
       )}
     </button>
   )
 }
 
+// ── Results: new format ────────────────────────────────────────────────────────
+function ResultsNew({ analisis, onReset, navigate }) {
+  const perfil = analisis.perfil_candidato || {}
+  const diag = analisis.diagnostico_general || {}
+  const top = analisis.opec_mas_recomendada || {}
+  const ranking = analisis.ranking_opec_recomendadas || []
+  const recomendaciones = analisis.recomendaciones_para_mejorar_hoja_de_vida || {}
+  const acciones = analisis.acciones_prioritarias || []
+  const descartados = analisis.cargos_descartados_relevantes || []
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <button onClick={onReset} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div className="flex-1">
+          <h2 className="font-bold">Resultado del análisis</h2>
+          {diag.nivel_competitividad && (
+            <span className="inline-block mt-0.5 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{diag.nivel_competitividad}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Estado de análisis */}
+      {analisis.observacion_general && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+          <span className="material-symbols-outlined text-sm flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
+          <p className="leading-relaxed">{analisis.observacion_general}</p>
+        </div>
+      )}
+
+      {/* Perfil extraído */}
+      {(perfil.profesion_principal || diag.resumen) && (
+        <div className="card p-5 bg-gradient-to-br from-primary/8 to-secondary/5 border border-primary/15">
+          <p className="text-xs font-bold text-primary uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
+            Tu perfil profesional
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {perfil.profesion_principal && (
+              <div className="bg-white/40 dark:bg-surface/30 rounded-lg p-2">
+                <p className="text-[10px] text-on-surface-variant">Profesión</p>
+                <p className="text-xs font-bold text-on-surface leading-snug">{perfil.profesion_principal}</p>
+              </div>
+            )}
+            {perfil.nivel_formacion && (
+              <div className="bg-white/40 dark:bg-surface/30 rounded-lg p-2">
+                <p className="text-[10px] text-on-surface-variant">Nivel</p>
+                <p className="text-xs font-bold text-on-surface leading-snug">{perfil.nivel_formacion}</p>
+              </div>
+            )}
+            {perfil.experiencia_total_estimada_meses > 0 && (
+              <div className="bg-white/40 dark:bg-surface/30 rounded-lg p-2">
+                <p className="text-[10px] text-on-surface-variant">Experiencia total</p>
+                <p className="text-xs font-bold text-on-surface">
+                  {perfil.experiencia_total_estimada_meses >= 12
+                    ? `${Math.floor(perfil.experiencia_total_estimada_meses / 12)}a${perfil.experiencia_total_estimada_meses % 12 ? ` ${perfil.experiencia_total_estimada_meses % 12}m` : ''}`
+                    : `${perfil.experiencia_total_estimada_meses} meses`}
+                </p>
+              </div>
+            )}
+            {perfil.tarjeta_profesional?.estado && (
+              <div className="bg-white/40 dark:bg-surface/30 rounded-lg p-2">
+                <p className="text-[10px] text-on-surface-variant">Tarjeta prof.</p>
+                <p className="text-xs font-bold text-on-surface leading-snug">{perfil.tarjeta_profesional.estado}</p>
+              </div>
+            )}
+          </div>
+          {diag.resumen && <p className="text-xs text-on-surface leading-relaxed">{diag.resumen}</p>}
+          {perfil.alertas_validacion?.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {perfil.alertas_validacion.map((a, i) => (
+                <p key={i} className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                  <span className="material-symbols-outlined text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                  {a}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Diagnóstico */}
+      {(diag.fortalezas_principales?.length > 0 || diag.debilidades_principales?.length > 0) && (
+        <div className="card p-4 space-y-3">
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>assessment</span>
+            Diagnóstico general
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {diag.fortalezas_principales?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-green-600 mb-1.5">Fortalezas</p>
+                <ul className="space-y-1">
+                  {diag.fortalezas_principales.map((f, i) => (
+                    <li key={i} className="text-xs text-on-surface flex items-start gap-1.5">
+                      <span className="material-symbols-outlined text-green-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {diag.debilidades_principales?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-amber-600 mb-1.5">Áreas de mejora</p>
+                <ul className="space-y-1">
+                  {diag.debilidades_principales.map((d, i) => (
+                    <li key={i} className="text-xs text-on-surface flex items-start gap-1.5">
+                      <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0">arrow_forward</span>
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Top OPEC */}
+      {top.denominacion && (
+        <div className="card p-4 border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+          <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+            La opción más recomendada para ti
+          </p>
+          <p className="font-bold text-sm text-on-surface">{top.denominacion}</p>
+          {top.entidad && <p className="text-xs text-on-surface-variant mt-0.5">{top.entidad}</p>}
+          <div className="mt-2 flex items-center gap-2">
+            <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${pctStyle(top.afinidad_porcentaje).badge}`}>
+              {top.afinidad_porcentaje}% afinidad
+            </span>
+          </div>
+          {top.razon_principal && <p className="text-xs text-on-surface mt-2 leading-relaxed">{top.razon_principal}</p>}
+          {top.ventaja_frente_a_las_otras && (
+            <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">{top.ventaja_frente_a_las_otras}</p>
+          )}
+          {top.accion_prioritaria_antes_de_postularse && (
+            <div className="mt-2 bg-primary/10 rounded-lg p-2">
+              <p className="text-xs font-bold text-primary mb-0.5">Acción prioritaria</p>
+              <p className="text-xs text-on-surface">{top.accion_prioritaria_antes_de_postularse}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ranking */}
+      {ranking.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+            Cargos recomendados para ti
+          </p>
+          <div className="space-y-3">
+            {ranking.map((opec, i) => <CargoCard key={i} opec={opec} index={i} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Acciones prioritarias */}
+      {acciones.length > 0 && (
+        <div className="card p-4">
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>priority_high</span>
+            Acciones prioritarias
+          </p>
+          <div className="space-y-2">
+            {acciones.map((a, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 bg-surface-container rounded-xl">
+                <span className="w-6 h-6 rounded-full bg-primary text-on-primary text-xs font-extrabold flex items-center justify-center flex-shrink-0">
+                  {a.prioridad ?? i + 1}
+                </span>
+                <div>
+                  <p className="text-xs font-bold text-on-surface">{a.accion}</p>
+                  {a.motivo && <p className="text-xs text-on-surface-variant mt-0.5">{a.motivo}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recomendaciones HV */}
+      <RecomendacionesHV recomendaciones={recomendaciones} />
+
+      {/* Descartados */}
+      {descartados.length > 0 && (
+        <div className="card p-4">
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">cancel</span>
+            Cargos evaluados pero descartados
+          </p>
+          <div className="space-y-2">
+            {descartados.map((d, i) => (
+              <div key={i} className="flex items-start gap-2 p-2 bg-surface-container rounded-lg">
+                <span className="material-symbols-outlined text-red-400 text-sm mt-0.5 flex-shrink-0">cancel</span>
+                <div>
+                  <p className="text-xs font-bold text-on-surface">{d.denominacion}</p>
+                  <p className="text-xs text-on-surface-variant">{d.entidad} · Conv. {d.codigo_opec}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{d.motivo_descarte}: {d.brecha_principal}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-3 pt-1">
+        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all">
+          Analizar de nuevo
+        </button>
+        <button onClick={() => navigate('/material-estudio')} className="flex-1 btn-primary py-3 rounded-full font-bold text-sm">
+          Ver material de estudio
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Results: old format ────────────────────────────────────────────────────────
+function ResultsOld({ analisis, onReset, navigate }) {
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <button onClick={onReset} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div className="flex-1">
+          <h2 className="font-bold">Resultado del análisis</h2>
+          {analisis.nivel_perfil && (
+            <span className="inline-block mt-0.5 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Perfil: {analisis.nivel_perfil}</span>
+          )}
+        </div>
+      </div>
+      <div className="card p-5 bg-gradient-to-br from-primary/8 to-secondary/5 border border-primary/15">
+        <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
+          Tu perfil profesional
+        </p>
+        <p className="text-sm text-on-surface leading-relaxed">{analisis.resumen_perfil}</p>
+      </div>
+      {(analisis.cargos_recomendados || []).length > 0 && (
+        <div className="space-y-3">
+          {analisis.cargos_recomendados.map((c, i) => <CargoCardOld key={i} cargo={c} index={i} />)}
+        </div>
+      )}
+      {analisis.recomendacion_general && (
+        <div className="card p-5 border border-secondary/20">
+          <p className="text-xs font-bold text-secondary mb-2 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>tips_and_updates</span>
+            Recomendación del Asistente de Praxia
+          </p>
+          <p className="text-sm text-on-surface leading-relaxed">{analisis.recomendacion_general}</p>
+        </div>
+      )}
+      <div className="flex gap-3 pt-1">
+        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all">Analizar de nuevo</button>
+        <button onClick={() => navigate('/material-estudio')} className="flex-1 btn-primary py-3 rounded-full font-bold text-sm">Ver material de estudio</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 export default function AnalisisPerfil() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -157,14 +818,11 @@ export default function AnalisisPerfil() {
       const res = await fetch(`${BASE}/api/ia/mis-analisis`, { headers })
       const json = await res.json()
       setHistorial(json.analisis || [])
-    } catch { /* historial no crítico */ }
+    } catch { /* no crítico */ }
   }
 
   function addFiles(fileList) {
-    const valid = Array.from(fileList).filter(f => {
-      const ext = f.name.split('.').pop().toLowerCase()
-      return ACCEPTED_EXTS.includes(ext)
-    })
+    const valid = Array.from(fileList).filter(f => ACCEPTED_EXTS.includes(f.name.split('.').pop().toLowerCase()))
     setFiles(prev => [...prev, ...valid])
   }
 
@@ -175,10 +833,7 @@ export default function AnalisisPerfil() {
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true)
-    setError(null)
-    setAnalisis(null)
-    setActiveHistId(null)
+    setAnalizando(true); setError(null); setAnalisis(null); setActiveHistId(null)
     try {
       const headers = await authHeaders()
       const fd = new FormData()
@@ -198,20 +853,15 @@ export default function AnalisisPerfil() {
   }
 
   function selectHistItem(item) {
-    setAnalisis(item.analisis)
-    setActiveHistId(item.id)
-    setShowHistory(false)
+    setAnalisis(item.analisis); setActiveHistId(item.id); setShowHistory(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function resetForm() {
-    setAnalisis(null)
-    setActiveHistId(null)
-  }
+  function resetForm() { setAnalisis(null); setActiveHistId(null) }
 
   return (
     <div className="min-h-screen">
-      {/* ── Sticky header ── */}
+      {/* Header */}
       <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm border-b border-outline-variant/20 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center gap-3">
           <button onClick={() => navigate('/material-estudio')} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
@@ -236,14 +886,11 @@ export default function AnalisisPerfil() {
       <div className="max-w-7xl mx-auto p-4 pb-28">
         <div className="lg:grid lg:grid-cols-[1fr_300px] lg:gap-6 lg:items-start">
 
-          {/* ── Main column ── */}
+          {/* Main */}
           <div className="space-y-5 min-w-0">
-
             {/* Form */}
             {!analisis && (
               <div className="card p-5 space-y-5 animate-fade-in">
-
-                {/* Convocatoria */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
                   <select
@@ -256,7 +903,6 @@ export default function AnalisisPerfil() {
                   </select>
                 </div>
 
-                {/* Perfil en texto */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Cuéntanos tu perfil</label>
                   <textarea
@@ -268,7 +914,6 @@ export default function AnalisisPerfil() {
                   />
                 </div>
 
-                {/* Upload area */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
                     Documentos de hoja de vida{' '}
@@ -280,21 +925,12 @@ export default function AnalisisPerfil() {
                     onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
                     onClick={() => fileInputRef.current?.click()}
                     className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all select-none
-                      ${dragging
-                        ? 'border-primary bg-primary/8 scale-[1.01]'
-                        : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container-low'}`}
+                      ${dragging ? 'border-primary bg-primary/8 scale-[1.01]' : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container-low'}`}
                   >
                     <span className="material-symbols-outlined text-3xl text-on-surface-variant" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
                     <p className="text-sm font-semibold text-on-surface">{dragging ? 'Suelta aquí' : 'Arrastra o haz clic para adjuntar'}</p>
                     <p className="text-xs text-on-surface-variant text-center">PDF · Imágenes (JPG, PNG) · Word · TXT · sin límite de tamaño</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept={ACCEPTED}
-                      multiple
-                      className="hidden"
-                      onChange={e => addFiles(e.target.files)}
-                    />
+                    <input ref={fileInputRef} type="file" accept={ACCEPTED} multiple className="hidden" onChange={e => addFiles(e.target.files)} />
                   </div>
 
                   {files.length > 0 && (
@@ -306,7 +942,7 @@ export default function AnalisisPerfil() {
                           <span className="text-xs text-on-surface-variant flex-shrink-0">
                             {f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(f.size / 1024)} KB`}
                           </span>
-                          <button onClick={() => removeFile(i)} className="text-on-surface-variant hover:text-error transition-colors flex-shrink-0">
+                          <button onClick={e => { e.stopPropagation(); removeFile(i) }} className="text-on-surface-variant hover:text-error transition-colors flex-shrink-0">
                             <span className="material-symbols-outlined text-sm">close</span>
                           </button>
                         </div>
@@ -344,74 +980,13 @@ export default function AnalisisPerfil() {
 
             {/* Results */}
             {analisis && (
-              <div className="space-y-4 animate-fade-in">
-                {/* Result top bar */}
-                <div className="flex items-center gap-3">
-                  <button onClick={resetForm} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
-                    <span className="material-symbols-outlined">arrow_back</span>
-                  </button>
-                  <div className="flex-1">
-                    <h2 className="font-bold">Resultado del análisis</h2>
-                    {analisis.nivel_perfil && (
-                      <span className="inline-block mt-0.5 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
-                        Perfil: {analisis.nivel_perfil}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Profile summary */}
-                <div className="card p-5 bg-gradient-to-br from-primary/8 to-secondary/5 border border-primary/15">
-                  <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
-                    Tu perfil profesional
-                  </p>
-                  <p className="text-sm text-on-surface leading-relaxed">{analisis.resumen_perfil}</p>
-                </div>
-
-                {/* Cargo cards */}
-                {(analisis.cargos_recomendados || []).length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
-                      Cargos recomendados para ti
-                    </p>
-                    <div className="space-y-3">
-                      {analisis.cargos_recomendados.map((c, i) => <CargoCard key={i} cargo={c} index={i} />)}
-                    </div>
-                  </div>
-                )}
-
-                {/* General recommendation */}
-                {analisis.recomendacion_general && (
-                  <div className="card p-5 border border-secondary/20">
-                    <p className="text-xs font-bold text-secondary mb-2 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>tips_and_updates</span>
-                      Recomendación del Asistente de Praxia
-                    </p>
-                    <p className="text-sm text-on-surface leading-relaxed">{analisis.recomendacion_general}</p>
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-1">
-                  <button
-                    onClick={resetForm}
-                    className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all"
-                  >
-                    Analizar de nuevo
-                  </button>
-                  <button
-                    onClick={() => navigate('/material-estudio')}
-                    className="flex-1 btn-primary py-3 rounded-full font-bold text-sm"
-                  >
-                    Ver material de estudio
-                  </button>
-                </div>
-              </div>
+              isNewFormat(analisis)
+                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} />
+                : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />
             )}
           </div>
 
-          {/* ── History panel ── */}
+          {/* Sidebar */}
           <aside className={`mt-5 lg:mt-0 ${showHistory ? 'block' : 'hidden'} lg:block`}>
             <div className="lg:sticky lg:top-[65px] space-y-3">
               <div className="flex items-center justify-between">
@@ -420,12 +995,9 @@ export default function AnalisisPerfil() {
                   Mis análisis guardados
                 </p>
                 {historial.length > 0 && (
-                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
-                    {historial.length}
-                  </span>
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{historial.length}</span>
                 )}
               </div>
-
               {historial.length === 0 ? (
                 <div className="text-center py-10 text-on-surface-variant">
                   <span className="material-symbols-outlined text-4xl opacity-30">folder_open</span>
@@ -435,12 +1007,7 @@ export default function AnalisisPerfil() {
               ) : (
                 <div className="space-y-2">
                   {historial.map(item => (
-                    <HistoryCard
-                      key={item.id}
-                      item={item}
-                      active={activeHistId === item.id}
-                      onSelect={selectHistItem}
-                    />
+                    <HistoryCard key={item.id} item={item} active={activeHistId === item.id} onSelect={selectHistItem} />
                   ))}
                 </div>
               )}
