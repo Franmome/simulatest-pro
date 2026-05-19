@@ -1205,13 +1205,38 @@ export async function analizarPerfilCV(req, res) {
       supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle(),
     ])
 
-    if (!todosOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aún no tiene cargos cargados. El equipo los está importando.' })
+    if (!todosOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
 
-    const entidadNombre = conv?.entidad || 'Entidad pública colombiana'
-    const convNombre    = conv?.nombre  || 'Convocatoria pública'
+    const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
+    const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
-    // Todos los cargos — datos completos para que la IA pueda comparar correctamente
-    const cargosTexto = todosOpec.map((c) => [
+    // Pre-filtrar OPECs por relevancia semantica simple (max 55 para no truncar el JSON de salida)
+    function preFilterOpecs(opecs, texto, max = 55) {
+      if (opecs.length <= max) return opecs
+      const txtLow = texto.toLowerCase()
+      const stopwords = new Set(['de', 'la', 'el', 'en', 'y', 'a', 'que', 'del', 'los', 'las', 'un', 'una', 'con', 'por', 'para', 'se', 'su'])
+      const scored = opecs.map(c => {
+        let score = 0
+        const fields = [
+          c.denominacion || '', c.area_estudio || '', c.area_funcional || '',
+          c.proceso || '', c.req_academico || '',
+          ...(Array.isArray(c.profesiones) ? c.profesiones : []),
+        ].join(' ').toLowerCase()
+        fields.split(/\W+/).forEach(w => {
+          if (w.length > 4 && !stopwords.has(w) && txtLow.includes(w)) score += 2
+        })
+        score += Math.min((c.vacantes || 1), 5) * 0.3
+        return { ...c, _score: score }
+      })
+      scored.sort((a, b) => b._score - a._score)
+      return scored.slice(0, max).map(({ _score, ...c }) => c)
+    }
+
+    const perfilBase = ((perfil_texto || '') + ' ' + cvText).slice(0, 3000)
+    const opecsFiltrados = preFilterOpecs(todosOpec, perfilBase)
+
+    // Datos de cada OPEC (funciones limitadas a 5 para no exceder tokens)
+    const cargosTexto = opecsFiltrados.map((c) => [
       `codigo_opec: ${c.num_convocatoria || ''}`,
       `denominacion: ${c.denominacion || ''}`,
       `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
@@ -1222,43 +1247,43 @@ export async function analizarPerfilCV(req, res) {
       `requisito_academico: ${c.req_academico || ''}`,
       `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
       `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
-      `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
+      `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''}`,
       `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
       `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
-      `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
-      `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
-      `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
+      `funciones: ${Array.isArray(c.funciones) ? c.funciones.slice(0,5).join(' | ') : (c.funciones || '')}`,
+      `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.slice(0,6).join(', ') : (c.conocimientos || '')}`,
     ].filter(Boolean).join('\n')).join('\n---\n')
-
 
     const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
     const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}
-Total de cargos disponibles: ${todosOpec.length}
+Total de cargos en la convocatoria: ${todosOpec.length} (analizando los ${opecsFiltrados.length} mas relevantes para este perfil)
 
 ==============================
 HOJA DE VIDA / PERFIL DEL CANDIDATO
 ==============================
 ${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}
-${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}
+${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText.slice(0, 4000) : ''}
 
 ==============================
-BASE DE DATOS DE CARGOS / OPEC
+CARGOS / OPEC A EVALUAR
 ==============================
 ${cargosTexto}
 
 ==============================
 INSTRUCCION
 ==============================
-Ejecuta el analisis completo siguiendo todos los pasos definidos en el sistema y devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
+Ejecuta el analisis completo y devuelve UNICAMENTE el JSON valido con la estructura exacta especificada en tus instrucciones. Sin texto antes ni despues del JSON.`
 
     const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt)
+    console.log('[IA] analisis_perfil tokensOut:', result.tokensOut, '| responseLen:', result.texto.length)
     let analisis
     try {
       const match = result.texto.match(/\{[\s\S]*\}/)
-      analisis = match ? JSON.parse(match[0]) : { resumen_perfil: result.texto, cargos_recomendados: [], recomendacion_general: '' }
+      if (!match) throw new Error('DeepSeek no devolvio un JSON valido. Intenta de nuevo.')
+      analisis = JSON.parse(match[0])
     } catch {
-      analisis = { resumen_perfil: result.texto, cargos_recomendados: [], recomendacion_general: '' }
+      throw err
     }
 
     const { error: saveErr } = await supabase.from('user_profile_analysis').upsert(

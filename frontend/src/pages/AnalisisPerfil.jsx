@@ -733,11 +733,9 @@ function ResultsNew({ analisis, onReset, navigate }) {
       )}
 
       <div className="flex gap-3 pt-1">
-        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all">
-          Analizar de nuevo
-        </button>
-        <button onClick={() => navigate('/material-estudio')} className="flex-1 btn-primary py-3 rounded-full font-bold text-sm">
-          Ver material de estudio
+        <button onClick={onReset} className="w-full py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-sm">person_search</span>
+          Analizar otro perfil
         </button>
       </div>
     </div>
@@ -781,8 +779,10 @@ function ResultsOld({ analisis, onReset, navigate }) {
         </div>
       )}
       <div className="flex gap-3 pt-1">
-        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all">Analizar de nuevo</button>
-        <button onClick={() => navigate('/material-estudio')} className="flex-1 btn-primary py-3 rounded-full font-bold text-sm">Ver material de estudio</button>
+        <button onClick={onReset} className="w-full py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-sm">person_search</span>
+          Analizar otro perfil
+        </button>
       </div>
     </div>
   )
