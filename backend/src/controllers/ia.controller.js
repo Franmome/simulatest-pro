@@ -123,6 +123,41 @@ async function extractPdfText(buffer) {
   } catch { return '' }
 }
 
+// Extrae texto de cualquier tipo de archivo usando Gemini Vision cuando es necesario
+async function extractCvText(file) {
+  if (!file) return ''
+  const ext = (file.originalname || '').split('.').pop().toLowerCase()
+  try {
+    if (ext === 'pdf') {
+      const textoPdf = await extractPdfText(file.buffer)
+      // PDF de texto: devuelve directo. PDF escaneado (imagen): texto muy corto → usar Gemini Vision
+      if (textoPdf && textoPdf.replace(/\s/g, '').length > 150) return textoPdf
+      console.log('[IA] PDF parece escaneado, usando Gemini Vision para extraer texto')
+      const prompt = 'Extrae y transcribe TODO el texto visible en este documento (hoja de vida / curriculum). Incluye nombres, fechas, cargos, formacion, experiencia laboral, instituciones y cualquier dato relevante. Solo devuelve el texto extraido, sin comentarios.'
+      const part = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
+      const res = await geminiGenerar([prompt, part])
+      return res.texto || ''
+    }
+    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+      console.log('[IA] Imagen detectada, usando Gemini Vision para extraer texto de HV')
+      const prompt = 'Extrae y transcribe TODO el texto visible en esta imagen (hoja de vida / curriculum). Incluye nombres, fechas, cargos, formacion, experiencia laboral, instituciones y cualquier dato relevante. Solo devuelve el texto extraido, sin comentarios.'
+      const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
+      const part = { inlineData: { data: file.buffer.toString('base64'), mimeType } }
+      const res = await geminiGenerar([prompt, part])
+      return res.texto || ''
+    }
+    if (['doc', 'docx'].includes(ext)) {
+      const { default: mammoth } = await import('mammoth')
+      const result = await mammoth.extractRawText({ buffer: file.buffer })
+      return result.value?.trim() || ''
+    }
+    if (ext === 'txt') return file.buffer.toString('utf8')
+  } catch (e) {
+    console.error('[IA] extractCvText error:', e.message)
+  }
+  return ''
+}
+
 function esHashReciente(f) {
   if (!f) return false
   return Date.now() - new Date(f).getTime() < 3 * 30 * 24 * 60 * 60 * 1000
@@ -1183,17 +1218,8 @@ export async function analizarPerfilCV(req, res) {
     const userId = req.user.id
     const { convocatoria_id, perfil_texto } = req.body
     const file = req.file
-    let cvText = ''
-    if (file) {
-      const ext = (file.originalname || '').toLowerCase().split('.').pop()
-      if (ext === 'pdf') {
-        cvText = await extractPdfText(file.buffer)
-      } else if (ext === 'txt') {
-        cvText = file.buffer.toString('utf8')
-      } else {
-        cvText = `[Se adjuntó archivo: ${file.originalname}]`
-      }
-    }
+    const cvText = await extractCvText(file)
+    console.log('[IA] cvText extraido:', cvText.length, 'chars')
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
@@ -1217,7 +1243,7 @@ export async function analizarPerfilCV(req, res) {
       `${c.num_convocatoria}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}a ${c.tipo_experiencia || ''}|posgrado:${c.requiere_posgrado ? 'si' : 'no'}|tarjeta:${c.requiere_tarjeta ? 'si' : 'no'}|${c.req_academico || ''}`
     ).join('\n')
 
-    const perfil_base = ((perfil_texto || '') + ' ' + cvText.slice(0, 2000)).trim()
+    const perfil_base = ((perfil_texto || '') + ' ' + cvText).trim()
 
     const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 5 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
 
