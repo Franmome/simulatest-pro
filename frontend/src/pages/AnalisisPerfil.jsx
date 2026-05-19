@@ -805,11 +805,17 @@ export default function AnalisisPerfil() {
   const [historial, setHistorial] = useState([])
   const [activeHistId, setActiveHistId] = useState(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [localAnalisis, setLocalAnalisis] = useState(null)
 
   useEffect(() => {
     supabase.from('convocatorias').select('id, nombre, entidad').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
     fetchHistory()
+    // cargar último análisis local
+    try {
+      const raw = localStorage.getItem('praxia_last_analisis')
+      if (raw) setLocalAnalisis(JSON.parse(raw))
+    } catch { /* ignore */ }
   }, [])
 
   async function fetchHistory() {
@@ -844,6 +850,11 @@ export default function AnalisisPerfil() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setAnalisis(json.analisis)
+      // guardar localmente como respaldo
+      const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
+      const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
+      try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch { /* ignore */ }
+      setLocalAnalisis(entry)
       fetchHistory()
     } catch (e) {
       setError(e.message)
@@ -871,13 +882,13 @@ export default function AnalisisPerfil() {
             <h1 className="text-lg font-extrabold font-headline">Análisis de Perfil</h1>
             <p className="text-xs text-on-surface-variant hidden sm:block">El Asistente de Praxia compara tu hoja de vida con los cargos disponibles</p>
           </div>
-          {historial.length > 0 && (
+          {(historial.length > 0 || localAnalisis) && (
             <button
               onClick={() => setShowHistory(s => !s)}
               className="lg:hidden flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-3 py-2 rounded-full"
             >
               <span className="material-symbols-outlined text-sm">history</span>
-              {historial.length} guardado{historial.length !== 1 ? 's' : ''}
+              {historial.length > 0 ? `${historial.length} guardado${historial.length !== 1 ? 's' : ''}` : 'Último análisis'}
             </button>
           )}
         </div>
@@ -998,19 +1009,42 @@ export default function AnalisisPerfil() {
                   <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{historial.length}</span>
                 )}
               </div>
-              {historial.length === 0 ? (
+              {historial.length === 0 && !localAnalisis ? (
                 <div className="text-center py-10 text-on-surface-variant">
                   <span className="material-symbols-outlined text-4xl opacity-30">folder_open</span>
                   <p className="text-xs mt-2 opacity-60">Aún no tienes análisis guardados</p>
                   <p className="text-xs opacity-40">Cada análisis se guarda automáticamente</p>
                 </div>
-              ) : (
+              ) : historial.length > 0 ? (
                 <div className="space-y-2">
                   {historial.map(item => (
                     <HistoryCard key={item.id} item={item} active={activeHistId === item.id} onSelect={selectHistItem} />
                   ))}
                 </div>
-              )}
+              ) : localAnalisis ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => { setAnalisis(localAnalisis.analisis); setActiveHistId('local'); setShowHistory(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    className={`w-full text-left p-3 rounded-xl border transition-all ${activeHistId === 'local' ? 'border-primary/40 bg-primary/8' : 'border-outline-variant/30 hover:border-primary/20 hover:bg-surface-container-low'}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-primary text-sm mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>history</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-on-surface truncate">{localAnalisis.convNombre || 'Último análisis'}</p>
+                        <p className="text-[10px] text-on-surface-variant mt-0.5">
+                          {new Date(localAnalisis.ts).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <span className="inline-block mt-1 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-bold">
+                          solo en este dispositivo
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                  <p className="text-[10px] text-on-surface-variant/60 px-1 leading-relaxed">
+                    Para guardar permanentemente, pide al admin que ejecute la migración SQL en Supabase.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>
