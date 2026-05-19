@@ -800,6 +800,7 @@ export default function AnalisisPerfil() {
   const [files, setFiles] = useState([])
   const [dragging, setDragging] = useState(false)
   const [analizando, setAnalizando] = useState(false)
+  const [loadStep, setLoadStep] = useState(0)
   const [error, setError] = useState(null)
   const [analisis, setAnalisis] = useState(null)
   const [historial, setHistorial] = useState([])
@@ -836,10 +837,23 @@ export default function AnalisisPerfil() {
     setFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
+  const LOAD_STEPS = [
+    { icon: 'description', text: 'Leyendo tu hoja de vida...' },
+    { icon: 'manage_search', text: 'El Asistente de Praxia está revisando todos los cargos disponibles...' },
+    { icon: 'psychology', text: 'Identificando los cargos más compatibles con tu perfil...' },
+    { icon: 'analytics', text: 'Analizando requisitos, funciones y competencias en detalle...' },
+    { icon: 'task_alt', text: 'Preparando tu informe personalizado...' },
+  ]
+
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true); setError(null); setAnalisis(null); setActiveHistId(null)
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null)
+
+    // avanzar pasos automáticamente (~12s cada uno — el análisis tarda ~60s en total)
+    const stepTimer = setInterval(() => {
+      setLoadStep(s => (s < LOAD_STEPS.length - 1 ? s + 1 : s))
+    }, 12000)
     try {
       const headers = await authHeaders()
       const fd = new FormData()
@@ -859,7 +873,9 @@ export default function AnalisisPerfil() {
     } catch (e) {
       setError(e.message)
     } finally {
+      clearInterval(stepTimer)
       setAnalizando(false)
+      setLoadStep(0)
     }
   }
 
@@ -969,23 +985,46 @@ export default function AnalisisPerfil() {
                   </div>
                 )}
 
-                <button
-                  onClick={analizar}
-                  disabled={analizando}
-                  className="btn-primary w-full py-3.5 rounded-full font-bold disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {analizando ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                      Asistente de Praxia analizando tu perfil...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
-                      Analizar mi perfil
-                    </>
-                  )}
-                </button>
+                {analizando ? (
+                  <div className="card p-6 space-y-5 animate-fade-in">
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <div className="relative w-16 h-16 flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+                        <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                        <span className="material-symbols-outlined text-2xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          {LOAD_STEPS[loadStep]?.icon}
+                        </span>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-sm text-on-surface">{LOAD_STEPS[loadStep]?.text}</p>
+                        <p className="text-xs text-on-surface-variant mt-1">El Asistente de Praxia necesita unos minutos para revisar cada cargo a fondo</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {LOAD_STEPS.map((step, i) => (
+                        <div key={i} className={`flex items-center gap-3 p-2.5 rounded-xl transition-all duration-500 ${i === loadStep ? 'bg-primary/10' : i < loadStep ? 'opacity-50' : 'opacity-20'}`}>
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs
+                            ${i < loadStep ? 'bg-green-500 text-white' : i === loadStep ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'}`}>
+                            {i < loadStep
+                              ? <span className="material-symbols-outlined text-xs">check</span>
+                              : i === loadStep
+                                ? <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                                : <span className="text-[10px] font-bold">{i + 1}</span>}
+                          </span>
+                          <p className={`text-xs ${i === loadStep ? 'font-bold text-primary' : 'text-on-surface-variant'}`}>{step.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={analizar}
+                    className="btn-primary w-full py-3.5 rounded-full font-bold flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
+                    Analizar mi perfil
+                  </button>
+                )}
               </div>
             )}
 

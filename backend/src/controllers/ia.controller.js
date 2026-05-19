@@ -1218,14 +1218,30 @@ export async function analizarPerfilCV(req, res) {
 
     const perfil_base = ((perfil_texto || '') + ' ' + cvText.slice(0, 2000)).trim()
 
-    const pass1System = `Eres un sistema de pre-seleccion de empleos publicos colombianos. Lee el perfil del candidato y la lista completa de cargos disponibles. Identifica los 5 codigos de cargo con mayor compatibilidad real para este candidato, considerando formacion, experiencia y afinidad funcional. Tambien identifica hasta 5 codigos que parecen afines pero deben descartarse. Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "descartados": ["cod1",...]}`
+    const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 5 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
+
+REGLA CRITICA DE NIVEL (obligatoria, no negociable):
+- Nivel ASISTENCIAL: solo requiere bachillerato o menos
+- Nivel TECNICO: requiere titulo de formacion tecnica o tecnologica (SENA u otro)
+- Nivel PROFESIONAL: requiere titulo universitario (pregrado) - MINIMO
+- Nivel ASESOR: requiere titulo universitario + posgrado o amplia experiencia profesional
+- Nivel DIRECTIVO/EJECUTIVO: requiere titulo universitario + experiencia directiva
+
+PASO 1 - Determina el nivel de formacion del candidato leyendo su perfil.
+PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel del candidato. NUNCA selecciones un cargo de nivel superior al que el candidato puede acceder.
+  Ejemplo: candidato TECNICO → solo puede optar a cargos TECNICO o ASISTENCIAL, JAMAS profesional/asesor/directivo.
+  Ejemplo: candidato PROFESIONAL universitario → puede optar a PROFESIONAL, TECNICO o ASISTENCIAL.
+PASO 3 - Entre los cargos de nivel compatible, elige los 5 con mayor afinidad de area, funciones y experiencia.
+PASO 4 - Identifica hasta 5 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
+
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "descartados": ["cod1",...]}`
 
     const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos):\n${compactCargos}`
 
     let top5Codigos = []
     let descartadosCodigos = []
     try {
-      const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt, 1024)
+      const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt, 2048)
       console.log('[IA] pass1 tokensOut:', pass1.tokensOut, '| responseLen:', pass1.texto.length)
       const m = pass1.texto.match(/\{[\s\S]*\}/)
       if (m) {
