@@ -260,7 +260,7 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
   )
 }
 
-function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir, onVolver }) {
+function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroId, onRepetir, onVolver }) {
   const total     = preguntas.length
   const correctas = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
   const score     = total > 0 ? Math.round((correctas / total) * 100) : 0
@@ -282,7 +282,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, onRepetir,
       tiempo_segundos:tiempos?.[i] || null,
     }))
 
-    analizarResultadoSimulacro({ cargo, preguntas: pregParaAnalisis, modelo: modelo || 'gemini' })
+    analizarResultadoSimulacro({ cargo, preguntas: pregParaAnalisis, modelo: modelo || 'gemini', simulacro_id: simulacroId })
       .then(a => setAnalisis(a))
       .catch(e => setErrorIA(e.message))
       .finally(() => setCargandoIA(false))
@@ -777,6 +777,7 @@ export default function SimulacroIA() {
       tiempos={tiemposPregRef.current}
       cargo={cargo}
       modelo="gemini"
+      simulacroId={id}
       onRepetir={repetir}
       onVolver={() => navigate(-1)}
     />

@@ -994,7 +994,7 @@ Genera EXACTAMENTE ${cantidadSafe} preguntas. Devuelve ÚNICAMENTE el array JSON
 export async function analizarResultadosSimulacro(req, res) {
   try {
     const userId = req.user.id
-    const { cargo, preguntas: preg, modelo = 'gemini' } = req.body
+    const { cargo, preguntas: preg, modelo = 'gemini', simulacro_id } = req.body
 
     if (!Array.isArray(preg) || !preg.length)
       return res.status(400).json({ error: 'Faltan datos de preguntas.' })
@@ -1079,6 +1079,18 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
     } catch { analisis = null }
 
     if (!analisis) return res.status(500).json({ error: 'El modelo no pudo generar el análisis.' })
+
+    // Guardar análisis independiente en BD (para progreso y modo práctica)
+    if (simulacro_id) {
+      const { error: saveErr } = await supabase
+        .from('user_simulacro_analisis')
+        .upsert(
+          { user_id: userId, simulacro_id: parseInt(simulacro_id), cargo, score_pct: score, score_correctas: correctas, score_total: total, analisis },
+          { onConflict: 'simulacro_id' }
+        )
+      if (saveErr) console.error('[IA] guardar analisis simulacro:', saveErr.message)
+      else console.log('[IA] analisis simulacro guardado:', simulacro_id)
+    }
 
     // Registro soft de tokens (no bloquea si falla)
     getActivePurchase(userId)
@@ -1479,44 +1491,67 @@ export async function generarModoPractica(req, res) {
   if (!sim) return res.status(404).json({ error: 'Simulacro no encontrado.' })
   if (!sim.completado) return res.status(400).json({ error: 'El simulacro debe estar completado para generar práctica.' })
 
-  // 2. Cargar respuestas del usuario
+  // 2. Leer análisis independiente guardado (fuente principal de datos de debilidades)
+  const { data: analisisGuardado } = await supabase
+    .from('user_simulacro_analisis')
+    .select('analisis, score_pct, score_correctas, score_total')
+    .eq('simulacro_id', parseInt(simulacro_id))
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  // 3. Cargar respuestas del usuario (respaldo si no hay análisis guardado)
   const { data: respuestas } = await supabase
     .from('user_simulacro_answers')
     .select('pregunta_idx, area, dificultad, opcion_elegida, opcion_correcta, es_correcta, tiempo_segundos')
     .eq('simulacro_id', parseInt(simulacro_id))
     .eq('user_id', userId)
 
-  // 3. Verificar tokens
+  // 4. Verificar tokens
   const compra = await getActivePurchase(userId)
   if (!compra) return res.status(402).json({ error: 'No tienes tokens disponibles.' })
   const balance = await checkTokenBalance(userId, compra.id)
   if (balance <= 0) return res.status(402).json({ error: 'Sin saldo de tokens. Adquiere un paquete.' })
 
-  // 4. Calcular áreas débiles
-  const errores = (respuestas || []).filter(r => !r.es_correcta)
-  const areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))].slice(0, 6)
-  const totalPregs = (respuestas || []).length
-  const pctError = totalPregs > 0 ? Math.round((errores.length / totalPregs) * 100) : 0
+  // 5. Calcular áreas débiles (desde análisis guardado o desde respuestas crudas)
+  let areasDebiles = [], pctError = 0, totalPregs = 0
+  const an = analisisGuardado?.analisis
+  if (an?.areas_mejora?.length) {
+    areasDebiles = an.areas_mejora.slice(0, 6)
+    pctError = analisisGuardado.score_pct != null ? Math.round(100 - analisisGuardado.score_pct) : 0
+    totalPregs = analisisGuardado.score_total || (respuestas || []).length
+  } else {
+    const errores = (respuestas || []).filter(r => !r.es_correcta)
+    areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))].slice(0, 6)
+    totalPregs = (respuestas || []).length
+    pctError = totalPregs > 0 ? Math.round((errores.length / totalPregs) * 100) : 0
+  }
 
-  // 5. Cargar prompt configurable desde DB
+  // 6. Cargar prompt configurable desde DB
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
 
-  // 6. Construir prompt de usuario con todos los datos
+  // 7. Construir prompt con análisis IA guardado + preguntas de referencia
   const preguntasDeAreasDebiles = (sim.preguntas || [])
-    .filter(p => areasDebiles.length === 0 || areasDebiles.includes(p.area))
+    .filter(p => areasDebiles.length === 0 || areasDebiles.some(a => p.area?.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.area?.toLowerCase())))
     .slice(0, 25)
+
+  const bloqueAnalisis = an ? `
+ANÁLISIS IA DEL DESEMPEÑO (generado al terminar la prueba):
+- Nivel de preparación: ${an.nivel_preparacion || 'no evaluado'}
+- Resumen: ${an.resumen || ''}
+- Patrón de error dominante: ${an.patron_error || ''}
+- Distractor más elegido: Opción ${an.tipo_distractor_frecuente || 'N/A'} — ${an.significado_distractor || ''}
+- Temas críticos a reforzar: ${(an.temas_criticos || []).join(', ') || 'No identificados'}
+- Recomendaciones del análisis: ${(an.recomendaciones || []).join(' | ') || ''}
+` : ''
 
   const userPrompt = `CARGO: ${sim.cargo}
 
-ESTADÍSTICAS DEL ASPIRANTE:
+RESULTADO DE LA PRUEBA ORIGINAL:
 - Preguntas respondidas: ${totalPregs}
-- Errores: ${errores.length} (${pctError}%)
-- Áreas con más errores: ${areasDebiles.join(', ') || 'No identificadas — generar preguntas de refuerzo general'}
-
-RESPUESTAS DEL ASPIRANTE (para analizar patrones de error):
-${JSON.stringify((respuestas || []).slice(0, 60), null, 2)}
-
-PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel y estilo):
+- Porcentaje de error: ${pctError}%
+- Áreas con más debilidades: ${areasDebiles.join(', ') || 'No identificadas — generar preguntas de refuerzo general'}
+${bloqueAnalisis}
+PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel, estilo y vocabulario):
 ${JSON.stringify(preguntasDeAreasDebiles, null, 2)}`
 
 
@@ -1640,7 +1675,24 @@ export async function getMisAnalisis(req, res) {
     .order('updated_at', { ascending: false })
   if (error) {
     console.error('[IA] getMisAnalisis:', error.message)
-    return res.json({ analisis: [] })  // tabla aun no creada → array vacio, no 500
+    return res.json({ analisis: [] })
+  }
+  return res.json({ analisis: data || [] })
+}
+
+// ── Historial de análisis de simulacros del usuario ───────────────────────────
+
+export async function getMisAnalisisSimulacros(req, res) {
+  const userId = req.user.id
+  const { data, error } = await supabase
+    .from('user_simulacro_analisis')
+    .select('id, simulacro_id, evaluacion_id, cargo, score_pct, score_correctas, score_total, analisis, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error) {
+    console.error('[IA] getMisAnalisisSimulacros:', error.message)
+    return res.json({ analisis: [] })
   }
   return res.json({ analisis: data || [] })
 }

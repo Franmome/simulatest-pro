@@ -83,12 +83,12 @@ export async function verificarOpec({ cargo }) {
 }
 
 // POST /api/ia/analisis-resultado — análisis psicométrico post-simulacro
-export async function analizarResultadoSimulacro({ cargo, preguntas, modelo = 'gemini' }) {
+export async function analizarResultadoSimulacro({ cargo, preguntas, modelo = 'gemini', simulacro_id }) {
   const headers = await authHeaders()
   const res = await fetch(`${BASE}/api/ia/analisis-resultado`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cargo, preguntas, modelo }),
+    body: JSON.stringify({ cargo, preguntas, modelo, simulacro_id }),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Error generando análisis.')
