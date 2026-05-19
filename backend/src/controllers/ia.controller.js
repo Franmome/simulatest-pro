@@ -1289,7 +1289,7 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "desca
 
     const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (top 5 de ${todosOpec.length} totales)\n==============================\n${cargosTexto}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de los 5 cargos preseleccionados siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
 
-    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 8192)
+    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 32768)
     console.log('[IA] pass2 tokensOut:', result.tokensOut, '| responseLen:', result.texto.length)
     let analisis
     try {
