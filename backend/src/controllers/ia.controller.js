@@ -287,7 +287,7 @@ async function deepseekTexto(prompt) {
 
 // Función dedicada para análisis de perfil — sin límite artificial de tokens,
 // temperatura baja para análisis preciso, system prompt separado desde DB.
-async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens = 8192) {
+async function deepseekAnalisisPerfil(systemPrompt, userPrompt) {
   const r = await deepseek.chat.completions.create({
     model:       'deepseek-chat',
     messages:    [
@@ -295,7 +295,6 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens = 8192
       { role: 'user',   content: userPrompt },
     ],
     temperature: 0.3,
-    max_tokens:  maxTokens,
   })
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
@@ -1241,7 +1240,7 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "desca
     let top5Codigos = []
     let descartadosCodigos = []
     try {
-      const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt, 2048)
+      const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt)
       console.log('[IA] pass1 tokensOut:', pass1.tokensOut, '| responseLen:', pass1.texto.length)
       const m = pass1.texto.match(/\{[\s\S]*\}/)
       if (m) {
@@ -1288,7 +1287,7 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "desca
 
     const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (top 5 de ${todosOpec.length} totales)\n==============================\n${cargosTexto}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de los 5 cargos preseleccionados siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
 
-    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 32768)
+    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt)
     console.log('[IA] pass2 tokensOut:', result.tokensOut, '| responseLen:', result.texto.length)
     let analisis
     try {
