@@ -1261,12 +1261,11 @@ Ejecuta el analisis completo siguiendo todos los pasos definidos en el sistema y
       analisis = { resumen_perfil: result.texto, cargos_recomendados: [], recomendacion_general: '' }
     }
 
-    try {
-      await supabase.from('user_profile_analysis').upsert(
-        { user_id: userId, convocatoria_id: convocatoria_id ? parseInt(convocatoria_id) : null, convocatoria_nombre: convNombre, analisis, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,convocatoria_id' }
-      )
-    } catch { /* tabla puede no existir */ }
+    const { error: saveErr } = await supabase.from('user_profile_analysis').upsert(
+      { user_id: userId, convocatoria_id: parseInt(convocatoria_id), convocatoria_nombre: convNombre, analisis, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,convocatoria_id' }
+    )
+    if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
 
     return res.json({ analisis })
   } catch (err) {
