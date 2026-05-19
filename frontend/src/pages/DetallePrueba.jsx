@@ -738,6 +738,7 @@ export default function DetallePrueba() {
     }
 
     let tienePlan = false, packageId = null, hasAiChat = false, versionNombre = null
+    let convocatoriaId = null, convocatoriaNombre = null
     if (user?.id) {
       const evalIdNum = parseInt(id, 10)
       const esAdmin = user.role === 'admin'
@@ -789,14 +790,13 @@ export default function DetallePrueba() {
         }
       }
 
-      // Datos del paquete (solo para usuarios normales que necesitan verificar has_ai_chat)
-      let convocatoriaId = null, convocatoriaNombre = null
-      if (packageId && !esAdmin) {
+      // Datos del paquete para obtener convocatoria_id (admins siempre tienen hasAiChat=true)
+      if (packageId) {
         const { data: pkg } = await supabase
           .from('packages')
-          .select('has_ai_chat, convocatoria_id')
+          .select('has_ai_chat, convocatoria_id, nombre')
           .eq('id', packageId).maybeSingle()
-        hasAiChat = pkg?.has_ai_chat ?? false
+        if (!esAdmin) hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
       }
     }
@@ -812,7 +812,7 @@ export default function DetallePrueba() {
       .limit(8)
     const ranking = (rankingRaw || []).map(r => ({ ...r, users: { full_name: 'Candidato' } }))
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId: null, convocatoriaNombre: null }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId, convocatoriaNombre }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
