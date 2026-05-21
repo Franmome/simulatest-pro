@@ -167,7 +167,7 @@ export default function MaterialEstudio() {
                           </span>
                         </div>
                         <p className="text-xs text-on-surface-variant">
-                          DeepSeek analiza qué cargos de {conv.nombre} van con tu perfil
+                          Praxia analiza qué cargos de {conv.nombre} van con tu perfil
                         </p>
                       </button>
                     ) : (

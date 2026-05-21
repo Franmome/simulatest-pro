@@ -2348,7 +2348,7 @@ export default function DetallePrueba() {
                   )}
 
                   <p className="text-[10px] text-on-surface-variant text-center leading-relaxed">
-                    DeepSeek generará preguntas nuevas enfocadas en tus áreas más débiles, respetando el estilo y nivel de la prueba original.
+                    Praxia generará preguntas nuevas enfocadas en tus áreas más débiles, respetando el estilo y nivel de la prueba original.
                   </p>
                 </>
               ) : null}

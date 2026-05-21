@@ -1560,17 +1560,31 @@ ${JSON.stringify(preguntasDeAreasDebiles, null, 2)}`
   try {
     ;({ texto, tokensIn, tokensOut } = await deepseekAnalisisPerfil(systemPrompt, userPrompt))
   } catch (e) {
-    return res.status(502).json({ error: 'Error llamando a DeepSeek: ' + e.message })
+    return res.status(502).json({ error: 'Error en el motor de Praxia: ' + e.message })
   }
 
   // 8. Parsear JSON de respuesta
   let preguntas
   try {
-    const match = texto.match(/\[[\s\S]*\]/)
-    preguntas = JSON.parse(match ? match[0] : texto)
-    if (!Array.isArray(preguntas) || !preguntas.length) throw new Error('Array vacío')
-  } catch {
-    return res.status(500).json({ error: 'DeepSeek no generó preguntas válidas. Intenta de nuevo.' })
+    // Limpiar posibles bloques markdown antes de parsear
+    const cleaned = texto
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim()
+    // Intentar parse directo, luego extraer array
+    let parsed
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch {
+      const match = cleaned.match(/\[[\s\S]*\]/)
+      if (!match) throw new Error('sin array JSON')
+      parsed = JSON.parse(match[0])
+    }
+    preguntas = Array.isArray(parsed) ? parsed : (parsed.preguntas || parsed.questions || [])
+    if (!preguntas.length) throw new Error('array vacío')
+  } catch (e) {
+    console.error('[Práctica] parse error:', e.message, '| preview:', texto.slice(0, 300))
+    return res.status(500).json({ error: 'Praxia no pudo generar las preguntas. Intenta de nuevo.' })
   }
 
   // 9. Guardar como nuevo simulacro de práctica
