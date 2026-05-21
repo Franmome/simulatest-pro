@@ -688,6 +688,9 @@ export default function DetallePrueba() {
   const [practicaLista,     setPracticaLista]     = useState(null)   // práctica pre-generada
   const [generandoPractica, setGenerandoPractica] = useState(false)
   const [errorPractica,     setErrorPractica]     = useState('')
+  const [showPracticaModal, setShowPracticaModal] = useState(false)
+  const [practicaPreflight, setPracticaPreflight] = useState(null)   // { simulacroId, cargo, score_pct, hasAnalisis, analisisData, answersCount, areas }
+  const [loadingPreflight,  setLoadingPreflight]  = useState(false)
 
   // Carga la práctica pre-generada (si existe) cuando vuelven a esta página
   useEffect(() => {
@@ -1034,24 +1037,75 @@ export default function DetallePrueba() {
       return
     }
 
-    // Fallback: generar on-demand si no hay ninguna aún
-    const { data } = await supabase
-      .from('user_simulacros')
-      .select('id, cargo')
-      .eq('evaluacion_id', parseInt(id))
-      .eq('user_id', user.id)
-      .eq('completado', true)
-      .neq('dificultad_config', 'practica')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (!data) {
-      setErrorPractica('Completa tu Prueba Praxia para desbloquear la práctica personalizada.')
-      return
-    }
-    setGenerandoPractica(true)
+    // Cargar preflight data y mostrar modal
+    setLoadingPreflight(true)
+    setShowPracticaModal(true)
     try {
-      const result = await generarModoPractica({ simulacro_id: data.id, evaluacion_id: parseInt(id) })
+      const { data: simData } = await supabase
+        .from('user_simulacros')
+        .select('id, cargo, score_pct, score_correctas, score_total, cantidad_preguntas')
+        .eq('evaluacion_id', parseInt(id))
+        .eq('user_id', user.id)
+        .not('score_pct', 'is', null)
+        .neq('dificultad_config', 'practica')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!simData) {
+        setErrorPractica('Completa tu Prueba Praxia para desbloquear la práctica personalizada.')
+        setShowPracticaModal(false)
+        setLoadingPreflight(false)
+        return
+      }
+
+      const [{ data: analisisData }, { data: answersData }] = await Promise.all([
+        supabase
+          .from('user_simulacro_analisis')
+          .select('analisis, score_pct')
+          .eq('simulacro_id', simData.id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('user_simulacro_answers')
+          .select('area, es_correcta')
+          .eq('simulacro_id', simData.id)
+          .eq('user_id', user.id),
+      ])
+
+      const byArea = {}
+      ;(answersData || []).forEach(r => {
+        const a = r.area || 'General'
+        if (!byArea[a]) byArea[a] = { total: 0, correctas: 0 }
+        byArea[a].total++
+        if (r.es_correcta) byArea[a].correctas++
+      })
+      const areas = Object.entries(byArea)
+        .sort((a, b) => (a[1].correctas / a[1].total) - (b[1].correctas / b[1].total))
+        .map(([nombre, d]) => ({ nombre, ...d, pct: Math.round((d.correctas / d.total) * 100) }))
+
+      setPracticaPreflight({
+        simulacroId:  simData.id,
+        cargo:        simData.cargo,
+        score_pct:    simData.score_pct,
+        totalPregs:   simData.cantidad_preguntas || simData.score_total,
+        hasAnalisis:  !!analisisData,
+        analisisData: analisisData?.analisis || null,
+        answersCount: (answersData || []).length,
+        areas,
+      })
+    } finally {
+      setLoadingPreflight(false)
+    }
+  }
+
+  async function confirmarGenerarPractica() {
+    if (!practicaPreflight) return
+    setGenerandoPractica(true)
+    setErrorPractica('')
+    try {
+      const result = await generarModoPractica({ simulacro_id: practicaPreflight.simulacroId, evaluacion_id: parseInt(id) })
+      setShowPracticaModal(false)
       navigate(`/simulacro-ia/${result.simulacro_id}?modo=practica`)
     } catch (e) {
       setErrorPractica(e.message)
@@ -2155,6 +2209,173 @@ export default function DetallePrueba() {
                   </button>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Preflight Modo Práctica IA ── */}
+      {showPracticaModal && (
+        <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => { if (!generandoPractica) setShowPracticaModal(false) }}>
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-secondary text-xl"
+                  style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-extrabold text-on-surface text-base">Modo Práctica Personalizada</p>
+                <p className="text-xs text-on-surface-variant">Praxia usará este contexto para adaptar tu práctica</p>
+              </div>
+              {!generandoPractica && (
+                <button onClick={() => setShowPracticaModal(false)}
+                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0">
+                  <span className="material-symbols-outlined text-on-surface-variant text-lg">close</span>
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4 space-y-3 overflow-y-auto max-h-[60vh]">
+              {loadingPreflight ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <div className="w-8 h-8 border-[3px] border-secondary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs text-on-surface-variant font-semibold">Leyendo tus datos…</p>
+                </div>
+              ) : practicaPreflight ? (
+                <>
+                  {/* Ítem 1: Última prueba */}
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl p-3">
+                    <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-extrabold text-emerald-700 uppercase tracking-widest mb-0.5">Última prueba completada</p>
+                      <p className="text-sm font-bold text-on-surface truncate">{practicaPreflight.cargo}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${practicaPreflight.score_pct >= 70 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                          {Math.round(practicaPreflight.score_pct)}%
+                        </span>
+                        {practicaPreflight.totalPregs > 0 && (
+                          <span className="text-[10px] text-on-surface-variant">{practicaPreflight.totalPregs} preguntas</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ítem 2: Análisis IA */}
+                  <div className={`flex items-start gap-3 rounded-2xl p-3 border ${practicaPreflight.hasAnalisis ? 'bg-primary/5 border-primary/15' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${practicaPreflight.hasAnalisis ? 'bg-primary/10' : 'bg-slate-200'}`}>
+                      <span className={`material-symbols-outlined text-base ${practicaPreflight.hasAnalisis ? 'text-primary' : 'text-slate-400'}`}
+                        style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {practicaPreflight.hasAnalisis ? 'psychology' : 'psychology'}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className={`text-xs font-extrabold uppercase tracking-widest ${practicaPreflight.hasAnalisis ? 'text-primary' : 'text-slate-400'}`}>
+                          Análisis IA
+                        </p>
+                        {!practicaPreflight.hasAnalisis && (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full">Sin análisis</span>
+                        )}
+                      </div>
+                      {practicaPreflight.hasAnalisis && practicaPreflight.analisisData ? (() => {
+                        const an = practicaPreflight.analisisData
+                        return (
+                          <>
+                            {an.nivel_preparacion && (
+                              <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full inline-block mb-1">
+                                {an.nivel_preparacion}
+                              </span>
+                            )}
+                            {an.patron_error && (
+                              <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{an.patron_error}</p>
+                            )}
+                            {an.areas_mejora?.length > 0 && (
+                              <p className="text-[10px] text-on-surface-variant mt-1">
+                                {an.areas_mejora.length} áreas a reforzar detectadas
+                              </p>
+                            )}
+                          </>
+                        )
+                      })() : (
+                        <p className="text-[11px] text-on-surface-variant">Se usarán las respuestas para detectar áreas débiles</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ítem 3: Respuestas detalladas */}
+                  <div className={`flex items-start gap-3 rounded-2xl p-3 border ${practicaPreflight.answersCount > 0 ? 'bg-secondary/5 border-secondary/15' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${practicaPreflight.answersCount > 0 ? 'bg-secondary/10' : 'bg-slate-200'}`}>
+                      <span className={`material-symbols-outlined text-base ${practicaPreflight.answersCount > 0 ? 'text-secondary' : 'text-slate-400'}`}
+                        style={{ fontVariationSettings: "'FILL' 1" }}>assignment</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-extrabold uppercase tracking-widest mb-0.5 ${practicaPreflight.answersCount > 0 ? 'text-secondary' : 'text-slate-400'}`}>
+                        Respuestas detalladas
+                      </p>
+                      {practicaPreflight.answersCount > 0 ? (
+                        <>
+                          <p className="text-[11px] text-on-surface">{practicaPreflight.answersCount} respuestas · {practicaPreflight.areas.length} áreas</p>
+                          {practicaPreflight.areas.slice(0, 3).map((a, i) => (
+                            <div key={i} className="flex items-center gap-2 mt-1">
+                              <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${a.pct >= 70 ? 'bg-emerald-400' : a.pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
+                                  style={{ width: `${a.pct}%` }} />
+                              </div>
+                              <span className="text-[9px] text-on-surface-variant w-20 truncate">{a.nombre}</span>
+                              <span className={`text-[9px] font-bold w-7 text-right ${a.pct >= 70 ? 'text-emerald-600' : a.pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{a.pct}%</span>
+                            </div>
+                          ))}
+                          {practicaPreflight.areas.length > 3 && (
+                            <p className="text-[9px] text-on-surface-variant mt-1">+{practicaPreflight.areas.length - 3} áreas más</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-on-surface-variant">Sin respuestas guardadas — se usarán las preguntas del simulacro</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {errorPractica && (
+                    <p className="text-xs text-red-600 font-semibold text-center">{errorPractica}</p>
+                  )}
+
+                  <p className="text-[10px] text-on-surface-variant text-center leading-relaxed">
+                    DeepSeek generará preguntas nuevas enfocadas en tus áreas más débiles, respetando el estilo y nivel de la prueba original.
+                  </p>
+                </>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            {!loadingPreflight && practicaPreflight && (
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+                <button onClick={() => setShowPracticaModal(false)} disabled={generandoPractica}
+                  className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all disabled:opacity-40">
+                  Cancelar
+                </button>
+                <button onClick={confirmarGenerarPractica} disabled={generandoPractica}
+                  className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
+                  {generandoPractica ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generando…
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+                      Generar práctica
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         </div>
