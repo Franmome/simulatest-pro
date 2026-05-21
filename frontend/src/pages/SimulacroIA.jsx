@@ -260,7 +260,7 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
   )
 }
 
-function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroId, onRepetir, onVolver }) {
+function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroId, onRepetir, onVolver, esPractica }) {
   const total     = preguntas.length
   const correctas = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
   const score     = total > 0 ? Math.round((correctas / total) * 100) : 0
@@ -268,10 +268,11 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
 
   const [verDetalle, setVerDetalle] = useState(false)
   const [analisis,   setAnalisis]   = useState(null)
-  const [cargandoIA, setCargandoIA] = useState(true)
+  const [cargandoIA, setCargandoIA] = useState(!esPractica)
   const [errorIA,    setErrorIA]    = useState(null)
 
   useEffect(() => {
+    if (esPractica) return  // práctica tiene retro por pregunta — no lanzar análisis global
     const pregParaAnalisis = preguntas.map((p, i) => ({
       area:           p.area || 'General',
       tipo:           p.tipo || 'funcional',
@@ -300,12 +301,14 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
           <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4">
             <span className="material-symbols-outlined text-white text-4xl"
               style={{ fontVariationSettings: "'FILL' 1" }}>
-              {aprueba ? 'military_tech' : 'auto_awesome'}
+              {esPractica ? 'fitness_center' : aprueba ? 'military_tech' : 'auto_awesome'}
             </span>
           </div>
           <p className="text-5xl font-extrabold mb-1">{score}%</p>
-          <p className="text-white/80 font-semibold">{aprueba ? '¡Buen resultado!' : 'Sigue practicando'}</p>
-          {cargo && <p className="text-white/60 text-sm mt-2">OPEC: {cargo}</p>}
+          <p className="text-white/80 font-semibold">
+            {esPractica ? 'Sesión de práctica completada' : aprueba ? '¡Buen resultado!' : 'Sigue practicando'}
+          </p>
+          {cargo && <p className="text-white/60 text-sm mt-2">{esPractica ? 'Área: ' : 'OPEC: '}{cargo}</p>}
         </div>
 
         {/* Stats */}
@@ -323,7 +326,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
         </div>
 
         {/* ── Análisis IA ── */}
-        {cargandoIA ? (
+        {!esPractica && cargandoIA ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-4">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -333,11 +336,8 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
               <p className="text-xs text-on-surface-variant mt-0.5">Praxia está generando tu retroalimentación personalizada</p>
             </div>
           </div>
-        ) : errorIA ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
-            No se pudo generar el análisis automático. Revisa tus respuestas abajo.
-          </div>
-        ) : analisis ? (
+        ) : !esPractica && errorIA ? null
+        : analisis ? (
           <div className="space-y-4">
 
             {/* Nivel de preparación */}
@@ -491,14 +491,16 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
           )}
         </div>
 
-        {/* Nota sobre práctica IA */}
-        <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-sm text-center">
-          <p className="font-bold text-primary mb-1">
-            <span className="material-symbols-outlined text-base align-middle mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-            ¿Quieres practicar tus áreas débiles?
-          </p>
-          <p className="text-on-surface-variant text-xs">Vuelve a la evaluación y usa el botón <strong>"Simulacro personalizado IA"</strong> para generar una práctica dirigida a tus puntos débiles.</p>
-        </div>
+        {/* Nota sobre práctica IA — solo en simulacros normales */}
+        {!esPractica && (
+          <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 text-sm text-center">
+            <p className="font-bold text-primary mb-1">
+              <span className="material-symbols-outlined text-base align-middle mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              ¿Quieres practicar tus áreas débiles?
+            </p>
+            <p className="text-on-surface-variant text-xs">Vuelve a la evaluación y usa el botón <strong>"Simulacro personalizado IA"</strong> para generar una práctica dirigida a tus puntos débiles.</p>
+          </div>
+        )}
 
         {/* Acciones */}
         <div className="flex gap-3">
@@ -773,6 +775,7 @@ export default function SimulacroIA() {
       cargo={cargo}
       modelo="gemini"
       simulacroId={id}
+      esPractica={modoPractica}
       onRepetir={repetir}
       onVolver={() => navigate(-1)}
     />
