@@ -12,6 +12,14 @@ function tiempoRelativo(fecha) {
   return new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function formatSegundos(s) {
+  if (!s) return '—'
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
 function ScoreBadge({ pct }) {
   if (pct === null || pct === undefined) return null
   const ok = pct >= 70
@@ -33,16 +41,45 @@ function EmptyState({ icon, title, sub }) {
   )
 }
 
+function SectionLabel({ icon, label, color = 'text-on-surface-variant' }) {
+  return (
+    <p className={`text-[10px] font-extrabold uppercase tracking-widest mb-2 flex items-center gap-1 ${color}`}>
+      <span className="material-symbols-outlined" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>{icon}</span>
+      {label}
+    </p>
+  )
+}
+
 // ── Tab: Pruebas completadas ──────────────────────────────────────────────────
 
+function AreaBar({ correctas, total, label }) {
+  const pct = total > 0 ? Math.round((correctas / total) * 100) : 0
+  const color = pct >= 70 ? 'bg-emerald-400' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
+  return (
+    <div className="flex items-center gap-2">
+      <p className="text-[10px] text-on-surface font-semibold w-40 shrink-0 truncate" title={label}>{label}</p>
+      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-[10px] font-bold w-8 text-right shrink-0 ${pct >= 70 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+        {pct}%
+      </span>
+      <span className="text-[9px] text-on-surface-variant w-12 text-right shrink-0">{correctas}/{total}</span>
+    </div>
+  )
+}
+
 function TabPruebas({ userId }) {
-  const [items,   setItems]   = useState([])
-  const [loading, setLoading] = useState(true)
+  const [items,     setItems]     = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [expandido, setExpandido] = useState(null)
+  const [areaData,  setAreaData]  = useState({})
+  const [loadingArea, setLoadingArea] = useState(null)
 
   useEffect(() => {
     if (!userId) return
     supabase.from('user_simulacros')
-      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, score_correctas, score_total, completado, created_at, evaluacion_id')
+      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, score_correctas, score_total, completado, created_at, tiempo_segundos, evaluacion_id')
       .eq('user_id', userId)
       .eq('completado', true)
       .order('created_at', { ascending: false })
@@ -50,41 +87,171 @@ function TabPruebas({ userId }) {
       .then(({ data }) => { setItems(data || []); setLoading(false) })
   }, [userId])
 
+  const toggleExpand = async (id) => {
+    if (expandido === id) { setExpandido(null); return }
+    setExpandido(id)
+    if (areaData[id]) return
+    setLoadingArea(id)
+    const { data } = await supabase
+      .from('user_simulacro_answers')
+      .select('area, dificultad, es_correcta, tiempo_segundos')
+      .eq('simulacro_id', id)
+    if (data?.length) {
+      const byArea = {}
+      data.forEach(r => {
+        const a = r.area || 'General'
+        if (!byArea[a]) byArea[a] = { correctas: 0, total: 0, tiempos: [] }
+        byArea[a].total++
+        if (r.es_correcta) byArea[a].correctas++
+        if (r.tiempo_segundos) byArea[a].tiempos.push(r.tiempo_segundos)
+      })
+      const byDif = {}
+      data.forEach(r => {
+        const d = r.dificultad || 'medio'
+        if (!byDif[d]) byDif[d] = { correctas: 0, total: 0 }
+        byDif[d].total++
+        if (r.es_correcta) byDif[d].correctas++
+      })
+      setAreaData(prev => ({ ...prev, [id]: { byArea, byDif, total: data.length } }))
+    } else {
+      setAreaData(prev => ({ ...prev, [id]: null }))
+    }
+    setLoadingArea(null)
+  }
+
   if (loading) return <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
   if (!items.length) return <EmptyState icon="quiz" title="Sin pruebas completadas" sub="Completa tu primera Prueba Praxia para verla aquí." />
 
   const LABEL_DIF = { mixta: 'Mixta', facil: 'Fácil', medio: 'Medio', dificil: 'Difícil', practica: 'Práctica' }
+  const COLOR_DIF = { facil: 'text-emerald-600 bg-emerald-50', medio: 'text-amber-600 bg-amber-50', dificil: 'text-red-600 bg-red-50', mixta: 'text-slate-600 bg-slate-100', practica: 'text-secondary bg-secondary/10' }
 
   return (
     <div className="space-y-2">
-      {items.map(s => (
-        <div key={s.id} className="flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 hover:border-primary/20 hover:shadow-sm transition-all">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-white text-lg"
-              style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm truncate">{s.cargo || 'Prueba Praxia'}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full">
-                {s.cantidad_preguntas || '—'} pregs
+      {items.map(s => {
+        const isOpen = expandido === s.id
+        const ad = areaData[s.id]
+        return (
+          <div key={s.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-primary/20 transition-colors">
+            <button onClick={() => toggleExpand(s.id)} className="w-full flex items-center gap-3 p-3.5 text-left">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-white text-lg"
+                  style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm truncate">{s.cargo || 'Prueba Praxia'}</p>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full">
+                    {s.cantidad_preguntas || '—'} pregs
+                  </span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${COLOR_DIF[s.dificultad_config] || 'text-slate-600 bg-slate-100'}`}>
+                    {LABEL_DIF[s.dificultad_config] || 'Mixta'}
+                  </span>
+                  {s.score_correctas !== null && s.score_total > 0 && (
+                    <span className="text-[10px] text-on-surface-variant">{s.score_correctas}/{s.score_total}</span>
+                  )}
+                  {s.tiempo_segundos > 0 && (
+                    <span className="text-[10px] text-on-surface-variant flex items-center gap-0.5">
+                      <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>timer</span>
+                      {formatSegundos(s.tiempo_segundos)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <ScoreBadge pct={s.score_pct} />
+                <span className="text-[10px] text-on-surface-variant">{tiempoRelativo(s.created_at)}</span>
+              </div>
+              <span className="material-symbols-outlined text-on-surface-variant text-lg ml-1 shrink-0">
+                {isOpen ? 'expand_less' : 'expand_more'}
               </span>
-              <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full">
-                {LABEL_DIF[s.dificultad_config] || 'Mixta'}
-              </span>
-              {s.score_correctas !== null && s.score_total > 0 && (
-                <span className="text-[10px] text-on-surface-variant">
-                  {s.score_correctas}/{s.score_total} correctas
-                </span>
-              )}
-            </div>
+            </button>
+
+            {isOpen && (
+              <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
+
+                {/* Resumen rápido */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: 'Score', val: s.score_pct !== null ? `${Math.round(s.score_pct)}%` : '—', color: s.score_pct >= 70 ? 'text-emerald-600' : 'text-red-500' },
+                    { label: 'Correctas', val: s.score_correctas !== null ? `${s.score_correctas}/${s.score_total}` : '—', color: 'text-on-surface' },
+                    { label: 'Tiempo total', val: formatSegundos(s.tiempo_segundos), color: 'text-on-surface' },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-slate-50 rounded-xl p-2.5">
+                      <p className={`font-extrabold text-base leading-none ${stat.color}`}>{stat.val}</p>
+                      <p className="text-[9px] text-on-surface-variant font-semibold mt-1 uppercase tracking-widest">{stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {loadingArea === s.id && (
+                  <div className="flex justify-center py-4">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {ad && (
+                  <>
+                    {/* Desglose por área */}
+                    <div>
+                      <SectionLabel icon="category" label={`Desglose por área (${Object.keys(ad.byArea).length} áreas)`} />
+                      <div className="space-y-2">
+                        {Object.entries(ad.byArea)
+                          .sort((a, b) => {
+                            const pA = a[1].total > 0 ? a[1].correctas / a[1].total : 0
+                            const pB = b[1].total > 0 ? b[1].correctas / b[1].total : 0
+                            return pA - pB
+                          })
+                          .map(([area, d]) => (
+                            <AreaBar key={area} label={area} correctas={d.correctas} total={d.total} />
+                          ))}
+                      </div>
+                    </div>
+
+                    {/* Desglose por dificultad */}
+                    {Object.keys(ad.byDif).length > 1 && (
+                      <div>
+                        <SectionLabel icon="fitness_center" label="Por dificultad" />
+                        <div className="flex gap-2 flex-wrap">
+                          {Object.entries(ad.byDif).map(([dif, d]) => {
+                            const pct = d.total > 0 ? Math.round((d.correctas / d.total) * 100) : 0
+                            return (
+                              <div key={dif} className={`rounded-xl px-3 py-2 text-center ${COLOR_DIF[dif] || 'bg-slate-50 text-slate-600'}`}>
+                                <p className="font-extrabold text-sm">{pct}%</p>
+                                <p className="text-[9px] font-bold uppercase tracking-widest">{dif}</p>
+                                <p className="text-[9px] opacity-70">{d.correctas}/{d.total}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tiempo promedio */}
+                    {(() => {
+                      const allTiempos = Object.values(ad.byArea).flatMap(d => d.tiempos)
+                      if (!allTiempos.length) return null
+                      const promedio = Math.round(allTiempos.reduce((a, b) => a + b, 0) / allTiempos.length)
+                      return (
+                        <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+                          <span className="material-symbols-outlined text-primary text-base"
+                            style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
+                          <span className="text-xs font-semibold text-on-surface">
+                            Tiempo promedio por pregunta: <strong>{formatSegundos(promedio)}</strong>
+                          </span>
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
+
+                {ad === null && !loadingArea && (
+                  <p className="text-xs text-on-surface-variant text-center py-2">Sin datos de respuestas disponibles.</p>
+                )}
+              </div>
+            )}
           </div>
-          <div className="shrink-0 flex flex-col items-end gap-1">
-            <ScoreBadge pct={s.score_pct} />
-            <span className="text-[10px] text-on-surface-variant">{tiempoRelativo(s.created_at)}</span>
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -120,9 +287,10 @@ function TabAnalisisPruebas({ userId }) {
               onClick={() => setExpandido(isOpen ? null : a.id)}
               className="w-full flex items-center gap-3 p-4 text-left"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-tertiary flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-white text-lg"
-                  style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${a.score_pct >= 70 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                <span className={`text-lg font-extrabold tabular-nums ${a.score_pct >= 70 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {a.score_pct !== null ? `${Math.round(a.score_pct)}%` : '—'}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate">{a.cargo || 'Análisis Praxia'}</p>
@@ -139,10 +307,7 @@ function TabAnalisisPruebas({ userId }) {
                   )}
                 </div>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-1">
-                <ScoreBadge pct={a.score_pct} />
-                <span className="text-[10px] text-on-surface-variant">{tiempoRelativo(a.created_at)}</span>
-              </div>
+              <span className="text-[10px] text-on-surface-variant shrink-0">{tiempoRelativo(a.created_at)}</span>
               <span className="material-symbols-outlined text-on-surface-variant text-lg ml-1 shrink-0">
                 {isOpen ? 'expand_less' : 'expand_more'}
               </span>
@@ -151,31 +316,33 @@ function TabAnalisisPruebas({ userId }) {
             {isOpen && (
               <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
-                {/* Resumen global */}
                 {an.resumen && (
                   <p className="text-xs text-on-surface leading-relaxed bg-primary/5 border border-primary/10 rounded-xl p-3">
                     {an.resumen}
                   </p>
                 )}
 
-                {/* Patrón de error */}
                 {an.patron_error && (
                   <div>
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                      Patrón de error detectado
-                    </p>
+                    <SectionLabel icon="bolt" label="Patrón de error detectado" color="text-amber-600" />
                     <p className="text-xs text-on-surface leading-relaxed">{an.patron_error}</p>
                   </div>
                 )}
 
-                {/* Áreas a mejorar */}
+                {(an.tipo_distractor_frecuente || an.significado_distractor) && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-700 mb-1">
+                      Distractor más elegido: Opción {an.tipo_distractor_frecuente || '—'}
+                    </p>
+                    {an.significado_distractor && (
+                      <p className="text-xs text-on-surface leading-relaxed">{an.significado_distractor}</p>
+                    )}
+                  </div>
+                )}
+
                 {an.areas_mejora?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: '13px' }}>trending_down</span>
-                      Áreas a reforzar ({an.areas_mejora.length})
-                    </p>
+                    <SectionLabel icon="trending_down" label={`Áreas a reforzar (${an.areas_mejora.length})`} color="text-red-600" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.areas_mejora.map((item, i) => (
                         <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">{item}</span>
@@ -184,13 +351,9 @@ function TabAnalisisPruebas({ userId }) {
                   </div>
                 )}
 
-                {/* Temas críticos */}
                 {an.temas_criticos?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-rose-600" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>priority_high</span>
-                      Temas críticos
-                    </p>
+                    <SectionLabel icon="priority_high" label="Temas críticos" color="text-rose-700" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.temas_criticos.map((t, i) => (
                         <span key={i} className="text-[10px] bg-rose-50 border border-rose-100 text-rose-700 font-semibold px-2.5 py-0.5 rounded-full">{t}</span>
@@ -199,13 +362,9 @@ function TabAnalisisPruebas({ userId }) {
                   </div>
                 )}
 
-                {/* Fortalezas */}
                 {an.fortalezas?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '13px' }}>trending_up</span>
-                      Fortalezas ({an.fortalezas.length})
-                    </p>
+                    <SectionLabel icon="trending_up" label={`Fortalezas (${an.fortalezas.length})`} color="text-emerald-700" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.fortalezas.map((f, i) => (
                         <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">{f}</span>
@@ -214,14 +373,33 @@ function TabAnalisisPruebas({ userId }) {
                   </div>
                 )}
 
-                {/* Recomendación de estudio */}
-                {an.recomendacion_estudio && (
+                {an.analisis_tiempo && (
+                  <div className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <span className="material-symbols-outlined text-primary text-base shrink-0 mt-0.5"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
+                    <p className="text-xs text-on-surface leading-relaxed">{an.analisis_tiempo}</p>
+                  </div>
+                )}
+
+                {an.recomendaciones?.length > 0 && (
                   <div className="bg-secondary/5 border border-secondary/15 rounded-xl p-3">
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-secondary mb-1.5 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-secondary" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>school</span>
-                      Plan de estudio recomendado
-                    </p>
-                    <p className="text-xs text-on-surface leading-relaxed">{an.recomendacion_estudio}</p>
+                    <SectionLabel icon="school" label="Plan de estudio recomendado" color="text-secondary" />
+                    <ul className="space-y-1.5">
+                      {an.recomendaciones.map((r, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-on-surface">
+                          <span className="text-secondary font-extrabold shrink-0">{i + 1}.</span>
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {an.mensaje_motivacional && (
+                  <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-xl p-3">
+                    <span className="material-symbols-outlined text-primary text-base shrink-0 mt-0.5"
+                      style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                    <p className="text-xs text-primary font-medium leading-relaxed italic">{an.mensaje_motivacional}</p>
                   </div>
                 )}
               </div>
@@ -247,7 +425,30 @@ function TabAnalisisPerfil({ userId }) {
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
       .limit(50)
-      .then(({ data }) => { setItems(data || []); setLoading(false) })
+      .then(({ data }) => {
+        const supabaseItems = (data || []).map(i => ({ ...i, source: 'supabase' }))
+        // Fallback: incluir análisis de localStorage si no está en Supabase
+        try {
+          const raw = localStorage.getItem('praxia_last_analisis')
+          if (raw) {
+            const local = JSON.parse(raw)
+            const yaEsta = supabaseItems.some(i =>
+              i.convocatoria_nombre === local.convNombre
+            )
+            if (!yaEsta && local.analisis) {
+              supabaseItems.push({
+                id: 'local',
+                convocatoria_nombre: local.convNombre || 'Análisis guardado localmente',
+                analisis: local.analisis,
+                updated_at: new Date(local.ts).toISOString(),
+                source: 'local',
+              })
+            }
+          }
+        } catch { /* ignore */ }
+        setItems(supabaseItems)
+        setLoading(false)
+      })
   }, [userId])
 
   if (loading) return <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
@@ -256,11 +457,17 @@ function TabAnalisisPerfil({ userId }) {
   return (
     <div className="space-y-3">
       {items.map(item => {
-        const an = item.analisis || {}
-        const isOpen = expandido === item.id
-        const top5 = an.top5 || an.resultado?.top5 || []
-        const cargoTop = top5[0]?.cargo || top5[0]?.nombre || null
-        const nivelCandidato = an.perfil_base?.nivel || an.nivel_candidato || null
+        const an          = item.analisis || {}
+        const isOpen      = expandido === item.id
+        const top5        = an.top5 || an.resultado?.top5 || []
+        const perfil      = an.perfil_base || {}
+        const diag        = an.diagnostico_general || {}
+        const rec         = an.recomendacion_principal || {}
+        const fortalezas  = diag.fortalezas  || an.fortalezas  || []
+        const areasMejora = diag.areas_mejora || an.areas_mejora || []
+        const cargoTop    = top5[0]?.cargo || top5[0]?.nombre || null
+        const nivelCandidato = perfil.nivel || an.nivel_candidato || null
+
         return (
           <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-primary/20 transition-colors">
             <button
@@ -272,15 +479,9 @@ function TabAnalisisPerfil({ userId }) {
                   style={{ fontVariationSettings: "'FILL' 1" }}>manage_accounts</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm truncate">
-                  {item.convocatoria_nombre || 'Análisis OPEC'}
-                </p>
+                <p className="font-bold text-sm truncate">{item.convocatoria_nombre || 'Análisis OPEC'}</p>
                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  {cargoTop && (
-                    <span className="text-[10px] text-on-surface-variant truncate max-w-[160px]">
-                      {cargoTop}
-                    </span>
-                  )}
+                  {cargoTop && <span className="text-[10px] text-on-surface-variant truncate max-w-[140px]">{cargoTop}</span>}
                   {top5.length > 0 && (
                     <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full shrink-0">
                       {top5.length} cargos
@@ -289,6 +490,11 @@ function TabAnalisisPerfil({ userId }) {
                   {nivelCandidato && (
                     <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full shrink-0">
                       {nivelCandidato}
+                    </span>
+                  )}
+                  {item.source === 'local' && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                      local
                     </span>
                   )}
                 </div>
@@ -301,136 +507,111 @@ function TabAnalisisPerfil({ userId }) {
               </span>
             </button>
 
-            {isOpen && (() => {
-              const perfil   = an.perfil_base || {}
-              const diag     = an.diagnostico_general || {}
-              const rec      = an.recomendacion_principal || {}
-              const fortalezas  = diag.fortalezas  || an.fortalezas  || []
-              const areasMejora = diag.areas_mejora || an.areas_mejora || []
-              return (
-                <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
+            {isOpen && (
+              <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
-                  {/* Resumen */}
-                  {an.resumen && (
-                    <p className="text-xs text-on-surface leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-200">
-                      {an.resumen}
-                    </p>
-                  )}
+                {an.resumen && (
+                  <p className="text-xs text-on-surface leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-200">
+                    {an.resumen}
+                  </p>
+                )}
 
-                  {/* Perfil del candidato */}
-                  {(perfil.nivel || perfil.profesion || perfil.experiencia_total) && (
-                    <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
-                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-primary mb-2 flex items-center gap-1">
-                        <span className="material-symbols-outlined" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>person</span>
-                        Tu perfil profesional
-                      </p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                        {perfil.profesion && <div><span className="text-on-surface-variant">Profesión</span><br /><span className="font-bold">{perfil.profesion}</span></div>}
-                        {perfil.nivel && <div><span className="text-on-surface-variant">Nivel</span><br /><span className="font-bold">{perfil.nivel}</span></div>}
-                        {perfil.experiencia_total && <div><span className="text-on-surface-variant">Experiencia</span><br /><span className="font-bold">{perfil.experiencia_total}</span></div>}
-                        {perfil.tarjeta_profesional && <div><span className="text-on-surface-variant">Tarjeta prof.</span><br /><span className="font-bold">{perfil.tarjeta_profesional}</span></div>}
+                {(perfil.nivel || perfil.profesion || perfil.experiencia_total) && (
+                  <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
+                    <SectionLabel icon="person" label="Tu perfil profesional" color="text-primary" />
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      {perfil.profesion && <div><span className="text-on-surface-variant block text-[10px]">Profesión</span><span className="font-bold">{perfil.profesion}</span></div>}
+                      {perfil.nivel && <div><span className="text-on-surface-variant block text-[10px]">Nivel</span><span className="font-bold">{perfil.nivel}</span></div>}
+                      {perfil.experiencia_total && <div><span className="text-on-surface-variant block text-[10px]">Experiencia</span><span className="font-bold">{perfil.experiencia_total}</span></div>}
+                      {perfil.tarjeta_profesional && <div><span className="text-on-surface-variant block text-[10px]">Tarjeta prof.</span><span className="font-bold">{perfil.tarjeta_profesional}</span></div>}
+                    </div>
+                    {perfil.descripcion_candidato && (
+                      <p className="text-xs text-on-surface mt-2 leading-relaxed">{perfil.descripcion_candidato}</p>
+                    )}
+                  </div>
+                )}
+
+                {(fortalezas.length > 0 || areasMejora.length > 0) && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {fortalezas.length > 0 && (
+                      <div>
+                        <SectionLabel icon="check_circle" label="Fortalezas" color="text-emerald-700" />
+                        <ul className="space-y-1">
+                          {fortalezas.map((f, i) => (
+                            <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                              <span className="text-emerald-500 shrink-0 mt-0.5">●</span>{f}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {areasMejora.length > 0 && (
+                      <div>
+                        <SectionLabel icon="cancel" label="Limitaciones" color="text-red-600" />
+                        <ul className="space-y-1">
+                          {areasMejora.map((a, i) => (
+                            <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                              <span className="text-red-400 shrink-0 mt-0.5">●</span>{a}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                  {/* Diagnóstico */}
-                  {(fortalezas.length > 0 || areasMejora.length > 0) && (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {fortalezas.length > 0 && (
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 mb-1.5 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '13px' }}>check_circle</span>
-                            Fortalezas
-                          </p>
-                          <ul className="space-y-1">
-                            {fortalezas.map((f, i) => (
-                              <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
-                                <span className="text-emerald-500 mt-0.5 shrink-0">●</span>{f}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {areasMejora.length > 0 && (
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-red-600 mb-1.5 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-red-500" style={{ fontSize: '13px' }}>cancel</span>
-                            Limitaciones
-                          </p>
-                          <ul className="space-y-1">
-                            {areasMejora.map((a, i) => (
-                              <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
-                                <span className="text-red-400 mt-0.5 shrink-0">●</span>{a}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Top 5 cargos */}
-                  {top5.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
-                        Cargos compatibles
-                      </p>
-                      <div className="space-y-2">
-                        {top5.map((c, i) => (
-                          <div key={i} className={`rounded-xl p-3 border ${i === 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
-                                i === 0 ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'
-                              }`}>{i + 1}</span>
-                              <p className="flex-1 text-xs font-extrabold truncate">{c.cargo || c.nombre || c}</p>
-                              {c.compatibilidad !== undefined && (
-                                <span className={`text-xs font-extrabold shrink-0 ${c.compatibilidad >= 70 ? 'text-emerald-600' : c.compatibilidad >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
-                                  {c.compatibilidad}%
-                                </span>
-                              )}
-                            </div>
-                            {(c.convocatoria || c.nivel || c.grado) && (
-                              <p className="text-[10px] text-on-surface-variant ml-7 truncate">
-                                {[c.convocatoria, c.nivel && `Nivel ${c.nivel}`, c.grado && `Grado ${c.grado}`].filter(Boolean).join(' · ')}
-                              </p>
-                            )}
-                            {(c.vacantes || c.salario) && (
-                              <p className="text-[10px] text-on-surface-variant ml-7">
-                                {[c.vacantes && `${c.vacantes} vac.`, c.salario && `$${Number(c.salario).toLocaleString('es-CO')}`].filter(Boolean).join(' · ')}
-                              </p>
-                            )}
-                            {c.justificacion && (
-                              <p className="text-[10px] text-on-surface-variant ml-7 mt-1 leading-relaxed line-clamp-2">{c.justificacion}</p>
-                            )}
-                            {c.accion_prioritaria && (
-                              <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
-                                <p className="text-[10px] font-bold text-primary flex items-center gap-1">
-                                  <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
-                                  Acción: {c.accion_prioritaria}
-                                </p>
-                              </div>
+                {top5.length > 0 && (
+                  <div>
+                    <SectionLabel icon="emoji_events" label="Cargos compatibles" color="text-amber-600" />
+                    <div className="space-y-2">
+                      {top5.map((c, i) => (
+                        <div key={i} className={`rounded-xl p-3 border ${i === 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0
+                              ${i === 0 ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>{i + 1}</span>
+                            <p className="flex-1 text-xs font-extrabold truncate">{c.cargo || c.nombre || c}</p>
+                            {c.compatibilidad !== undefined && (
+                              <span className={`text-xs font-extrabold shrink-0 ${c.compatibilidad >= 70 ? 'text-emerald-600' : c.compatibilidad >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                {c.compatibilidad}%
+                              </span>
                             )}
                           </div>
-                        ))}
-                      </div>
+                          {(c.convocatoria || c.nivel || c.grado) && (
+                            <p className="text-[10px] text-on-surface-variant ml-7 truncate">
+                              {[c.convocatoria, c.nivel && `Niv. ${c.nivel}`, c.grado && `Gr. ${c.grado}`, c.vacantes && `${c.vacantes} vac.`].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                          {c.salario && (
+                            <p className="text-[10px] font-bold text-emerald-700 ml-7">
+                              ${Number(c.salario).toLocaleString('es-CO')}
+                            </p>
+                          )}
+                          {c.justificacion && (
+                            <p className="text-[10px] text-on-surface-variant ml-7 mt-1 leading-relaxed line-clamp-2">{c.justificacion}</p>
+                          )}
+                          {c.accion_prioritaria && (
+                            <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
+                              <p className="text-[10px] font-bold text-primary flex items-center gap-1">
+                                <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
+                                {c.accion_prioritaria}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* Recomendación principal */}
-                  {(rec.cargo || rec.motivo) && (
-                    <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-3">
-                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-secondary mb-2 flex items-center gap-1">
-                        <span className="material-symbols-outlined" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>star</span>
-                        Cargo más recomendado
-                      </p>
-                      {rec.cargo && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.cargo}</p>}
-                      {rec.motivo && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.motivo}</p>}
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
+                {(rec.cargo || rec.motivo) && (
+                  <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-3">
+                    <SectionLabel icon="star" label="Cargo más recomendado" color="text-secondary" />
+                    {rec.cargo && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.cargo}</p>}
+                    {rec.motivo && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.motivo}</p>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
@@ -441,9 +622,9 @@ function TabAnalisisPerfil({ userId }) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'pruebas',   label: 'Pruebas',         icon: 'quiz' },
-  { id: 'analisis',  label: 'Análisis IA',      icon: 'psychology' },
-  { id: 'perfil',    label: 'Perfil OPEC',      icon: 'manage_accounts' },
+  { id: 'pruebas',   label: 'Pruebas',     icon: 'quiz' },
+  { id: 'analisis',  label: 'Análisis IA', icon: 'psychology' },
+  { id: 'perfil',    label: 'Perfil OPEC', icon: 'manage_accounts' },
 ]
 
 export default function Registros() {
@@ -451,10 +632,7 @@ export default function Registros() {
   const { user }  = useAuth()
   const [tab, setTab] = useState('pruebas')
 
-  if (!user) {
-    navigate('/login')
-    return null
-  }
+  if (!user) { navigate('/login'); return null }
 
   return (
     <div className="p-4 md:p-6 pb-28 max-w-3xl mx-auto animate-fade-in">
@@ -475,7 +653,6 @@ export default function Registros() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex bg-slate-100 p-1 rounded-xl mb-5">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
