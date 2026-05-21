@@ -149,52 +149,81 @@ function TabAnalisisPruebas({ userId }) {
             </button>
 
             {isOpen && (
-              <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-3">
+              <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
+                {/* Resumen global */}
+                {an.resumen && (
+                  <p className="text-xs text-on-surface leading-relaxed bg-primary/5 border border-primary/10 rounded-xl p-3">
+                    {an.resumen}
+                  </p>
+                )}
+
+                {/* Patrón de error */}
                 {an.patron_error && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Patrón de error</p>
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>bolt</span>
+                      Patrón de error detectado
+                    </p>
                     <p className="text-xs text-on-surface leading-relaxed">{an.patron_error}</p>
                   </div>
                 )}
 
+                {/* Áreas a mejorar */}
                 {an.areas_mejora?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Áreas a mejorar</p>
-                    <div className="flex flex-wrap gap-1">
-                      {an.areas_mejora.map((a, i) => (
-                        <span key={i} className="text-[10px] bg-red-50 text-red-600 font-semibold px-2 py-0.5 rounded-full">{a}</span>
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: '13px' }}>trending_down</span>
+                      Áreas a reforzar ({an.areas_mejora.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {an.areas_mejora.map((item, i) => (
+                        <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">{item}</span>
                       ))}
                     </div>
                   </div>
                 )}
 
+                {/* Temas críticos */}
+                {an.temas_criticos?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-rose-600" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>priority_high</span>
+                      Temas críticos
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {an.temas_criticos.map((t, i) => (
+                        <span key={i} className="text-[10px] bg-rose-50 border border-rose-100 text-rose-700 font-semibold px-2.5 py-0.5 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fortalezas */}
                 {an.fortalezas?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Fortalezas</p>
-                    <div className="flex flex-wrap gap-1">
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '13px' }}>trending_up</span>
+                      Fortalezas ({an.fortalezas.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
                       {an.fortalezas.map((f, i) => (
-                        <span key={i} className="text-[10px] bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">{f}</span>
+                        <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">{f}</span>
                       ))}
                     </div>
                   </div>
                 )}
 
+                {/* Recomendación de estudio */}
                 {an.recomendacion_estudio && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Recomendación</p>
+                  <div className="bg-secondary/5 border border-secondary/15 rounded-xl p-3">
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-secondary mb-1.5 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-secondary" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>school</span>
+                      Plan de estudio recomendado
+                    </p>
                     <p className="text-xs text-on-surface leading-relaxed">{an.recomendacion_estudio}</p>
                   </div>
                 )}
-
-                <details className="mt-1">
-                  <summary className="text-[10px] font-bold text-on-surface-variant cursor-pointer hover:text-primary transition-colors">
-                    Ver JSON completo
-                  </summary>
-                  <pre className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap overflow-x-auto max-h-60">
-                    {JSON.stringify(an, null, 2)}
-                  </pre>
-                </details>
               </div>
             )}
           </div>
@@ -272,37 +301,136 @@ function TabAnalisisPerfil({ userId }) {
               </span>
             </button>
 
-            {isOpen && (
-              <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-3">
-                {top5.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Top cargos compatibles</p>
-                    <div className="space-y-1.5">
-                      {top5.slice(0, 5).map((c, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
-                            i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-500'
-                          }`}>{i + 1}</span>
-                          <p className="flex-1 text-xs font-semibold truncate">{c.cargo || c.nombre || c}</p>
-                          {c.compatibilidad !== undefined && (
-                            <span className="text-[10px] font-bold text-primary shrink-0">{c.compatibilidad}%</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {isOpen && (() => {
+              const perfil   = an.perfil_base || {}
+              const diag     = an.diagnostico_general || {}
+              const rec      = an.recomendacion_principal || {}
+              const fortalezas  = diag.fortalezas  || an.fortalezas  || []
+              const areasMejora = diag.areas_mejora || an.areas_mejora || []
+              return (
+                <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
-                <details className="mt-1">
-                  <summary className="text-[10px] font-bold text-on-surface-variant cursor-pointer hover:text-primary transition-colors">
-                    Ver JSON completo
-                  </summary>
-                  <pre className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap overflow-x-auto max-h-60">
-                    {JSON.stringify(an, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            )}
+                  {/* Resumen */}
+                  {an.resumen && (
+                    <p className="text-xs text-on-surface leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-200">
+                      {an.resumen}
+                    </p>
+                  )}
+
+                  {/* Perfil del candidato */}
+                  {(perfil.nivel || perfil.profesion || perfil.experiencia_total) && (
+                    <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-primary mb-2 flex items-center gap-1">
+                        <span className="material-symbols-outlined" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>person</span>
+                        Tu perfil profesional
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                        {perfil.profesion && <div><span className="text-on-surface-variant">Profesión</span><br /><span className="font-bold">{perfil.profesion}</span></div>}
+                        {perfil.nivel && <div><span className="text-on-surface-variant">Nivel</span><br /><span className="font-bold">{perfil.nivel}</span></div>}
+                        {perfil.experiencia_total && <div><span className="text-on-surface-variant">Experiencia</span><br /><span className="font-bold">{perfil.experiencia_total}</span></div>}
+                        {perfil.tarjeta_profesional && <div><span className="text-on-surface-variant">Tarjeta prof.</span><br /><span className="font-bold">{perfil.tarjeta_profesional}</span></div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Diagnóstico */}
+                  {(fortalezas.length > 0 || areasMejora.length > 0) && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {fortalezas.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 mb-1.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '13px' }}>check_circle</span>
+                            Fortalezas
+                          </p>
+                          <ul className="space-y-1">
+                            {fortalezas.map((f, i) => (
+                              <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                                <span className="text-emerald-500 mt-0.5 shrink-0">●</span>{f}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {areasMejora.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-red-600 mb-1.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-red-500" style={{ fontSize: '13px' }}>cancel</span>
+                            Limitaciones
+                          </p>
+                          <ul className="space-y-1">
+                            {areasMejora.map((a, i) => (
+                              <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                                <span className="text-red-400 mt-0.5 shrink-0">●</span>{a}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Top 5 cargos */}
+                  {top5.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+                        Cargos compatibles
+                      </p>
+                      <div className="space-y-2">
+                        {top5.map((c, i) => (
+                          <div key={i} className={`rounded-xl p-3 border ${i === 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
+                                i === 0 ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'
+                              }`}>{i + 1}</span>
+                              <p className="flex-1 text-xs font-extrabold truncate">{c.cargo || c.nombre || c}</p>
+                              {c.compatibilidad !== undefined && (
+                                <span className={`text-xs font-extrabold shrink-0 ${c.compatibilidad >= 70 ? 'text-emerald-600' : c.compatibilidad >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                  {c.compatibilidad}%
+                                </span>
+                              )}
+                            </div>
+                            {(c.convocatoria || c.nivel || c.grado) && (
+                              <p className="text-[10px] text-on-surface-variant ml-7 truncate">
+                                {[c.convocatoria, c.nivel && `Nivel ${c.nivel}`, c.grado && `Grado ${c.grado}`].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                            {(c.vacantes || c.salario) && (
+                              <p className="text-[10px] text-on-surface-variant ml-7">
+                                {[c.vacantes && `${c.vacantes} vac.`, c.salario && `$${Number(c.salario).toLocaleString('es-CO')}`].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                            {c.justificacion && (
+                              <p className="text-[10px] text-on-surface-variant ml-7 mt-1 leading-relaxed line-clamp-2">{c.justificacion}</p>
+                            )}
+                            {c.accion_prioritaria && (
+                              <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
+                                <p className="text-[10px] font-bold text-primary flex items-center gap-1">
+                                  <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
+                                  Acción: {c.accion_prioritaria}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recomendación principal */}
+                  {(rec.cargo || rec.motivo) && (
+                    <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-widest text-secondary mb-2 flex items-center gap-1">
+                        <span className="material-symbols-outlined" style={{ fontSize: '13px', fontVariationSettings: "'FILL' 1" }}>star</span>
+                        Cargo más recomendado
+                      </p>
+                      {rec.cargo && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.cargo}</p>}
+                      {rec.motivo && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.motivo}</p>}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })}
