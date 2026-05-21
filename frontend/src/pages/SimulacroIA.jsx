@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
-import { analizarResultadoSimulacro, generarModoPractica } from '../utils/gemini'
+import { analizarResultadoSimulacro } from '../utils/gemini'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -537,7 +537,7 @@ export default function SimulacroIA() {
   const [seleccion,     setSeleccion]     = useState({})
   const [marcadas,      setMarcadas]      = useState([])
   const [retroVisible,  setRetroVisible]  = useState(false)
-  const practicaGeneradaRef = useRef(false)
+
   const [enviado,          setEnviado]          = useState(false)
   const [segundos,         setSegundos]         = useState(60 * 60)
   const [timerWarn,        setTimerWarn]        = useState(false)
@@ -727,12 +727,7 @@ export default function SimulacroIA() {
         p_tiempo_segundos: tiempoUsado,
       })
 
-      // Auto-generar práctica en segundo plano (solo si no es ya una práctica y no se ha generado)
-      if (!modoPractica && !practicaGeneradaRef.current) {
-        practicaGeneradaRef.current = true
-        generarModoPractica({ simulacro_id: parseInt(id), evaluacion_id: evaluacionId })
-          .catch(e => console.warn('[Praxia] práctica bg:', e.message))
-      }
+
     } catch { /* falla silenciosa */ }
   }
 

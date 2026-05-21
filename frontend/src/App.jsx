@@ -32,6 +32,7 @@ import CuadernoIA from './pages/CuadernoIA'
 import Salas from './pages/Salas'
 import SalaLobby from './pages/SalaLobby'
 import SalaSimulacro from './pages/SalaSimulacro'
+import Registros from './pages/Registros'
 
 // Páginas de administración — se cargan solo cuando el admin entra al panel
 const AdminDashboard   = lazy(() => import('./pages/admin/AdminDashboard'))
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/salas"           element={<Salas />} />
             <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
             <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />
+            <Route path="/registros"       element={<Registros />} />
           </Route>
 
           {/* 👑 Panel de administración */}

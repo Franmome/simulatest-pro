@@ -11,6 +11,7 @@ const NAV_DEFS = [
   { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas'     },
   { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos'       },
   { icon: 'manage_accounts',   label: 'Análisis de perfil', path: '/analisis-perfil',  hint: 'Tu perfil vs convocatoria' },
+  { icon: 'history_edu',       label: 'Registros',          path: '/registros',         hint: 'Historial de pruebas y análisis' },
 ]
 
 function QuickPill({ children, active = false }) {

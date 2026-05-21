@@ -61,13 +61,15 @@ const MODULOS_OPEC = [
   { label: 'Comportamentales', pct: 30 },
 ]
 
-function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = false, progFondo = 0, msgFondo = '', cargoFondo = '' }) {
+function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = false, progFondo = 0, msgFondo = '', cargoFondo = '', onGenerarPractica, generandoPractica = false, errorPractica = '' }) {
   const navigate = useNavigate()
   const [sims,             setSims]             = useState([])
   const [loading,          setLoading]          = useState(true)
   const [simToStart,       setSimToStart]       = useState(null)
   const [showPersonalizar, setShowPersonalizar] = useState(false)
   const [preStartConfig,   setPreStartConfig]   = useState({ cantidad: 0, tiempo: 0 })
+  const [ultimoAnalisis,   setUltimoAnalisis]   = useState(null)
+  const [showAnalisis,     setShowAnalisis]     = useState(false)
 
   useEffect(() => {
     if (!userId || !evaluacionId) { setLoading(false); return }
@@ -78,7 +80,21 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(20)
-      .then(({ data }) => { setSims(data || []); setLoading(false) })
+      .then(({ data }) => {
+        setSims(data || [])
+        setLoading(false)
+        const ultimoCompletado = (data || []).find(s => s.completado && s.dificultad_config !== 'practica')
+        if (ultimoCompletado) {
+          supabase.from('user_simulacro_analisis')
+            .select('id, cargo, score_pct, score_correctas, score_total, analisis, created_at, simulacro_id')
+            .eq('simulacro_id', ultimoCompletado.id)
+            .eq('user_id', userId)
+            .maybeSingle()
+            .then(({ data: an }) => setUltimoAnalisis(an || null))
+        } else {
+          setUltimoAnalisis(null)
+        }
+      })
   }, [evaluacionId, userId, recargar])
 
   const abrirPreStart = useCallback((s) => {
@@ -168,6 +184,100 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
               backgroundSize: '200% 100%',
             }}
           />
+        </div>
+      )}
+
+      {/* ── Tarjeta última prueba con análisis IA ── */}
+      {ultimoAnalisis && (
+        <div className="mb-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-4 py-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-white text-base"
+              style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            <span className="text-xs font-bold text-white">Última prueba completada</span>
+            {ultimoAnalisis.analisis?.nivel_preparacion && (
+              <span className="ml-auto text-[10px] font-bold bg-white/15 text-white px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                {ultimoAnalisis.analisis.nivel_preparacion}
+              </span>
+            )}
+          </div>
+          <div className="p-4">
+            <p className="font-bold text-sm truncate">{ultimoAnalisis.cargo || 'Prueba Praxia'}</p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {ultimoAnalisis.score_pct !== null && (
+                <span className={`text-xs font-extrabold ${ultimoAnalisis.score_pct >= 70 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {Math.round(ultimoAnalisis.score_pct)}%
+                </span>
+              )}
+              {ultimoAnalisis.score_correctas !== null && (
+                <span className="text-[10px] text-on-surface-variant">
+                  {ultimoAnalisis.score_correctas}/{ultimoAnalisis.score_total} correctas
+                </span>
+              )}
+              <span className="text-[10px] text-on-surface-variant ml-auto">
+                {tiempoRelativo(ultimoAnalisis.created_at)}
+              </span>
+            </div>
+
+            {ultimoAnalisis.analisis?.patron_error && (
+              <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed line-clamp-2">
+                <span className="font-semibold text-on-surface">Patrón: </span>
+                {ultimoAnalisis.analisis.patron_error}
+              </p>
+            )}
+
+            {ultimoAnalisis.analisis?.areas_mejora?.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {ultimoAnalisis.analisis.areas_mejora.slice(0, 4).map((a, i) => (
+                  <span key={i} className="text-[10px] bg-red-50 text-red-600 font-semibold px-2 py-0.5 rounded-full">
+                    {a}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {ultimoAnalisis.analisis && (
+              <button
+                onClick={() => setShowAnalisis(v => !v)}
+                className="mt-2 w-full text-[10px] font-bold text-on-surface-variant flex items-center justify-center gap-1 py-1.5 hover:text-primary transition-colors"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+                  {showAnalisis ? 'expand_less' : 'expand_more'}
+                </span>
+                {showAnalisis ? 'Ocultar análisis completo' : 'Ver análisis completo'}
+              </button>
+            )}
+
+            {showAnalisis && ultimoAnalisis.analisis && (
+              <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-52 overflow-y-auto">
+                <pre className="text-[10px] text-on-surface-variant whitespace-pre-wrap font-mono leading-relaxed">
+                  {JSON.stringify(ultimoAnalisis.analisis, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {onGenerarPractica && (
+              <button
+                onClick={onGenerarPractica}
+                disabled={generandoPractica}
+                className="mt-3 w-full py-2.5 bg-secondary text-white rounded-full text-xs font-bold hover:bg-secondary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                {generandoPractica ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Generando práctica personalizada...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+                    Generar Modo Práctica
+                  </>
+                )}
+              </button>
+            )}
+            {errorPractica && (
+              <p className="text-[10px] text-red-600 font-semibold mt-1.5 text-center">{errorPractica}</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -1254,11 +1364,18 @@ export default function DetallePrueba() {
 
                 {/* ── Simulacros IA personalizados ── */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm text-primary"
-                      style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                    Pruebas Praxia personalizadas
-                  </p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-primary"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                      Pruebas Praxia personalizadas
+                    </p>
+                    <button onClick={() => navigate('/registros')}
+                      className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary/80 transition-colors">
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>history_edu</span>
+                      Registros
+                    </button>
+                  </div>
                   <TabSimulacrosIA
                     evaluacionId={id}
                     userId={user?.id}
@@ -1267,6 +1384,9 @@ export default function DetallePrueba() {
                     progFondo={loadingProgress}
                     msgFondo={loadingMsg}
                     cargoFondo={cargoFondoRef.current}
+                    onGenerarPractica={abrirModoPracticaIA}
+                    generandoPractica={generandoPractica}
+                    errorPractica={errorPractica}
                   />
                 </div>
 
