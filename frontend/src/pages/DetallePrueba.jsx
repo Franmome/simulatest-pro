@@ -69,7 +69,6 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
   const [showPersonalizar, setShowPersonalizar] = useState(false)
   const [preStartConfig,   setPreStartConfig]   = useState({ cantidad: 0, tiempo: 0 })
   const [ultimoAnalisis,   setUltimoAnalisis]   = useState(null)
-  const [showAnalisis,     setShowAnalisis]     = useState(false)
 
   useEffect(() => {
     if (!userId || !evaluacionId) { setLoading(false); return }
@@ -188,98 +187,112 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
       )}
 
       {/* ── Tarjeta última prueba con análisis IA ── */}
-      {ultimoAnalisis && (
-        <div className="mb-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-4 py-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-white text-base"
-              style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-            <span className="text-xs font-bold text-white">Última prueba completada</span>
-            {ultimoAnalisis.analisis?.nivel_preparacion && (
-              <span className="ml-auto text-[10px] font-bold bg-white/15 text-white px-2.5 py-0.5 rounded-full whitespace-nowrap">
-                {ultimoAnalisis.analisis.nivel_preparacion}
-              </span>
-            )}
-          </div>
-          <div className="p-4">
-            <p className="font-bold text-sm truncate">{ultimoAnalisis.cargo || 'Prueba Praxia'}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {ultimoAnalisis.score_pct !== null && (
-                <span className={`text-xs font-extrabold ${ultimoAnalisis.score_pct >= 70 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {Math.round(ultimoAnalisis.score_pct)}%
-                </span>
-              )}
-              {ultimoAnalisis.score_correctas !== null && (
-                <span className="text-[10px] text-on-surface-variant">
-                  {ultimoAnalisis.score_correctas}/{ultimoAnalisis.score_total} correctas
-                </span>
-              )}
-              <span className="text-[10px] text-on-surface-variant ml-auto">
-                {tiempoRelativo(ultimoAnalisis.created_at)}
-              </span>
-            </div>
+      {ultimoAnalisis && (() => {
+        const an = ultimoAnalisis.analisis || {}
+        const ok = ultimoAnalisis.score_pct >= 70
+        return (
+          <div className="mb-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+            {/* Barra de color superior */}
+            <div className={`h-1 w-full ${ok ? 'bg-emerald-400' : 'bg-red-400'}`} />
 
-            {ultimoAnalisis.analisis?.patron_error && (
-              <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed line-clamp-2">
-                <span className="font-semibold text-on-surface">Patrón: </span>
-                {ultimoAnalisis.analisis.patron_error}
-              </p>
-            )}
-
-            {ultimoAnalisis.analisis?.areas_mejora?.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {ultimoAnalisis.analisis.areas_mejora.slice(0, 4).map((a, i) => (
-                  <span key={i} className="text-[10px] bg-red-50 text-red-600 font-semibold px-2 py-0.5 rounded-full">
-                    {a}
+            <div className="p-4">
+              {/* Fila superior: cargo + score + fecha */}
+              <div className="flex items-start gap-3">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${ok ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                  <span className={`text-2xl font-extrabold tabular-nums leading-none ${ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {Math.round(ultimoAnalisis.score_pct)}
+                    <span className="text-xs font-bold">%</span>
                   </span>
-                ))}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-extrabold text-sm truncate leading-tight">{ultimoAnalisis.cargo || 'Prueba Praxia'}</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">
+                    {ultimoAnalisis.score_correctas}/{ultimoAnalisis.score_total} correctas
+                    {an.nivel_preparacion && (
+                      <span className="ml-2 font-bold text-primary">{an.nivel_preparacion}</span>
+                    )}
+                  </p>
+                </div>
+                <span className="text-[10px] text-on-surface-variant shrink-0">{tiempoRelativo(ultimoAnalisis.created_at)}</span>
               </div>
-            )}
 
-            {ultimoAnalisis.analisis && (
-              <button
-                onClick={() => setShowAnalisis(v => !v)}
-                className="mt-2 w-full text-[10px] font-bold text-on-surface-variant flex items-center justify-center gap-1 py-1.5 hover:text-primary transition-colors"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                  {showAnalisis ? 'expand_less' : 'expand_more'}
-                </span>
-                {showAnalisis ? 'Ocultar análisis completo' : 'Ver análisis completo'}
-              </button>
-            )}
+              {/* Patrón de error */}
+              {an.patron_error && (
+                <div className="mt-3 flex items-start gap-2">
+                  <span className="material-symbols-outlined text-amber-500 text-base shrink-0 mt-0.5"
+                    style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+                  <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{an.patron_error}</p>
+                </div>
+              )}
 
-            {showAnalisis && ultimoAnalisis.analisis && (
-              <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-52 overflow-y-auto">
-                <pre className="text-[10px] text-on-surface-variant whitespace-pre-wrap font-mono leading-relaxed">
-                  {JSON.stringify(ultimoAnalisis.analisis, null, 2)}
-                </pre>
-              </div>
-            )}
+              {/* Áreas a mejorar */}
+              {an.areas_mejora?.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-1.5">Enfocarte en</p>
+                  <div className="flex flex-wrap gap-1">
+                    {an.areas_mejora.slice(0, 3).map((a, i) => (
+                      <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">
+                        {a}
+                      </span>
+                    ))}
+                    {an.areas_mejora.length > 3 && (
+                      <span className="text-[10px] text-on-surface-variant font-semibold px-1 py-0.5">
+                        +{an.areas_mejora.length - 3} más
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
-            {onGenerarPractica && (
-              <button
-                onClick={onGenerarPractica}
-                disabled={generandoPractica}
-                className="mt-3 w-full py-2.5 bg-secondary text-white rounded-full text-xs font-bold hover:bg-secondary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 active:scale-95"
-              >
-                {generandoPractica ? (
-                  <>
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Generando práctica personalizada...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
-                    Generar Modo Práctica
-                  </>
+              {/* Fortalezas */}
+              {an.fortalezas?.length > 0 && (
+                <div className="mt-2">
+                  <div className="flex flex-wrap gap-1">
+                    {an.fortalezas.slice(0, 2).map((f, i) => (
+                      <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Acciones */}
+              <div className="mt-3 flex gap-2">
+                {onGenerarPractica && (
+                  <button
+                    onClick={onGenerarPractica}
+                    disabled={generandoPractica}
+                    className="flex-1 py-2.5 bg-secondary text-white rounded-xl text-xs font-bold hover:bg-secondary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    {generandoPractica ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Generando...
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+                        Generar Práctica
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
-            )}
-            {errorPractica && (
-              <p className="text-[10px] text-red-600 font-semibold mt-1.5 text-center">{errorPractica}</p>
-            )}
+                <button
+                  onClick={() => navigate('/registros')}
+                  className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">history_edu</span>
+                  Ver todo
+                </button>
+              </div>
+              {errorPractica && (
+                <p className="text-[10px] text-red-600 font-semibold mt-1.5 text-center">{errorPractica}</p>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <div className="space-y-3">
         {sims.map(s => (
