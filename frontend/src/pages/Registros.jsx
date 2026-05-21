@@ -79,12 +79,16 @@ function TabPruebas({ userId }) {
   useEffect(() => {
     if (!userId) return
     supabase.from('user_simulacros')
-      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, score_correctas, score_total, completado, created_at, tiempo_segundos, evaluacion_id')
+      .select('id, cargo, cantidad_preguntas, dificultad_config, score_pct, score_correctas, score_total, completado, created_at, evaluacion_id')
       .eq('user_id', userId)
-      .eq('completado', true)
+      .not('score_pct', 'is', null)
       .order('created_at', { ascending: false })
       .limit(100)
-      .then(({ data }) => { setItems(data || []); setLoading(false) })
+      .then(({ data, error }) => {
+        if (error) console.error('[Registros] pruebas:', error.message)
+        setItems(data || [])
+        setLoading(false)
+      })
   }, [userId])
 
   const toggleExpand = async (id) => {
@@ -170,18 +174,23 @@ function TabPruebas({ userId }) {
               <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
                 {/* Resumen rápido */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  {[
-                    { label: 'Score', val: s.score_pct !== null ? `${Math.round(s.score_pct)}%` : '—', color: s.score_pct >= 70 ? 'text-emerald-600' : 'text-red-500' },
-                    { label: 'Correctas', val: s.score_correctas !== null ? `${s.score_correctas}/${s.score_total}` : '—', color: 'text-on-surface' },
-                    { label: 'Tiempo total', val: formatSegundos(s.tiempo_segundos), color: 'text-on-surface' },
-                  ].map(stat => (
-                    <div key={stat.label} className="bg-slate-50 rounded-xl p-2.5">
-                      <p className={`font-extrabold text-base leading-none ${stat.color}`}>{stat.val}</p>
-                      <p className="text-[9px] text-on-surface-variant font-semibold mt-1 uppercase tracking-widest">{stat.label}</p>
+                {(() => {
+                  const totalTiempo = ad ? Object.values(ad.byArea).flatMap(d => d.tiempos).reduce((a, b) => a + b, 0) : 0
+                  return (
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      {[
+                        { label: 'Score', val: s.score_pct !== null ? `${Math.round(s.score_pct)}%` : '—', color: s.score_pct >= 70 ? 'text-emerald-600' : 'text-red-500' },
+                        { label: 'Correctas', val: s.score_correctas !== null ? `${s.score_correctas}/${s.score_total}` : '—', color: 'text-on-surface' },
+                        { label: 'Tiempo total', val: totalTiempo > 0 ? formatSegundos(totalTiempo) : '—', color: 'text-on-surface' },
+                      ].map(stat => (
+                        <div key={stat.label} className="bg-slate-50 rounded-xl p-2.5">
+                          <p className={`font-extrabold text-base leading-none ${stat.color}`}>{stat.val}</p>
+                          <p className="text-[9px] text-on-surface-variant font-semibold mt-1 uppercase tracking-widest">{stat.label}</p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )
+                })()}
 
                 {loadingArea === s.id && (
                   <div className="flex justify-center py-4">
@@ -459,14 +468,14 @@ function TabAnalisisPerfil({ userId }) {
       {items.map(item => {
         const an          = item.analisis || {}
         const isOpen      = expandido === item.id
-        const top5        = an.top5 || an.resultado?.top5 || []
-        const perfil      = an.perfil_base || {}
+        const top5        = an.ranking_opec_recomendadas || an.top5 || []
+        const perfil      = an.perfil_candidato || an.perfil_base || {}
         const diag        = an.diagnostico_general || {}
-        const rec         = an.recomendacion_principal || {}
-        const fortalezas  = diag.fortalezas  || an.fortalezas  || []
-        const areasMejora = diag.areas_mejora || an.areas_mejora || []
-        const cargoTop    = top5[0]?.cargo || top5[0]?.nombre || null
-        const nivelCandidato = perfil.nivel || an.nivel_candidato || null
+        const rec         = an.opec_mas_recomendada || an.recomendacion_principal || {}
+        const fortalezas  = diag.fortalezas_principales || diag.fortalezas || []
+        const areasMejora = diag.debilidades_principales || diag.areas_mejora || []
+        const cargoTop    = top5[0]?.denominacion || top5[0]?.cargo || null
+        const nivelCandidato = perfil.nivel_formacion || perfil.nivel || null
 
         return (
           <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-primary/20 transition-colors">
@@ -510,23 +519,23 @@ function TabAnalisisPerfil({ userId }) {
             {isOpen && (
               <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-4">
 
-                {an.resumen && (
+                {(diag.resumen || an.observacion_general) && (
                   <p className="text-xs text-on-surface leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-200">
-                    {an.resumen}
+                    {diag.resumen || an.observacion_general}
                   </p>
                 )}
 
-                {(perfil.nivel || perfil.profesion || perfil.experiencia_total) && (
+                {(perfil.nivel_formacion || perfil.profesion_principal || perfil.experiencia_total_estimada_meses) && (
                   <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
                     <SectionLabel icon="person" label="Tu perfil profesional" color="text-primary" />
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                      {perfil.profesion && <div><span className="text-on-surface-variant block text-[10px]">Profesión</span><span className="font-bold">{perfil.profesion}</span></div>}
-                      {perfil.nivel && <div><span className="text-on-surface-variant block text-[10px]">Nivel</span><span className="font-bold">{perfil.nivel}</span></div>}
-                      {perfil.experiencia_total && <div><span className="text-on-surface-variant block text-[10px]">Experiencia</span><span className="font-bold">{perfil.experiencia_total}</span></div>}
-                      {perfil.tarjeta_profesional && <div><span className="text-on-surface-variant block text-[10px]">Tarjeta prof.</span><span className="font-bold">{perfil.tarjeta_profesional}</span></div>}
+                      {perfil.profesion_principal && <div><span className="text-on-surface-variant block text-[10px]">Profesión</span><span className="font-bold">{perfil.profesion_principal}</span></div>}
+                      {perfil.nivel_formacion && <div><span className="text-on-surface-variant block text-[10px]">Nivel</span><span className="font-bold">{perfil.nivel_formacion}</span></div>}
+                      {perfil.experiencia_total_estimada_meses > 0 && <div><span className="text-on-surface-variant block text-[10px]">Experiencia</span><span className="font-bold">{perfil.experiencia_total_estimada_meses} meses</span></div>}
+                      {perfil.tarjeta_profesional?.estado && <div><span className="text-on-surface-variant block text-[10px]">Tarjeta prof.</span><span className="font-bold">{perfil.tarjeta_profesional.estado}</span></div>}
                     </div>
-                    {perfil.descripcion_candidato && (
-                      <p className="text-xs text-on-surface mt-2 leading-relaxed">{perfil.descripcion_candidato}</p>
+                    {diag.nivel_competitividad && (
+                      <p className="text-[10px] font-bold text-primary mt-2">Competitividad: {diag.nivel_competitividad}</p>
                     )}
                   </div>
                 )}
@@ -564,50 +573,70 @@ function TabAnalisisPerfil({ userId }) {
                   <div>
                     <SectionLabel icon="emoji_events" label="Cargos compatibles" color="text-amber-600" />
                     <div className="space-y-2">
-                      {top5.map((c, i) => (
-                        <div key={i} className={`rounded-xl p-3 border ${i === 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0
-                              ${i === 0 ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>{i + 1}</span>
-                            <p className="flex-1 text-xs font-extrabold truncate">{c.cargo || c.nombre || c}</p>
-                            {c.compatibilidad !== undefined && (
-                              <span className={`text-xs font-extrabold shrink-0 ${c.compatibilidad >= 70 ? 'text-emerald-600' : c.compatibilidad >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
-                                {c.compatibilidad}%
-                              </span>
+                      {top5.map((c, i) => {
+                        const nombre = c.denominacion || c.cargo || c.nombre || String(c)
+                        const compat = c.afinidad_porcentaje ?? c.compatibilidad
+                        const accion = c.guia_para_el_usuario?.acciones_antes_de_postularse?.[0]
+                          || c.guia_para_el_usuario?.decision_recomendada
+                          || c.accion_prioritaria
+                        return (
+                          <div key={i} className={`rounded-xl p-3 border ${i === 0 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0
+                                ${i === 0 ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>{i + 1}</span>
+                              <p className="flex-1 text-xs font-extrabold">{nombre}</p>
+                              {compat !== undefined && compat !== null && (
+                                <span className={`text-xs font-extrabold shrink-0 ${compat >= 70 ? 'text-emerald-600' : compat >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                  {compat}%
+                                </span>
+                              )}
+                            </div>
+                            {(c.entidad || c.nivel || c.grado) && (
+                              <p className="text-[10px] text-on-surface-variant ml-7 leading-relaxed">
+                                {[c.entidad, c.nivel && `Niv. ${c.nivel}`, c.grado && `Gr. ${c.grado}`, c.vacantes && `${c.vacantes} vac.`].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                            {c.salario && (
+                              <p className="text-[10px] font-bold text-emerald-700 ml-7 mt-0.5">
+                                ${Number(String(c.salario).replace(/\D/g, '')).toLocaleString('es-CO')}
+                              </p>
+                            )}
+                            {c.cumplimiento_requisitos_minimos && (
+                              <p className="text-[10px] text-on-surface-variant ml-7 mt-0.5">
+                                Requisitos: <span className="font-semibold">{c.cumplimiento_requisitos_minimos}</span>
+                              </p>
+                            )}
+                            {c.justificacion && (
+                              <p className="text-[10px] text-on-surface-variant ml-7 mt-1 leading-relaxed line-clamp-3">{c.justificacion}</p>
+                            )}
+                            {accion && (
+                              <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
+                                <p className="text-[10px] font-bold text-primary flex items-center gap-1">
+                                  <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
+                                  {accion}
+                                </p>
+                              </div>
                             )}
                           </div>
-                          {(c.convocatoria || c.nivel || c.grado) && (
-                            <p className="text-[10px] text-on-surface-variant ml-7 truncate">
-                              {[c.convocatoria, c.nivel && `Niv. ${c.nivel}`, c.grado && `Gr. ${c.grado}`, c.vacantes && `${c.vacantes} vac.`].filter(Boolean).join(' · ')}
-                            </p>
-                          )}
-                          {c.salario && (
-                            <p className="text-[10px] font-bold text-emerald-700 ml-7">
-                              ${Number(c.salario).toLocaleString('es-CO')}
-                            </p>
-                          )}
-                          {c.justificacion && (
-                            <p className="text-[10px] text-on-surface-variant ml-7 mt-1 leading-relaxed line-clamp-2">{c.justificacion}</p>
-                          )}
-                          {c.accion_prioritaria && (
-                            <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
-                              <p className="text-[10px] font-bold text-primary flex items-center gap-1">
-                                <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
-                                {c.accion_prioritaria}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}
 
-                {(rec.cargo || rec.motivo) && (
+                {(rec.denominacion || rec.cargo || rec.razon_principal || rec.motivo) && (
                   <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-3">
                     <SectionLabel icon="star" label="Cargo más recomendado" color="text-secondary" />
-                    {rec.cargo && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.cargo}</p>}
-                    {rec.motivo && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.motivo}</p>}
+                    {(rec.denominacion || rec.cargo) && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.denominacion || rec.cargo}</p>}
+                    {(rec.razon_principal || rec.motivo) && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.razon_principal || rec.motivo}</p>}
+                    {rec.accion_prioritaria_antes_de_postularse && (
+                      <div className="mt-2 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
+                        <p className="text-[10px] font-bold text-primary flex items-center gap-1">
+                          <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
+                          {rec.accion_prioritaria_antes_de_postularse}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
