@@ -214,9 +214,9 @@ function TabAnalisisPerfil({ userId }) {
   useEffect(() => {
     if (!userId) return
     supabase.from('user_profile_analysis')
-      .select('id, convocatoria_id, cargo_recomendado, analisis, created_at')
+      .select('id, convocatoria_id, convocatoria_nombre, analisis, updated_at')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(50)
       .then(({ data }) => { setItems(data || []); setLoading(false) })
   }, [userId])
@@ -230,6 +230,8 @@ function TabAnalisisPerfil({ userId }) {
         const an = item.analisis || {}
         const isOpen = expandido === item.id
         const top5 = an.top5 || an.resultado?.top5 || []
+        const cargoTop = top5[0]?.cargo || top5[0]?.nombre || null
+        const nivelCandidato = an.perfil_base?.nivel || an.nivel_candidato || null
         return (
           <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-primary/20 transition-colors">
             <button
@@ -242,18 +244,28 @@ function TabAnalisisPerfil({ userId }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate">
-                  {item.cargo_recomendado || (top5[0]?.cargo) || 'Análisis OPEC'}
+                  {item.convocatoria_nombre || 'Análisis OPEC'}
                 </p>
-                <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  {cargoTop && (
+                    <span className="text-[10px] text-on-surface-variant truncate max-w-[160px]">
+                      {cargoTop}
+                    </span>
+                  )}
                   {top5.length > 0 && (
-                    <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                      {top5.length} cargos compatibles
+                    <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                      {top5.length} cargos
+                    </span>
+                  )}
+                  {nivelCandidato && (
+                    <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full shrink-0">
+                      {nivelCandidato}
                     </span>
                   )}
                 </div>
               </div>
               <div className="shrink-0 text-right">
-                <span className="text-[10px] text-on-surface-variant">{tiempoRelativo(item.created_at)}</span>
+                <span className="text-[10px] text-on-surface-variant">{tiempoRelativo(item.updated_at)}</span>
               </div>
               <span className="material-symbols-outlined text-on-surface-variant text-lg ml-1 shrink-0">
                 {isOpen ? 'expand_less' : 'expand_more'}
