@@ -1529,36 +1529,35 @@ export async function generarModoPractica(req, res) {
   // 6. Cargar prompt configurable desde DB
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
 
-  // 7. Construir prompt con análisis IA guardado + preguntas de referencia
-  const preguntasDeAreasDebiles = (sim.preguntas || [])
-    .filter(p => areasDebiles.length === 0 || areasDebiles.some(a => p.area?.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.area?.toLowerCase())))
-    .slice(0, 25)
+  // 7. Construir prompt con análisis IA guardado + preguntas de referencia (compactas)
+  const refPregs = (sim.preguntas || [])
+    .filter(p => areasDebiles.length === 0 || areasDebiles.some(a =>
+      p.area?.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.area?.toLowerCase())))
+    .slice(0, 5)
+    .map(p => ({ area: p.area, tipo: p.tipo, dificultad: p.dificultad, bloom: p.bloom,
+                 enunciado: p.enunciado, A: p.A, B: p.B, C: p.C, D: p.D, correcta: p.correcta }))
 
   const bloqueAnalisis = an ? `
-ANÁLISIS IA DEL DESEMPEÑO (generado al terminar la prueba):
-- Nivel de preparación: ${an.nivel_preparacion || 'no evaluado'}
-- Resumen: ${an.resumen || ''}
-- Patrón de error dominante: ${an.patron_error || ''}
-- Distractor más elegido: Opción ${an.tipo_distractor_frecuente || 'N/A'} — ${an.significado_distractor || ''}
-- Temas críticos a reforzar: ${(an.temas_criticos || []).join(', ') || 'No identificados'}
-- Recomendaciones del análisis: ${(an.recomendaciones || []).join(' | ') || ''}
+ANÁLISIS IA DEL DESEMPEÑO:
+- Nivel: ${an.nivel_preparacion || 'no evaluado'}
+- Patrón de error: ${an.patron_error || ''}
+- Distractor frecuente: Opción ${an.tipo_distractor_frecuente || 'N/A'} — ${an.significado_distractor || ''}
+- Temas críticos: ${(an.temas_criticos || []).join(', ') || 'No identificados'}
 ` : ''
 
   const userPrompt = `CARGO: ${sim.cargo}
-
-RESULTADO DE LA PRUEBA ORIGINAL:
-- Preguntas respondidas: ${totalPregs}
-- Porcentaje de error: ${pctError}%
-- Áreas con más debilidades: ${areasDebiles.join(', ') || 'No identificadas — generar preguntas de refuerzo general'}
+RESULTADO: ${totalPregs} preguntas · ${pctError}% errores
+ÁREAS DÉBILES: ${areasDebiles.join(', ') || 'refuerzo general'}
 ${bloqueAnalisis}
-PREGUNTAS ORIGINALES DE LAS ÁREAS DÉBILES (referencia de nivel, estilo y vocabulario):
-${JSON.stringify(preguntasDeAreasDebiles, null, 2)}`
+REFERENCIA DE ESTILO (5 preguntas de las áreas con errores):
+${JSON.stringify(refPregs)}
 
+Genera exactamente 20 preguntas de práctica en JSON array.`
 
   // 7. Llamar a DeepSeek
   let texto, tokensIn, tokensOut
   try {
-    ;({ texto, tokensIn, tokensOut } = await deepseekAnalisisPerfil(systemPrompt, userPrompt))
+    ;({ texto, tokensIn, tokensOut } = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 8192))
   } catch (e) {
     return res.status(502).json({ error: 'Error en el motor de Praxia: ' + e.message })
   }
