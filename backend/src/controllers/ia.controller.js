@@ -1484,130 +1484,154 @@ export async function generarModoPractica(req, res) {
   // 1. Cargar simulacro origen
   const { data: sim } = await supabase
     .from('user_simulacros')
-    .select('preguntas, cargo, completado, evaluacion_id')
+    .select('preguntas, cargo, completado, evaluacion_id, cantidad_preguntas')
     .eq('id', parseInt(simulacro_id))
     .eq('user_id', userId)
     .maybeSingle()
   if (!sim) return res.status(404).json({ error: 'Simulacro no encontrado.' })
   if (!sim.completado) return res.status(400).json({ error: 'El simulacro debe estar completado para generar práctica.' })
 
-  // 2. Leer análisis independiente guardado (fuente principal de datos de debilidades)
-  const { data: analisisGuardado } = await supabase
-    .from('user_simulacro_analisis')
-    .select('analisis, score_pct, score_correctas, score_total')
-    .eq('simulacro_id', parseInt(simulacro_id))
-    .eq('user_id', userId)
-    .maybeSingle()
+  // 2. Análisis guardado + respuestas
+  const [{ data: analisisGuardado }, { data: respuestas }] = await Promise.all([
+    supabase.from('user_simulacro_analisis')
+      .select('analisis, score_pct, score_correctas, score_total')
+      .eq('simulacro_id', parseInt(simulacro_id)).eq('user_id', userId).maybeSingle(),
+    supabase.from('user_simulacro_answers')
+      .select('area, es_correcta')
+      .eq('simulacro_id', parseInt(simulacro_id)).eq('user_id', userId),
+  ])
 
-  // 3. Cargar respuestas del usuario (respaldo si no hay análisis guardado)
-  const { data: respuestas } = await supabase
-    .from('user_simulacro_answers')
-    .select('pregunta_idx, area, dificultad, opcion_elegida, opcion_correcta, es_correcta, tiempo_segundos')
-    .eq('simulacro_id', parseInt(simulacro_id))
-    .eq('user_id', userId)
-
-  // 4. Verificar tokens
+  // 3. Verificar tokens
   const compra = await getActivePurchase(userId)
   if (!compra) return res.status(402).json({ error: 'No tienes tokens disponibles.' })
   const balance = await checkTokenBalance(userId, compra.id)
-  if (balance <= 0) return res.status(402).json({ error: 'Sin saldo de tokens. Adquiere un paquete.' })
+  if (!balance.ok) return res.status(402).json({ error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados).`, tokens_agotados: true })
 
-  // 5. Calcular áreas débiles (desde análisis guardado o desde respuestas crudas)
-  let areasDebiles = [], pctError = 0, totalPregs = 0
+  // 4. Calcular áreas débiles
   const an = analisisGuardado?.analisis
+  let areasDebiles = [], pctError = 0
   if (an?.areas_mejora?.length) {
-    areasDebiles = an.areas_mejora.slice(0, 6)
+    areasDebiles = an.areas_mejora
     pctError = analisisGuardado.score_pct != null ? Math.round(100 - analisisGuardado.score_pct) : 0
-    totalPregs = analisisGuardado.score_total || (respuestas || []).length
   } else {
     const errores = (respuestas || []).filter(r => !r.es_correcta)
-    areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))].slice(0, 6)
-    totalPregs = (respuestas || []).length
-    pctError = totalPregs > 0 ? Math.round((errores.length / totalPregs) * 100) : 0
+    areasDebiles = [...new Set(errores.map(r => r.area).filter(Boolean))]
+    pctError = respuestas?.length ? Math.round((errores.length / respuestas.length) * 100) : 0
   }
 
-  // 6. Cargar prompt configurable desde DB
+  // 5. Total a generar = mismo que el examen original
+  const totalTarget = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
+
+  // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
 
-  // 7. Construir prompt con análisis IA guardado + preguntas de referencia (compactas)
-  const refPregs = (sim.preguntas || [])
-    .filter(p => areasDebiles.length === 0 || areasDebiles.some(a =>
-      p.area?.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(p.area?.toLowerCase())))
-    .slice(0, 5)
-    .map(p => ({ area: p.area, tipo: p.tipo, dificultad: p.dificultad, bloom: p.bloom,
-                 enunciado: p.enunciado, A: p.A, B: p.B, C: p.C, D: p.D, correcta: p.correcta }))
+  // 7. Agrupar preguntas originales por área (para referencia de estilo por lote)
+  const pregsPorArea = {}
+  ;(sim.preguntas || []).forEach(p => {
+    const a = p.area || 'General'
+    if (!pregsPorArea[a]) pregsPorArea[a] = []
+    pregsPorArea[a].push(p)
+  })
 
-  const bloqueAnalisis = an ? `
-ANÁLISIS IA DEL DESEMPEÑO:
-- Nivel: ${an.nivel_preparacion || 'no evaluado'}
-- Patrón de error: ${an.patron_error || ''}
-- Distractor frecuente: Opción ${an.tipo_distractor_frecuente || 'N/A'} — ${an.significado_distractor || ''}
-- Temas críticos: ${(an.temas_criticos || []).join(', ') || 'No identificados'}
-` : ''
+  // Contexto de análisis IA (va en todos los lotes)
+  const ctxAnalisis = an
+    ? `ANÁLISIS IA: nivel ${an.nivel_preparacion || 'N/A'} · patrón de error: ${an.patron_error || 'N/A'} · temas críticos: ${(an.temas_criticos || []).join(', ') || 'N/A'} · distractor frecuente: opción ${an.tipo_distractor_frecuente || 'N/A'}`
+    : ''
 
-  const userPrompt = `CARGO: ${sim.cargo}
-RESULTADO: ${totalPregs} preguntas · ${pctError}% errores
-ÁREAS DÉBILES: ${areasDebiles.join(', ') || 'refuerzo general'}
-${bloqueAnalisis}
-REFERENCIA DE ESTILO (5 preguntas de las áreas con errores):
-${JSON.stringify(refPregs)}
+  // 8. Construir lotes — distribuir totalTarget entre áreas débiles
+  const BATCH    = 20
+  const PARALLEL = 3
+  const lotes    = []
 
-Genera exactamente 20 preguntas de práctica en JSON array.`
-
-  // 7. Llamar a DeepSeek
-  let texto, tokensIn, tokensOut
-  try {
-    ;({ texto, tokensIn, tokensOut } = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 8192))
-  } catch (e) {
-    return res.status(502).json({ error: 'Error en el motor de Praxia: ' + e.message })
+  if (!areasDebiles.length) {
+    // Sin áreas claras: lotes generales
+    for (let r = totalTarget; r > 0; r -= BATCH)
+      lotes.push({ n: Math.min(BATCH, r), area: 'General', refPregs: [] })
+  } else {
+    // Distribuir preguntas entre áreas débiles proporcionalmente
+    const basePerArea = Math.floor(totalTarget / areasDebiles.length)
+    const extra       = totalTarget % areasDebiles.length
+    areasDebiles.forEach((area, idx) => {
+      const cuota = basePerArea + (idx < extra ? 1 : 0)
+      // 2 preguntas de referencia del área (estilo y nivel)
+      const ref = (pregsPorArea[area] || Object.values(pregsPorArea)[0] || [])
+        .slice(0, 2)
+        .map(p => ({ area: p.area, tipo: p.tipo, dificultad: p.dificultad, bloom: p.bloom,
+                     enunciado: p.enunciado, A: p.A, B: p.B, C: p.C, D: p.D, correcta: p.correcta }))
+      for (let r = cuota; r > 0; r -= BATCH)
+        lotes.push({ n: Math.min(BATCH, r), area, refPregs: ref })
+    })
   }
 
-  // 8. Parsear JSON de respuesta
-  let preguntas
-  try {
-    // Limpiar posibles bloques markdown antes de parsear
-    const cleaned = texto
-      .replace(/```json\s*/gi, '')
-      .replace(/```\s*/g, '')
-      .trim()
-    // Intentar parse directo, luego extraer array
+  // 9. Función de generación por lote
+  async function generarLote(lote) {
+    const bloqueRef = lote.refPregs.length
+      ? `\nREFERENCIA DE ESTILO (${lote.refPregs.length} pregunta/s del área — replica nivel y formato):\n${JSON.stringify(lote.refPregs)}`
+      : ''
+    const prompt = `${systemPrompt}
+
+CARGO: ${sim.cargo}
+ÁREA A REFORZAR EN ESTE LOTE: ${lote.area}
+PREGUNTAS A GENERAR: ${lote.n}
+RESULTADO ORIGINAL: ${pctError}% de error
+${ctxAnalisis}${bloqueRef}
+
+Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
+
+    const r = await deepseekGenerar(prompt, lote.n * 900 + 512)
+    const cleaned = r.texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
     let parsed
-    try {
-      parsed = JSON.parse(cleaned)
-    } catch {
+    try { parsed = JSON.parse(cleaned) } catch {
       const match = cleaned.match(/\[[\s\S]*\]/)
-      if (!match) throw new Error('sin array JSON')
+      if (!match) throw new Error('sin JSON array')
       parsed = JSON.parse(match[0])
     }
-    preguntas = Array.isArray(parsed) ? parsed : (parsed.preguntas || parsed.questions || [])
-    if (!preguntas.length) throw new Error('array vacío')
-  } catch (e) {
-    console.error('[Práctica] parse error:', e.message, '| preview:', texto.slice(0, 300))
-    return res.status(500).json({ error: 'Praxia no pudo generar las preguntas. Intenta de nuevo.' })
+    const arr = Array.isArray(parsed) ? parsed : (parsed.preguntas || parsed.questions || [])
+    return { preguntas: arr, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
   }
 
-  // 9. Guardar como nuevo simulacro de práctica
+  // 10. Generar en oleadas paralelas
+  const allPreguntas = []
+  let totalTIn = 0, totalTOut = 0
+  for (let i = 0; i < lotes.length; i += PARALLEL) {
+    const wave = lotes.slice(i, i + PARALLEL)
+    const resultados = await Promise.allSettled(wave.map(l => generarLote(l)))
+    for (const r of resultados) {
+      if (r.status === 'fulfilled') {
+        allPreguntas.push(...r.value.preguntas)
+        totalTIn  += r.value.tokensIn
+        totalTOut += r.value.tokensOut
+      } else {
+        console.error('[Práctica] lote error:', r.reason?.message)
+      }
+    }
+  }
+
+  if (!allPreguntas.length)
+    return res.status(500).json({ error: 'Praxia no pudo generar las preguntas. Intenta de nuevo.' })
+
+  // 11. Guardar como nuevo simulacro de práctica
   const evalId = evaluacion_id || sim.evaluacion_id
   const { data: nuevo, error: insErr } = await supabase
     .from('user_simulacros')
     .insert({
-      user_id:              userId,
-      evaluacion_id:        evalId ? parseInt(evalId) : null,
-      cargo:                sim.cargo,
-      preguntas,
-      cantidad_preguntas:   preguntas.length,
-      tiempo_por_pregunta:  90,
-      dificultad_config:    'practica',
-      simulacro_origen_id:  parseInt(simulacro_id),
+      user_id:             userId,
+      evaluacion_id:       evalId ? parseInt(evalId) : null,
+      cargo:               sim.cargo,
+      preguntas:           allPreguntas,
+      cantidad_preguntas:  allPreguntas.length,
+      tiempo_por_pregunta: 90,
+      dificultad_config:   'practica',
+      simulacro_origen_id: parseInt(simulacro_id),
     })
     .select('id')
     .single()
   if (insErr) return res.status(500).json({ error: insErr.message })
 
-  // 10. Registrar tokens
-  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'modo_practica', modelo: 'deepseek' })
+  // 12. Registrar tokens
+  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'deepseek' })
 
-  return res.status(201).json({ simulacro_id: nuevo.id, total: preguntas.length, areas_cubiertas: areasDebiles })
+  return res.status(201).json({ simulacro_id: nuevo.id, total: allPreguntas.length, areas_cubiertas: areasDebiles })
 }
 
 export async function deleteOpecsMasivo(req, res) {
