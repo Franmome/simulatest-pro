@@ -685,12 +685,29 @@ export default function DetallePrueba() {
   const [loadingSimsEx,    setLoadingSimsEx]    = useState(false)
 
   // ── Modo Práctica IA ────────────────────────────────────────────────────────
-  const [practicaLista,     setPracticaLista]     = useState(null)   // práctica pre-generada
+  const [practicaLista,     setPracticaLista]     = useState(null)
   const [generandoPractica, setGenerandoPractica] = useState(false)
   const [errorPractica,     setErrorPractica]     = useState('')
   const [showPracticaModal, setShowPracticaModal] = useState(false)
-  const [practicaPreflight, setPracticaPreflight] = useState(null)   // { simulacroId, cargo, score_pct, hasAnalisis, analisisData, answersCount, areas }
+  const [practicaPreflight, setPracticaPreflight] = useState(null)
   const [loadingPreflight,  setLoadingPreflight]  = useState(false)
+  const [practicaStep,      setPracticaStep]      = useState(0)
+
+  const PRACTICA_STEPS = [
+    { icon: 'psychology',    text: 'Leyendo tu último simulacro…' },
+    { icon: 'analytics',     text: 'Identificando tus áreas más débiles…' },
+    { icon: 'build',         text: 'Armando los lotes de preguntas…' },
+    { icon: 'auto_awesome',  text: 'Generando preguntas personalizadas…' },
+    { icon: 'auto_awesome',  text: 'Generando más preguntas…' },
+    { icon: 'fact_check',    text: 'Validando calidad de los ítems…' },
+    { icon: 'save',          text: 'Guardando tu práctica…' },
+  ]
+
+  useEffect(() => {
+    if (!generandoPractica) { setPracticaStep(0); return }
+    const iv = setInterval(() => setPracticaStep(s => Math.min(s + 1, PRACTICA_STEPS.length - 1)), 3500)
+    return () => clearInterval(iv)
+  }, [generandoPractica]) // eslint-disable-line
 
   // Carga la práctica pre-generada (si existe) cuando vuelven a esta página
   useEffect(() => {
@@ -2241,7 +2258,39 @@ export default function DetallePrueba() {
 
             {/* Body */}
             <div className="px-6 py-4 space-y-3 overflow-y-auto max-h-[60vh]">
-              {loadingPreflight ? (
+              {generandoPractica ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-5">
+                  {/* Ícono animado */}
+                  <div className="relative w-16 h-16">
+                    <div className="absolute inset-0 rounded-full border-4 border-secondary/20" />
+                    <div className="absolute inset-0 rounded-full border-4 border-secondary border-t-transparent animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-secondary text-2xl"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {PRACTICA_STEPS[practicaStep]?.icon}
+                      </span>
+                    </div>
+                  </div>
+                  {/* Texto del paso actual */}
+                  <div className="text-center space-y-1">
+                    <p className="font-bold text-sm text-on-surface">{PRACTICA_STEPS[practicaStep]?.text}</p>
+                    <p className="text-xs text-on-surface-variant">Esto puede tardar unos segundos…</p>
+                  </div>
+                  {/* Barra de progreso */}
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-secondary rounded-full transition-all duration-[3500ms] ease-linear"
+                      style={{ width: `${((practicaStep + 1) / PRACTICA_STEPS.length) * 100}%` }}
+                    />
+                  </div>
+                  {/* Pasos como dots */}
+                  <div className="flex gap-2">
+                    {PRACTICA_STEPS.map((_, i) => (
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i <= practicaStep ? 'bg-secondary' : 'bg-slate-200'}`} />
+                    ))}
+                  </div>
+                </div>
+              ) : loadingPreflight ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <div className="w-8 h-8 border-[3px] border-secondary border-t-transparent rounded-full animate-spin" />
                   <p className="text-xs text-on-surface-variant font-semibold">Leyendo tus datos…</p>
@@ -2355,7 +2404,7 @@ export default function DetallePrueba() {
             </div>
 
             {/* Footer */}
-            {!loadingPreflight && practicaPreflight && (
+            {!loadingPreflight && !generandoPractica && practicaPreflight && (
               <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
                 <button onClick={() => setShowPracticaModal(false)} disabled={generandoPractica}
                   className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all disabled:opacity-40">
