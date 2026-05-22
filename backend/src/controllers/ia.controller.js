@@ -1539,7 +1539,8 @@ export async function generarModoPractica(req, res) {
     : ''
 
   // 8. Construir lotes — distribuir totalTarget entre áreas débiles
-  const BATCH    = 20
+  // BATCH=8 para que el output quepa en el límite real de 8192 tokens de DeepSeek-chat
+  const BATCH    = 8
   const PARALLEL = 3
   const lotes    = []
 
@@ -1578,7 +1579,7 @@ ${ctxAnalisis}${bloqueRef}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
-    const r = await deepseekGenerar(prompt, lote.n * 900 + 512)
+    const r = await deepseekGenerar(prompt, 8192)
     const cleaned = r.texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
     let parsed
     try { parsed = JSON.parse(cleaned) } catch {

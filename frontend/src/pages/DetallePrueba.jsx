@@ -692,6 +692,9 @@ export default function DetallePrueba() {
   const [practicaPreflight, setPracticaPreflight] = useState(null)
   const [loadingPreflight,  setLoadingPreflight]  = useState(false)
   const [practicaStep,      setPracticaStep]      = useState(0)
+  const [practicaGenerada,  setPracticaGenerada]  = useState(null)   // { simulacro_id, total, areas_cubiertas }
+  const [practicaCantidad,  setPracticaCantidad]  = useState(0)
+  const [practicaTiempo,    setPracticaTiempo]    = useState(90)
 
   const PRACTICA_STEPS = [
     { icon: 'psychology',    text: 'Leyendo tu último simulacro…' },
@@ -1122,13 +1125,23 @@ export default function DetallePrueba() {
     setErrorPractica('')
     try {
       const result = await generarModoPractica({ simulacro_id: practicaPreflight.simulacroId, evaluacion_id: parseInt(id) })
-      setShowPracticaModal(false)
-      navigate(`/simulacro-ia/${result.simulacro_id}?modo=practica`)
+      setPracticaGenerada(result)
+      setPracticaCantidad(result.total)
+      setPracticaTiempo(90)
     } catch (e) {
       setErrorPractica(e.message)
     } finally {
       setGenerandoPractica(false)
     }
+  }
+
+  function iniciarPractica() {
+    if (!practicaGenerada) return
+    setShowPracticaModal(false)
+    setPracticaGenerada(null)
+    navigate(`/simulacro-ia/${practicaGenerada.simulacro_id}?modo=practica`, {
+      state: { preStartConfig: { cantidad: practicaCantidad, tiempo: practicaTiempo } }
+    })
   }
 
   // ── Loading / Error ─────────────────────────────────────────────────────────
@@ -2234,7 +2247,7 @@ export default function DetallePrueba() {
       {/* ── Modal Preflight Modo Práctica IA ── */}
       {showPracticaModal && (
         <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={() => { if (!generandoPractica) setShowPracticaModal(false) }}>
+          onClick={() => { if (!generandoPractica) { setShowPracticaModal(false); setPracticaGenerada(null) } }}>
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}>
 
@@ -2288,6 +2301,68 @@ export default function DetallePrueba() {
                     {PRACTICA_STEPS.map((_, i) => (
                       <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i <= practicaStep ? 'bg-secondary' : 'bg-slate-200'}`} />
                     ))}
+                  </div>
+                </div>
+              ) : practicaGenerada ? (
+                /* ── Pantalla de configuración post-generación ── */
+                <div className="space-y-4">
+                  {/* Resumen generado */}
+                  <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-4 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-secondary/15 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-secondary text-sm">¡Práctica lista!</p>
+                      <p className="text-xs text-on-surface-variant">{practicaGenerada.total} preguntas generadas</p>
+                    </div>
+                  </div>
+
+                  {/* Áreas cubiertas */}
+                  {practicaGenerada.areas_cubiertas?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Áreas cubiertas</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {practicaGenerada.areas_cubiertas.map((a, i) => (
+                          <span key={i} className="text-[10px] bg-secondary/10 text-secondary font-bold px-2.5 py-1 rounded-full">{a}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cuántas preguntas */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-bold text-on-surface">Preguntas a hacer</p>
+                      <span className="text-sm font-extrabold text-secondary">{practicaCantidad}</span>
+                    </div>
+                    <input type="range" min={5} max={practicaGenerada.total} step={1}
+                      value={practicaCantidad}
+                      onChange={e => setPracticaCantidad(Number(e.target.value))}
+                      className="w-full accent-secondary h-2 rounded-full" />
+                    <div className="flex justify-between text-[9px] text-on-surface-variant mt-1">
+                      <span>5</span><span>{practicaGenerada.total} (todas)</span>
+                    </div>
+                  </div>
+
+                  {/* Tiempo por pregunta */}
+                  <div>
+                    <p className="text-xs font-bold text-on-surface mb-2">Tiempo por pregunta</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Sin límite', val: 0 },
+                        { label: '30 seg',     val: 30 },
+                        { label: '45 seg',     val: 45 },
+                        { label: '60 seg',     val: 60 },
+                        { label: '90 seg',     val: 90 },
+                        { label: '2 min',      val: 120 },
+                      ].map(op => (
+                        <button key={op.val}
+                          onClick={() => setPracticaTiempo(op.val)}
+                          className={`py-2 rounded-xl text-xs font-bold border-2 transition-all ${practicaTiempo === op.val ? 'border-secondary bg-secondary/10 text-secondary' : 'border-slate-200 text-on-surface-variant hover:border-secondary/40'}`}>
+                          {op.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : loadingPreflight ? (
@@ -2404,26 +2479,25 @@ export default function DetallePrueba() {
             </div>
 
             {/* Footer */}
-            {!loadingPreflight && !generandoPractica && practicaPreflight && (
+            {!loadingPreflight && !generandoPractica && (practicaPreflight || practicaGenerada) && (
               <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-                <button onClick={() => setShowPracticaModal(false)} disabled={generandoPractica}
-                  className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all disabled:opacity-40">
-                  Cancelar
+                <button onClick={() => { setShowPracticaModal(false); setPracticaGenerada(null) }}
+                  className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
+                  {practicaGenerada ? 'Cancelar' : 'Cancelar'}
                 </button>
-                <button onClick={confirmarGenerarPractica} disabled={generandoPractica}
-                  className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
-                  {generandoPractica ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Generando…
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
-                      Generar práctica
-                    </>
-                  )}
+                {practicaGenerada ? (
+                  <button onClick={iniciarPractica}
+                    className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
+                    Iniciar práctica
+                  </button>
+                ) : (
+                <button onClick={confirmarGenerarPractica}
+                  className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+                  Generar práctica
                 </button>
+                )}
               </div>
             )}
           </div>
