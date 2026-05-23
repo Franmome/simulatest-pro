@@ -749,6 +749,23 @@ function ProcuraduriaOpecPanel() {
     }
   }
 
+  const [selectingAll, setSelectingAll] = useState(false)
+  const handleSelectAllConvocatoria = async () => {
+    if (!convId) return
+    setSelectingAll(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/procuraduria-opecs?convocatoria_id=${convId}&limit=5000&page=1`, { headers })
+      const data = await res.json()
+      const ids = (data.opecs || []).map(o => o.id)
+      setSelected(new Set(ids))
+    } catch (e) {
+      alert('Error al seleccionar todos: ' + e.message)
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
   const handleToggle = async (opec) => {
     try {
       const headers = await authHeaders()
@@ -867,6 +884,16 @@ function ProcuraduriaOpecPanel() {
           {NIVELES.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
         <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+        {convId && (
+          <button onClick={selected.size === total ? () => setSelected(new Set()) : handleSelectAllConvocatoria}
+            disabled={selectingAll || deletingBulk}
+            className="flex items-center gap-2 px-4 py-2.5 border-2 border-slate-300 hover:border-red-400 bg-white hover:bg-red-50 text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
+            {selectingAll
+              ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+              : <span className="material-symbols-outlined text-lg text-slate-600">select_all</span>}
+            {selectingAll ? 'Cargando…' : selected.size === total && total > 0 ? `Deseleccionar todos (${total})` : `Seleccionar todos (${total})`}
+          </button>
+        )}
         {selected.size > 0 && (
           <button onClick={handleDeleteSelected} disabled={deletingBulk}
             className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition-colors shrink-0 disabled:opacity-50">
