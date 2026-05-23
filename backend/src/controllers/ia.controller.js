@@ -1258,9 +1258,9 @@ export async function analizarPerfilCV(req, res) {
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
     // ── PASO 1: Pre-screening — DeepSeek lee TODOS los cargos y elige los top 5 ──────
-    // Formato ultra-compacto para maximizar OPECs que caben en el contexto
+    // Usar c.id como identificador único (num_convocatoria puede ser null en OPECs SIMO)
     const compactCargos = todosOpec.map(c =>
-      `${c.num_convocatoria}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}a ${c.tipo_experiencia || ''}|posgrado:${c.requiere_posgrado ? 'si' : 'no'}|tarjeta:${c.requiere_tarjeta ? 'si' : 'no'}|${c.req_academico || ''}`
+      `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}a ${c.tipo_experiencia || ''}|posgrado:${c.requiere_posgrado ? 'si' : 'no'}|tarjeta:${c.requiere_tarjeta ? 'si' : 'no'}|${c.req_academico || ''}`
     ).join('\n')
 
     const perfil_base = ((perfil_texto || '') + ' ' + cvText).trim()
@@ -1281,36 +1281,37 @@ PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel d
 PASO 3 - Entre los cargos de nivel compatible, elige los 5 con mayor afinidad de area, funciones y experiencia.
 PASO 4 - Identifica hasta 5 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
 
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["cod1",...], "descartados": ["cod1",...]}`
+IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["id1","id2","id3","id4","id5"], "descartados": ["id1",...]}`
 
-    const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos):\n${compactCargos}`
+    const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
-    let top5Codigos = []
-    let descartadosCodigos = []
+    let top5Ids = []
+    let descartadosIds = []
     try {
       const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt)
       console.log('[IA] pass1 tokensOut:', pass1.tokensOut, '| responseLen:', pass1.texto.length)
       const m = pass1.texto.match(/\{[\s\S]*\}/)
       if (m) {
         const parsed = JSON.parse(m[0])
-        top5Codigos = Array.isArray(parsed.top5) ? parsed.top5.map(String) : []
-        descartadosCodigos = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
+        top5Ids = Array.isArray(parsed.top5) ? parsed.top5.map(String) : []
+        descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
       }
     } catch (e) {
       console.error('[IA] pass1 parse error:', e.message)
     }
 
-    // Si el paso 1 no devolvio codigos validos, tomar los primeros 5
-    if (!top5Codigos.length) {
-      top5Codigos = todosOpec.slice(0, 5).map(c => String(c.num_convocatoria))
+    // Si el paso 1 no devolvio IDs validos, tomar los primeros 5 por ID
+    if (!top5Ids.length) {
+      top5Ids = todosOpec.slice(0, 5).map(c => String(c.id))
     }
 
     // ── PASO 2: Analisis completo solo de los 5 seleccionados ───────────────────────
-    const opecs5    = todosOpec.filter(c => top5Codigos.includes(String(c.num_convocatoria)))
-    const opecsDes  = todosOpec.filter(c => descartadosCodigos.includes(String(c.num_convocatoria))).slice(0, 5)
+    const opecs5   = todosOpec.filter(c => top5Ids.includes(String(c.id)))
+    const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 5)
 
     const buildOpecTexto = (lista) => lista.map((c) => [
-      `codigo_opec: ${c.num_convocatoria || ''}`,
+      `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
       `denominacion: ${c.denominacion || ''}`,
       `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
       `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
