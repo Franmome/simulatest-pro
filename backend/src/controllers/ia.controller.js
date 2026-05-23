@@ -1704,6 +1704,10 @@ export async function importOpecMaestro(req, res) {
       funciones = r.funciones.map(f => (typeof f === 'string' ? f : f.descripcion || '')).filter(Boolean)
     }
 
+    // cierre_inscripciones: validar que sea fecha válida
+    const cierreRaw = r.cierre_inscripciones || r.fechaInscripcion || null
+    const cierre = cierreRaw && /^\d{4}-\d{2}-\d{2}/.test(cierreRaw) ? cierreRaw.slice(0, 10) : null
+
     return {
       convocatoria_id:            parseInt(convocatoria_id),
       entidad,
@@ -1728,13 +1732,19 @@ export async function importOpecMaestro(req, res) {
       competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
       competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
       ubicaciones,
-      // ── Campos exclusivos SIMO ──────────────────────────────────────────────
-      numero_opec:                r.numero_opec                          || null,
+      // ── Campos SIMO y complementarios ─────────────────────────────────────
+      numero_opec:                r.numero_opec          ? String(r.numero_opec)           : null,
       manual_url:                 r.manual_url                           || null,
       proposito:                  r.proposito                            || null,
       municipio:                  r.municipio                            || null,
       departamento:               r.departamento                         || null,
       proceso_de_seleccion:       r.proceso_de_seleccion                 || null,
+      requisito_otros:            r.requisito_otros      || r.requisitoOtros               || null,
+      vigencia_salarial:          r.vigencia_salarial    ? parseInt(r.vigencia_salarial)   : null,
+      cierre_inscripciones:       cierre,
+      anio_convocatoria:          r.anio_convocatoria    ? parseInt(r.anio_convocatoria)   : null,
+      nit_entidad:                r.nit_entidad          ? String(r.nit_entidad)           : null,
+      fuente:                     r.fuente                               || 'manual',
       is_active:                  r.is_active !== false,
     }
   }).filter(r => r.denominacion)
