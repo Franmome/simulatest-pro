@@ -1677,42 +1677,80 @@ export async function importOpecMaestro(req, res) {
   const { registros, convocatoria_id } = req.body
   if (!Array.isArray(registros) || !registros.length) return res.status(400).json({ error: 'Se requiere un array de registros.' })
   if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
-  if (registros.length > 500) return res.status(400).json({ error: 'Máximo 500 registros por importación.' })
+  if (registros.length > 1500) return res.status(400).json({ error: 'Máximo 1500 registros por importación.' })
 
   // Obtener entidad de la convocatoria para desnormalizar
   const { data: conv } = await supabase.from('convocatorias').select('entidad').eq('id', parseInt(convocatoria_id)).maybeSingle()
-  const entidad = conv?.entidad || 'Procuraduría General de la Nación'
+  const entidadConv = conv?.entidad || 'Entidad pública'
 
-  const rows = registros.map(r => ({
-    convocatoria_id:            parseInt(convocatoria_id),
-    entidad,
-    num_convocatoria:           r.num_convocatoria           || null,
-    denominacion:               (r.denominacion || '').trim(),
-    nivel:                      r.nivel                      || null,
-    codigo:                     r.codigo                     || null,
-    grado:                      r.grado                      ? parseInt(r.grado)    : null,
-    salario:                    r.salario                    ? parseInt(r.salario)  : null,
-    vacantes:                   r.vacantes                   ? parseInt(r.vacantes) : 1,
-    dependencia:                r.dependencia                || null,
-    area_estudio:               r.area_estudio               || null,
-    requiere_posgrado:          !!r.requiere_posgrado,
-    requiere_tarjeta:           !!r.requiere_tarjeta,
-    exp_anios:                  r.exp_anios                  ? parseInt(r.exp_anios) : 0,
-    exp_tipo:                   r.exp_tipo                   || null,
-    estudio_texto:              r.estudio_texto              || null,
-    exp_texto:                  r.exp_texto                  || null,
-    proceso:                    r.proceso                    || null,
-    conocimientos:              Array.isArray(r.conocimientos)              ? r.conocimientos              : [],
-    competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
-    competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
-    ubicaciones:                Array.isArray(r.ubicaciones)                ? r.ubicaciones                : [],
-    funciones:                  Array.isArray(r.funciones)                  ? r.funciones                  : [],
-    is_active:                  r.is_active !== false,
-  })).filter(r => r.denominacion)
+  const rows = registros.map(r => {
+    // ── Campos con nombres diferentes según la fuente (SIMO vs formato interno) ──
+    const vacantes     = r.vacantes      ?? r.total_vacantes    ?? 1
+    const exp_anios    = r.exp_anios     ?? r.anos_exp          ?? 0
+    const exp_tipo     = r.exp_tipo      ?? r.tipo_exp          ?? null
+    const estudio_texto = r.estudio_texto ?? r.educacion_requerida ?? r.requisito_estudio ?? null
+    const exp_texto    = r.exp_texto     ?? r.experiencia_requerida ?? r.requisito_experiencia ?? null
+    const entidad      = r.entidad       || entidadConv
 
-  const { data, error } = await supabase.from('opec_maestro').insert(rows).select('id, num_convocatoria, denominacion')
-  if (error) return res.status(500).json({ error: error.message })
-  return res.status(201).json({ insertados: data.length, registros: data })
+    // ── ubicaciones: construir desde municipio/departamento si no viene el array ──
+    let ubicaciones = Array.isArray(r.ubicaciones) ? r.ubicaciones : []
+    if (!ubicaciones.length && (r.municipio || r.departamento)) {
+      ubicaciones = [{ ciudad: r.municipio || null, departamento: r.departamento || null, tipo: r.tipo_entidad || null }]
+    }
+
+    // ── funciones SIMO: array de strings o array de objetos {descripcion} ──
+    let funciones = []
+    if (Array.isArray(r.funciones)) {
+      funciones = r.funciones.map(f => (typeof f === 'string' ? f : f.descripcion || '')).filter(Boolean)
+    }
+
+    return {
+      convocatoria_id:            parseInt(convocatoria_id),
+      entidad,
+      num_convocatoria:           r.num_convocatoria                     || null,
+      denominacion:               (r.denominacion || '').trim(),
+      nivel:                      r.nivel                                || null,
+      codigo:                     r.codigo                               || null,
+      grado:                      r.grado       ? parseInt(r.grado)      : null,
+      salario:                    r.salario     ? parseInt(r.salario)    : null,
+      vacantes:                   vacantes      ? parseInt(vacantes)     : 1,
+      dependencia:                r.dependencia                          || null,
+      area_estudio:               r.area_estudio                         || null,
+      requiere_posgrado:          !!r.requiere_posgrado,
+      requiere_tarjeta:           !!r.requiere_tarjeta,
+      exp_anios:                  exp_anios     ? parseInt(exp_anios)    : 0,
+      exp_tipo,
+      estudio_texto,
+      exp_texto,
+      proceso:                    r.proceso                              || null,
+      funciones,
+      conocimientos:              Array.isArray(r.conocimientos)         ? r.conocimientos : [],
+      competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
+      competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
+      ubicaciones,
+      // ── Campos exclusivos SIMO ──────────────────────────────────────────────
+      numero_opec:                r.numero_opec                          || null,
+      manual_url:                 r.manual_url                           || null,
+      proposito:                  r.proposito                            || null,
+      municipio:                  r.municipio                            || null,
+      departamento:               r.departamento                         || null,
+      proceso_de_seleccion:       r.proceso_de_seleccion                 || null,
+      is_active:                  r.is_active !== false,
+    }
+  }).filter(r => r.denominacion)
+
+  // Insertar en chunks de 500 para no saturar Supabase
+  let insertados = 0
+  const insertedRows = []
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { data, error } = await supabase.from('opec_maestro').insert(chunk).select('id, num_convocatoria, denominacion')
+    if (error) return res.status(500).json({ error: error.message, insertados_antes: insertados })
+    insertados += data.length
+    insertedRows.push(...data)
+  }
+
+  return res.status(201).json({ insertados, registros: insertedRows })
 }
 
 // ── Historial de análisis de perfil del usuario ───────────────────────────────
