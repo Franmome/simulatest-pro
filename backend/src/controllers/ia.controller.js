@@ -123,20 +123,28 @@ async function extractPdfText(buffer) {
   } catch { return '' }
 }
 
-// Extrae texto de cualquier tipo de archivo usando Gemini Vision cuando es necesario
+// Extrae texto de cualquier tipo de archivo — Gemini Vision siempre para PDF e imágenes
 async function extractCvText(file) {
   if (!file) return ''
   const ext = (file.originalname || '').split('.').pop().toLowerCase()
   try {
     if (ext === 'pdf') {
-      const textoPdf = await extractPdfText(file.buffer)
-      // PDF de texto: devuelve directo. PDF escaneado (imagen): texto muy corto → usar Gemini Vision
-      if (textoPdf && textoPdf.replace(/\s/g, '').length > 150) return textoPdf
-      console.log('[IA] PDF parece escaneado, usando Gemini Vision para extraer texto')
-      const prompt = 'Extrae y transcribe TODO el texto visible en este documento (hoja de vida / curriculum). Incluye nombres, fechas, cargos, formacion, experiencia laboral, instituciones y cualquier dato relevante. Solo devuelve el texto extraido, sin comentarios.'
+      // Siempre usar Gemini Vision: lee tanto texto como imágenes incrustadas (certificados, diplomas, firmas)
+      console.log('[IA] PDF recibido, usando Gemini Vision para extracción completa (texto + imágenes internas)')
+      const geminiPrompt = 'Extrae y transcribe TODO el contenido visible en este documento (hoja de vida / curriculum vitae). Debes leer: nombres, fechas, cargos, instituciones, titulos academicos, experiencia laboral, certificaciones, idiomas, y cualquier otro dato relevante. Si hay imagenes de certificados, diplomas o actas, transcribe tambien su contenido. Solo devuelve el texto extraido, sin comentarios ni explicaciones.'
       const part = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-      const res = await geminiGenerar([prompt, part])
-      return res.texto || ''
+      const [geminiRes, pdfText] = await Promise.all([
+        geminiGenerar([geminiPrompt, part]).catch(e => { console.error('[IA] Gemini Vision PDF error:', e.message); return { texto: '' } }),
+        extractPdfText(file.buffer),
+      ])
+      const geminiText = geminiRes.texto || ''
+      // Gemini Vision como fuente primaria; pdf-parse como complemento si Gemini falla
+      if (geminiText && geminiText.replace(/\s/g, '').length > 100) {
+        console.log('[IA] Gemini Vision extrajo', geminiText.length, 'chars del PDF')
+        return geminiText
+      }
+      console.log('[IA] Gemini Vision no devolvio texto, usando pdf-parse como fallback:', pdfText.length, 'chars')
+      return pdfText
     }
     if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
       console.log('[IA] Imagen detectada, usando Gemini Vision para extraer texto de HV')
