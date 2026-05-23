@@ -1420,7 +1420,8 @@ export async function listProcuraduriaOpecs(req, res) {
 export async function createProcuraduriaOpec(req, res) {
   const { denominacion, nivel, grado, area_estudio, vacantes, estudio_texto, exp_texto, codigo,
           num_convocatoria, requiere_posgrado, requiere_tarjeta, exp_anios, exp_tipo, dependencia,
-          convocatoria_id, entidad = 'Procuraduría General de la Nación' } = req.body
+          convocatoria_id, entidad = 'Procuraduría General de la Nación',
+          proceso, funciones, conocimientos, competencias_transversales, competencias_perfil, ubicaciones } = req.body
   if (!denominacion?.trim()) return res.status(400).json({ error: 'El nombre del cargo es requerido.' })
   if (!convocatoria_id)      return res.status(400).json({ error: 'convocatoria_id es requerido.' })
   const { data, error } = await supabase
@@ -1429,7 +1430,13 @@ export async function createProcuraduriaOpec(req, res) {
               area_estudio, vacantes: vacantes ? parseInt(vacantes) : 1, estudio_texto, exp_texto,
               codigo, num_convocatoria, requiere_posgrado: !!requiere_posgrado,
               requiere_tarjeta: !!requiere_tarjeta, exp_anios: exp_anios ? parseInt(exp_anios) : 0,
-              exp_tipo, dependencia, convocatoria_id: parseInt(convocatoria_id), entidad })
+              exp_tipo, dependencia, convocatoria_id: parseInt(convocatoria_id), entidad,
+              proceso: proceso || null,
+              funciones: Array.isArray(funciones) ? funciones : [],
+              conocimientos: Array.isArray(conocimientos) ? conocimientos : [],
+              competencias_transversales: competencias_transversales || {},
+              competencias_perfil: competencias_perfil || {},
+              ubicaciones: Array.isArray(ubicaciones) ? ubicaciones : [] })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.status(201).json({ opec: data })
@@ -1439,14 +1446,20 @@ export async function updateProcuraduriaOpec(req, res) {
   const { id } = req.params
   const { denominacion, nivel, grado, area_estudio, vacantes, estudio_texto, exp_texto, codigo,
           num_convocatoria, requiere_posgrado, requiere_tarjeta, exp_anios, exp_tipo, dependencia,
-          is_active } = req.body
+          is_active, proceso, funciones, conocimientos, competencias_transversales, competencias_perfil, ubicaciones } = req.body
   const { data, error } = await supabase
     .from('opec_maestro')
     .update({ denominacion, nivel, grado: grado ? parseInt(grado) : null, area_estudio,
               vacantes: vacantes ? parseInt(vacantes) : 1, estudio_texto, exp_texto, codigo,
               num_convocatoria, requiere_posgrado: !!requiere_posgrado,
               requiere_tarjeta: !!requiere_tarjeta, exp_anios: exp_anios ? parseInt(exp_anios) : 0,
-              exp_tipo, dependencia, is_active, updated_at: new Date().toISOString() })
+              exp_tipo, dependencia, is_active, updated_at: new Date().toISOString(),
+              proceso: proceso || null,
+              funciones: Array.isArray(funciones) ? funciones : [],
+              conocimientos: Array.isArray(conocimientos) ? conocimientos : [],
+              competencias_transversales: competencias_transversales || {},
+              competencias_perfil: competencias_perfil || {},
+              ubicaciones: Array.isArray(ubicaciones) ? ubicaciones : [] })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ opec: data })
