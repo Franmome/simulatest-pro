@@ -1334,51 +1334,68 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
 
     const descartadosTxt = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
-    const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
+    const systemPromptFull = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    const makePrompt = (cargosT, loteLabel, incluirDescartados) =>
-      `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (${loteLabel})\n==============================\n${cargosT}${incluirDescartados ? descartadosTxt : ''}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
+    // Lote 1: análisis completo con todos los campos globales
+    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (5 cargos — lote principal)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 5 cargos siguiendo todos los pasos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
 
-    // Lanzar ambos lotes en paralelo — cada uno con 5 OPECs para no exceder el limite de salida
-    const [result1, result2] = await Promise.all([
-      deepseekAnalisisPerfil(systemPrompt, makePrompt(buildOpecTexto(batch1), `lote 1/2 — cargos 1-5 de top 10 | total convocatoria: ${todosOpec.length}`, true), 32768),
-      batch2.length > 0
-        ? deepseekAnalisisPerfil(systemPrompt, makePrompt(buildOpecTexto(batch2), `lote 2/2 — cargos 6-10 de top 10 | total convocatoria: ${todosOpec.length}`, false), 32768)
-        : Promise.resolve(null),
-    ])
-    console.log('[IA] pass2a tokensOut:', result1.tokensOut, '| pass2b tokensOut:', result2?.tokensOut ?? 0)
+    // Lote 2: system prompt compacto — solo devuelve el array ranking_opec_recomendadas
+    const systemPromptLote2 = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los 5 cargos OPEC recibidos contra el perfil del candidato y devuelve UNICAMENTE este JSON valido sin texto adicional:
+{"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}]}`
+
+    const promptLote2 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfil_texto || 'Sin descripcion.'}\n${cvText ? '\nPDF HOJA DE VIDA:\n' + cvText : ''}\n\nCARGOS A ANALIZAR (5 cargos adicionales):\n${buildOpecTexto(batch2)}\n\nAnaliza estos 5 cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
+
+    // Lote 1 primero — deepseek-chat tiene un límite duro de 8192 tokens de salida
+    let result1 = null
+    try {
+      result1 = await deepseekAnalisisPerfil(systemPromptFull, promptLote1, 8192)
+      console.log('[IA] pass2a tokensOut:', result1.tokensOut, '| responseLen:', result1.texto.length)
+    } catch (e) {
+      console.error('[IA] pass2a error:', e.message)
+    }
+
+    // Lote 2 solo si lote 1 tuvo éxito y hay más OPECs
+    let result2 = null
+    if (result1 && batch2.length > 0) {
+      try {
+        result2 = await deepseekAnalisisPerfil(systemPromptLote2, promptLote2, 8192)
+        console.log('[IA] pass2b tokensOut:', result2.tokensOut)
+      } catch (e) {
+        console.error('[IA] pass2b error (ignorado, usando solo lote 1):', e.message)
+      }
+    }
 
     let analisis
     try {
+      if (!result1) throw new Error('El lote principal fallo. Intenta de nuevo.')
       const m1 = result1.texto.match(/\{[\s\S]*\}/)
-      if (!m1) throw new Error('DeepSeek no devolvio un JSON valido en lote 1.')
+      if (!m1) throw new Error('DeepSeek no devolvio JSON valido en lote 1.')
       analisis = JSON.parse(m1[0])
     } catch (parseErr) {
-      console.error('[IA] pass2a parse error:', parseErr.message, '| preview:', result1.texto.slice(0, 200))
+      console.error('[IA] pass2a parse error:', parseErr.message, '| preview:', result1?.texto?.slice(0, 200))
       return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo.' })
     }
 
-    // Combinar ranking del lote 2 si existe
-    if (result2) {
+    // Agregar ranking del lote 2 si existe (degradacion elegante si falla)
+    if (result2?.texto) {
       try {
         const m2 = result2.texto.match(/\{[\s\S]*\}/)
         if (m2) {
-          const analisis2 = JSON.parse(m2[0])
-          const ranking2  = analisis2.ranking_opec_recomendadas || []
+          const parsed2  = JSON.parse(m2[0])
+          const ranking2 = parsed2.ranking_opec_recomendadas || []
           if (ranking2.length > 0) {
             analisis.ranking_opec_recomendadas = [
               ...(analisis.ranking_opec_recomendadas || []),
               ...ranking2,
             ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0))
-            // Actualizar la mejor opec si el lote 2 tiene una mejor
-            const mejorTotal = analisis.ranking_opec_recomendadas[0]
-            if (mejorTotal && (mejorTotal.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
-              analisis.opec_mas_recomendada = mejorTotal
+            const mejor = analisis.ranking_opec_recomendadas[0]
+            if (mejor && (mejor.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
+              analisis.opec_mas_recomendada = mejor
             }
           }
         }
       } catch (e2) {
-        console.error('[IA] pass2b parse error (ignorado, usando lote 1):', e2.message)
+        console.error('[IA] pass2b parse error (ignorado, mostrando solo lote 1):', e2.message)
       }
     }
 
