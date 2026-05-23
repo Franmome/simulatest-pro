@@ -1306,7 +1306,7 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       top10Ids = todosOpec.slice(0, 10).map(c => String(c.id))
     }
 
-    // ── PASO 2: Analisis completo solo de los 10 seleccionados ──────────────────────
+    // ── PASO 2: Analisis en dos lotes paralelos de 5 (DeepSeek-chat tiene ~8K tokens de salida) ──
     const opecs10  = todosOpec.filter(c => top10Ids.includes(String(c.id)))
     const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 5)
 
@@ -1329,23 +1329,57 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
     ].filter(Boolean).join('\n')).join('\n---\n')
 
-    const cargosTexto    = buildOpecTexto(opecs10)
+    const batch1 = opecs10.slice(0, 5)
+    const batch2 = opecs10.slice(5)
+
     const descartadosTxt = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
     const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (top 10 de ${todosOpec.length} totales)\n==============================\n${cargosTexto}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de los 10 cargos preseleccionados siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
+    const makePrompt = (cargosT, loteLabel, incluirDescartados) =>
+      `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (${loteLabel})\n==============================\n${cargosT}${incluirDescartados ? descartadosTxt : ''}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
 
-    const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 32768)
-    console.log('[IA] pass2 tokensOut:', result.tokensOut, '| responseLen:', result.texto.length)
+    // Lanzar ambos lotes en paralelo — cada uno con 5 OPECs para no exceder el limite de salida
+    const [result1, result2] = await Promise.all([
+      deepseekAnalisisPerfil(systemPrompt, makePrompt(buildOpecTexto(batch1), `lote 1/2 — cargos 1-5 de top 10 | total convocatoria: ${todosOpec.length}`, true), 32768),
+      batch2.length > 0
+        ? deepseekAnalisisPerfil(systemPrompt, makePrompt(buildOpecTexto(batch2), `lote 2/2 — cargos 6-10 de top 10 | total convocatoria: ${todosOpec.length}`, false), 32768)
+        : Promise.resolve(null),
+    ])
+    console.log('[IA] pass2a tokensOut:', result1.tokensOut, '| pass2b tokensOut:', result2?.tokensOut ?? 0)
+
     let analisis
     try {
-      const match = result.texto.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error('DeepSeek no devolvio un JSON valido. Intenta de nuevo.')
-      analisis = JSON.parse(match[0])
+      const m1 = result1.texto.match(/\{[\s\S]*\}/)
+      if (!m1) throw new Error('DeepSeek no devolvio un JSON valido en lote 1.')
+      analisis = JSON.parse(m1[0])
     } catch (parseErr) {
-      console.error('[IA] pass2 parse error:', parseErr.message, '| preview:', result.texto.slice(0, 200))
+      console.error('[IA] pass2a parse error:', parseErr.message, '| preview:', result1.texto.slice(0, 200))
       return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo.' })
+    }
+
+    // Combinar ranking del lote 2 si existe
+    if (result2) {
+      try {
+        const m2 = result2.texto.match(/\{[\s\S]*\}/)
+        if (m2) {
+          const analisis2 = JSON.parse(m2[0])
+          const ranking2  = analisis2.ranking_opec_recomendadas || []
+          if (ranking2.length > 0) {
+            analisis.ranking_opec_recomendadas = [
+              ...(analisis.ranking_opec_recomendadas || []),
+              ...ranking2,
+            ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0))
+            // Actualizar la mejor opec si el lote 2 tiene una mejor
+            const mejorTotal = analisis.ranking_opec_recomendadas[0]
+            if (mejorTotal && (mejorTotal.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
+              analisis.opec_mas_recomendada = mejorTotal
+            }
+          }
+        }
+      } catch (e2) {
+        console.error('[IA] pass2b parse error (ignorado, usando lote 1):', e2.message)
+      }
     }
 
     const { error: saveErr } = await supabase.from('user_profile_analysis').upsert(
