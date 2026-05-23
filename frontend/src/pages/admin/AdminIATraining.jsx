@@ -452,7 +452,7 @@ const NIVELES = ['Auxiliar', 'Asistencial', 'Técnico', 'Tecnólogo', 'Profesion
 
 const OPEC_EMPTY = { denominacion: '', nivel: '', grado: '', area_estudio: '', vacantes: '', estudio_texto: '', exp_texto: '', exp_anios: '', exp_tipo: '', num_convocatoria: '', requiere_posgrado: false, requiere_tarjeta: false, dependencia: '', codigo: '', proceso: '', funciones: [] }
 
-function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
+function OpecModal({ opec, convocatoria_id, convNombre, onClose, onSaved }) {
   const [form, setForm] = useState(opec ? { ...opec } : { ...OPEC_EMPTY })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -489,7 +489,7 @@ function OpecModal({ opec, convocatoria_id, onClose, onSaved }) {
           </div>
           <div className="flex-1">
             <h3 className="font-extrabold text-base">{opec?.id ? 'Editar cargo' : 'Agregar cargo OPEC'}</h3>
-            <p className="text-xs text-on-surface-variant">Procuraduría General de la Nación</p>
+            <p className="text-xs text-on-surface-variant truncate">{convNombre || 'Convocatoria activa'}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
             <span className="material-symbols-outlined text-slate-500">close</span>
@@ -1032,6 +1032,7 @@ function ProcuraduriaOpecPanel() {
         <OpecModal
           opec={modal.opec}
           convocatoria_id={convId}
+          convNombre={convocatorias.find(c => String(c.id) === String(convId))?.entidad || convocatorias.find(c => String(c.id) === String(convId))?.nombre || ''}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); fetchData(q, nivel, page, convId) }}
         />
