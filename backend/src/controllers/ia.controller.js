@@ -1222,7 +1222,7 @@ FLUJO OBLIGATORIO:
 7. Restricciones de porcentaje: no >70% si experiencia relacionada no demostrada; no >75% si hay dudas sobre tipo de experiencia; no >80% si coincidencia funcional baja; no >85% si tarjeta/posgrado requiere validacion; no >60% si brecha critica de experiencia; no >50% si formacion parcial.
 8. Evaluar riesgo documental (bajo/medio/alto).
 9. Generar guia practica por OPEC: decision recomendada, documentos a organizar, correcciones en HV, funciones a evidenciar, palabras clave, acciones antes de postularse.
-10. Seleccionar las 5 OPEC mas afines.
+10. Seleccionar las 10 OPEC mas afines.
 11. Identificar hasta 5 cargos descartados con motivo y brecha.
 12. Generar recomendaciones concretas para mejorar la hoja de vida.
 
@@ -1265,7 +1265,7 @@ export async function analizarPerfilCV(req, res) {
 
     const perfil_base = ((perfil_texto || '') + ' ' + cvText).trim()
 
-    const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 5 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
+    const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 10 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
 
 REGLA CRITICA DE NIVEL (obligatoria, no negociable):
 - Nivel ASISTENCIAL: solo requiere bachillerato o menos
@@ -1278,15 +1278,15 @@ PASO 1 - Determina el nivel de formacion del candidato leyendo su perfil.
 PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel del candidato. NUNCA selecciones un cargo de nivel superior al que el candidato puede acceder.
   Ejemplo: candidato TECNICO → solo puede optar a cargos TECNICO o ASISTENCIAL, JAMAS profesional/asesor/directivo.
   Ejemplo: candidato PROFESIONAL universitario → puede optar a PROFESIONAL, TECNICO o ASISTENCIAL.
-PASO 3 - Entre los cargos de nivel compatible, elige los 5 con mayor afinidad de area, funciones y experiencia.
+PASO 3 - Entre los cargos de nivel compatible, elige los 10 con mayor afinidad de area, funciones y experiencia. Deben ser 10 distintos.
 PASO 4 - Identifica hasta 5 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
 
 IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["id1","id2","id3","id4","id5"], "descartados": ["id1",...]}`
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"], "descartados": ["id1",...]}`
 
     const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
-    let top5Ids = []
+    let top10Ids = []
     let descartadosIds = []
     try {
       const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt)
@@ -1294,20 +1294,20 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["id1","id2","id3","
       const m = pass1.texto.match(/\{[\s\S]*\}/)
       if (m) {
         const parsed = JSON.parse(m[0])
-        top5Ids = Array.isArray(parsed.top5) ? parsed.top5.map(String) : []
+        top10Ids = Array.isArray(parsed.top10) ? parsed.top10.map(String) : []
         descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
       }
     } catch (e) {
       console.error('[IA] pass1 parse error:', e.message)
     }
 
-    // Si el paso 1 no devolvio IDs validos, tomar los primeros 5 por ID
-    if (!top5Ids.length) {
-      top5Ids = todosOpec.slice(0, 5).map(c => String(c.id))
+    // Si el paso 1 no devolvio IDs validos, tomar los primeros 10 por ID
+    if (!top10Ids.length) {
+      top10Ids = todosOpec.slice(0, 10).map(c => String(c.id))
     }
 
-    // ── PASO 2: Analisis completo solo de los 5 seleccionados ───────────────────────
-    const opecs5   = todosOpec.filter(c => top5Ids.includes(String(c.id)))
+    // ── PASO 2: Analisis completo solo de los 10 seleccionados ──────────────────────
+    const opecs10  = todosOpec.filter(c => top10Ids.includes(String(c.id)))
     const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 5)
 
     const buildOpecTexto = (lista) => lista.map((c) => [
@@ -1329,12 +1329,12 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top5": ["id1","id2","id3","
       `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
     ].filter(Boolean).join('\n')).join('\n---\n')
 
-    const cargosTexto    = buildOpecTexto(opecs5)
+    const cargosTexto    = buildOpecTexto(opecs10)
     const descartadosTxt = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
     const systemPrompt = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (top 5 de ${todosOpec.length} totales)\n==============================\n${cargosTexto}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de los 5 cargos preseleccionados siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
+    const userPrompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PRESELECCIONADOS PARA ANALISIS DETALLADO (top 10 de ${todosOpec.length} totales)\n==============================\n${cargosTexto}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de los 10 cargos preseleccionados siguiendo todos los pasos definidos en tus instrucciones del sistema. Devuelve UNICAMENTE el JSON valido con la estructura exacta especificada. Sin texto antes ni despues del JSON.`
 
     const result = await deepseekAnalisisPerfil(systemPrompt, userPrompt, 32768)
     console.log('[IA] pass2 tokensOut:', result.tokensOut, '| responseLen:', result.texto.length)
