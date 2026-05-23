@@ -930,7 +930,8 @@ function ProcuraduriaOpecPanel() {
                 <th className="text-left px-4 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Cargo</th>
                 <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Nivel</th>
                 <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Grado</th>
-                <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide hidden md:table-cell">Área</th>
+                <th className="text-left px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide hidden lg:table-cell">Área</th>
+                <th className="text-right px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide hidden lg:table-cell">Salario</th>
                 <th className="text-center px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Vac.</th>
                 <th className="text-center px-3 py-3 text-xs font-bold text-on-surface-variant uppercase tracking-wide">Activo</th>
                 <th className="px-3 py-3" />
@@ -940,7 +941,7 @@ function ProcuraduriaOpecPanel() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    {[32, 180, 80, 60, 160, 50, 50, 80].map((w, j) => (
+                    {[32, 180, 80, 60, 160, 100, 50, 50, 80].map((w, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: w }} />
                       </td>
@@ -949,7 +950,7 @@ function ProcuraduriaOpecPanel() {
                 ))
               ) : opecs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center">
+                  <td colSpan={9} className="py-16 text-center">
                     <span className="material-symbols-outlined text-slate-300 text-5xl block mb-3">folder_open</span>
                     <p className="text-sm font-bold text-on-surface">
                       {total === 0 && !q && !nivel ? 'La base de datos está vacía' : 'Sin resultados'}
@@ -970,7 +971,10 @@ function ProcuraduriaOpecPanel() {
                     <td className="px-4 py-3">
                       <p className="font-semibold text-on-surface text-sm leading-tight">{op.denominacion}</p>
                       {op.num_convocatoria && <p className="text-[10px] text-emerald-600 font-mono mt-0.5">Conv. {op.num_convocatoria}</p>}
-                      {op.codigo && <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">Cód. {op.codigo}</p>}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {op.codigo && <p className="text-[10px] text-on-surface-variant font-mono">Cód. {op.codigo}</p>}
+                        {op.numero_opec && <p className="text-[10px] text-primary font-mono font-bold">OPEC #{op.numero_opec}</p>}
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {op.nivel ? (
@@ -978,7 +982,10 @@ function ProcuraduriaOpecPanel() {
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-sm text-on-surface-variant font-mono">{op.grado || '—'}</td>
-                    <td className="px-3 py-3 hidden md:table-cell text-xs text-on-surface-variant max-w-[200px] truncate" title={op.area_estudio}>{op.area_estudio || '—'}</td>
+                    <td className="px-3 py-3 hidden lg:table-cell text-xs text-on-surface-variant max-w-[180px] truncate" title={op.area_estudio}>{op.area_estudio || '—'}</td>
+                    <td className="px-3 py-3 hidden lg:table-cell text-right text-xs font-mono text-on-surface-variant whitespace-nowrap">
+                      {op.salario ? `$${op.salario.toLocaleString('es-CO')}` : '—'}
+                    </td>
                     <td className="px-3 py-3 text-center text-sm font-bold text-on-surface">{op.vacantes || 1}</td>
                     <td className="px-3 py-3 text-center">
                       <button onClick={() => handleToggle(op)}
