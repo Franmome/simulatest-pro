@@ -35,6 +35,8 @@ export default function Sidebar({ expanded, setExpanded }) {
   const { t } = useLang()
   const [loggingOut, setLoggingOut] = useState(false)
 
+  const esAdmin = user?.role === 'admin'
+
   const navItems = NAV_DEFS
     .filter(d => !d.adminOnly || esAdmin)
     .map(d => ({ ...d, label: d.label || t(d.labelKey) }))
@@ -68,7 +70,6 @@ export default function Sidebar({ expanded, setExpanded }) {
   }, [nombreUsuario])
 
   const avatarUrl = user?.user_metadata?.avatar_url || null
-  const esAdmin = user?.role === 'admin'
 
   const currentItem = NAV_DEFS.find(item => isActive(item.path))
 
