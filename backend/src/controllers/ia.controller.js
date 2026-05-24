@@ -1360,33 +1360,73 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       top10Ids = todosOpec.slice(0, 9).map(c => String(c.id))
     }
 
-    // ── PASO 2: Análisis del primer lote (3 OPECs — caben en 8192 tokens de salida) ──
-    // Los 6 restantes quedan como opecs_pendientes para el botón "Ver más"
+    // ── PASO 2a: Extracción del perfil del candidato (sin OPECs — siempre cabe en 8192) ──
+    const SP_PERFIL = `Eres un experto en analisis de hojas de vida del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia), Ley 909 de 2004, clasificacion de empleos, tipos de experiencia y requisitos academicos.
+
+Lee el CV/perfil del candidato y extrae su informacion profesional estructurada. NO analices ningun cargo OPEC.
+Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
+{"estado_analisis":"","observacion_general":"","perfil_candidato":{"nombre":"","profesion_principal":"","nivel_formacion":"","titulos_identificados":[],"posgrados_identificados":[],"tarjeta_profesional":{"estado":"","detalle":""},"experiencia_total_estimada_meses":0,"experiencia_profesional_estimada_meses":0,"experiencia_relacionada_estimada_meses":0,"experiencia_sector_publico_meses":0,"experiencia_sector_privado_meses":0,"areas_experiencia":[],"funciones_principales_identificadas":[],"categorias_funcionales_perfil":[],"competencias_clave":[],"posibles_nucleos_basicos_conocimiento":[],"alertas_validacion":[]},"diagnostico_general":{"nivel_competitividad":"","resumen":"","fortalezas_principales":[],"debilidades_principales":[],"tipo_de_cargos_mas_convenientes":[],"tipo_de_cargos_no_recomendados":[]},"recomendaciones_para_mejorar_hoja_de_vida":{"perfil_profesional":[],"experiencia_laboral":[],"funciones":[],"certificaciones":[],"palabras_clave":[]},"acciones_prioritarias":[{"prioridad":1,"accion":"","motivo":""}]}`
+
+    const promptPerfil = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nHOJA DE VIDA / PERFIL DEL CANDIDATO:\n${perfil_texto ? perfil_texto + '\n' : ''}${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\nExtrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.`
+
+    let perfilData = null
+    try {
+      const rPerfil = await deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
+      console.log('[IA] pass2a (perfil) tokensOut:', rPerfil.tokensOut)
+      perfilData = rescueAnalisis(rPerfil.texto)
+    } catch (e) {
+      console.error('[IA] pass2a error:', e.message)
+    }
+    if (!perfilData) return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
+
+    // ── PASO 2b: Análisis de OPECs usando el perfil ya estructurado ──────────────
     const opecs9   = todosOpec.filter(c => top10Ids.includes(String(c.id))).slice(0, 9)
     const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 3)
-
     const batch1          = opecs9.slice(0, 3)
     const opecsPendientes = opecs9.slice(3).map(c => c.id)
 
-    const descartadosTxt  = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
-    const systemPromptFull = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
+    const p = perfilData.perfil_candidato || {}
+    const perfilResumen = [
+      `Nombre: ${p.nombre || ''}`,
+      `Profesion: ${p.profesion_principal || ''}`,
+      `Nivel de formacion: ${p.nivel_formacion || ''}`,
+      `Titulos: ${(p.titulos_identificados || []).join(', ')}`,
+      `Tarjeta profesional: ${p.tarjeta_profesional?.estado || 'no aplica'}`,
+      `Experiencia total: ${p.experiencia_total_estimada_meses || 0} meses`,
+      `Exp. profesional: ${p.experiencia_profesional_estimada_meses || 0} meses`,
+      `Exp. sector publico: ${p.experiencia_sector_publico_meses || 0} meses`,
+      `Areas: ${(p.areas_experiencia || []).join(', ')}`,
+      `Funciones: ${(p.funciones_principales_identificadas || []).slice(0, 6).join(' | ')}`,
+      `Competencias: ${(p.competencias_clave || []).join(', ')}`,
+      `Nucleos: ${(p.posibles_nucleos_basicos_conocimiento || []).join(', ')}`,
+    ].join('\n')
 
-    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (3 cargos)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 3 cargos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
+    const descartadosTxt = opecsDes.length ? '\n\nCARGOS DESCARTADOS (incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
-    let result1 = null
+    const SP_OPECS = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los cargos OPEC contra el perfil estructurado del candidato.
+REGLAS: No infles porcentajes. Si no cumple formacion minima no recomiendes. Calcula afinidad 0-100: formacion 30%, experiencia 30%, funciones 25%, conocimientos 10%, coherencia 5%.
+Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
+{"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}],"opec_mas_recomendada":{"codigo_opec":"","denominacion":"","afinidad_porcentaje":0,"razon_principal":"","accion_prioritaria_antes_de_postularse":""},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
+
+    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(batch1)}${descartadosTxt}\n\nAnaliza estos ${batch1.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON.`
+
+    let opecsData = null
     try {
-      result1 = await deepseekAnalisisPerfil(systemPromptFull, promptLote1, 8192)
-      console.log('[IA] pass2 tokensOut:', result1.tokensOut, '| responseLen:', result1.texto.length)
+      const rOpecs = await deepseekAnalisisPerfil(SP_OPECS, promptOpecs, 8192)
+      console.log('[IA] pass2b (opecs) tokensOut:', rOpecs.tokensOut)
+      opecsData = rescueAnalisis(rOpecs.texto)
     } catch (e) {
-      console.error('[IA] pass2 error:', e.message)
+      console.error('[IA] pass2b error:', e.message)
     }
 
-    const analisis = result1?.texto ? rescueAnalisis(result1.texto) : null
-    if (!analisis) {
-      console.error('[IA] pass2 parse failed | preview:', result1?.texto?.slice(0, 300))
-      return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo en unos minutos.' })
+    // Fusionar: perfil + opecs en un solo objeto
+    const analisis = {
+      ...perfilData,
+      ranking_opec_recomendadas: (opecsData?.ranking_opec_recomendadas || []).filter(o => (o.afinidad_porcentaje || 0) > 0),
+      opec_mas_recomendada:      opecsData?.opec_mas_recomendada || null,
+      cargos_descartados_relevantes: opecsData?.cargos_descartados_relevantes || [],
     }
-    console.log('[IA] OPECs analizadas:', analisis.ranking_opec_recomendadas?.length ?? 0, '| pendientes:', opecsPendientes.length)
+    console.log('[IA] OPECs en resultado:', analisis.ranking_opec_recomendadas.length, '| pendientes:', opecsPendientes.length)
 
     const now = new Date().toISOString()
     const { error: saveErr } = await supabase.from('user_profile_analysis').insert(

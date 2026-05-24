@@ -537,7 +537,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
   const perfil = analisis.perfil_candidato || {}
   const diag = analisis.diagnostico_general || {}
   const top = analisis.opec_mas_recomendada || {}
-  const ranking = analisis.ranking_opec_recomendadas || []
+  const ranking = (analisis.ranking_opec_recomendadas || []).filter(o => (o.afinidad_porcentaje || 0) > 0)
   const recomendaciones = analisis.recomendaciones_para_mejorar_hoja_de_vida || {}
   const acciones = analisis.acciones_prioritarias || []
   const descartados = analisis.cargos_descartados_relevantes || []
@@ -554,6 +554,13 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
             <span className="inline-block mt-0.5 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{diag.nivel_competitividad}</span>
           )}
         </div>
+        <button
+          onClick={() => generarAnalisisPDF(analisis, analisis._convNombre || '')}
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-on-primary rounded-full text-xs font-bold hover:bg-primary/90 transition-all flex-shrink-0"
+        >
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
+          <span className="hidden sm:inline">Descargar</span>
+        </button>
       </div>
 
       {/* Estado de análisis */}
@@ -808,19 +815,6 @@ function ResultsOld({ analisis, onReset, navigate }) {
           <p className="text-sm text-on-surface leading-relaxed">{analisis.recomendacion_general}</p>
         </div>
       )}
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={() => generarAnalisisPDF(analisis, analisis._convNombre || '')}
-          className="flex-1 py-3 bg-primary text-on-primary rounded-full font-bold text-sm hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-        >
-          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
-          Descargar análisis
-        </button>
-        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
-          <span className="material-symbols-outlined text-sm">person_search</span>
-          Nuevo análisis
-        </button>
-      </div>
     </div>
   )
 }
@@ -966,7 +960,7 @@ export default function AnalisisPerfil() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      const nuevas = json.nuevas_opecs || []
+      const nuevas = (json.nuevas_opecs || []).filter(o => (o.afinidad_porcentaje || 0) > 0)
       if (nuevas.length > 0) {
         setAnalisis(prev => ({
           ...prev,
