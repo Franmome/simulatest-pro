@@ -146,12 +146,12 @@ function CargoCard({ opec, index }) {
     return (
       <button
         onClick={() => setTab(id)}
-        className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all ${
+        className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-bold rounded-lg transition-all min-h-[44px] ${
           tab === id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container'
         }`}
       >
         <span className="material-symbols-outlined text-sm">{icon}</span>
-        <span className="hidden sm:inline">{label}</span>
+        <span className="text-[10px] sm:text-xs leading-tight">{label}</span>
       </button>
     )
   }
@@ -173,7 +173,7 @@ function CargoCard({ opec, index }) {
         <span className="text-2xl select-none flex-shrink-0">{MEDALS[index] ?? '•'}</span>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm leading-snug">{opec.denominacion}</p>
-          <p className="text-xs text-on-surface-variant mt-0.5">
+          <p className="text-xs text-on-surface-variant mt-0.5 truncate">
             {opec.entidad && <span>{opec.entidad} · </span>}
             Conv. {opec.codigo_opec ?? opec.convocatoria ?? '—'}
             {opec.nivel ? ` · ${opec.nivel}` : ''}
@@ -524,9 +524,9 @@ function HistoryCard({ item, onSelect, onDelete, active }) {
       <button
         onClick={e => { e.stopPropagation(); onDelete(item.id) }}
         title="Eliminar este análisis"
-        className="absolute top-2 right-2 w-5 h-5 rounded-full bg-surface-container hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-surface-container hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center transition-all sm:opacity-0 sm:group-hover:opacity-100"
       >
-        <span className="material-symbols-outlined text-xs text-on-surface-variant hover:text-red-500" style={{ fontSize: '13px' }}>close</span>
+        <span className="material-symbols-outlined text-on-surface-variant hover:text-red-500" style={{ fontSize: '13px' }}>close</span>
       </button>
     </div>
   )
@@ -543,20 +543,20 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
   const descartados = analisis.cargos_descartados_relevantes || []
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <button onClick={onReset} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
+    <div className="space-y-4 sm:space-y-5 animate-fade-in">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <button onClick={onReset} className="p-2 hover:bg-surface-container rounded-lg transition-colors flex-shrink-0">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
-        <div className="flex-1">
-          <h2 className="font-bold">Resultado del análisis</h2>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-bold text-sm sm:text-base truncate">Resultado del análisis</h2>
           {diag.nivel_competitividad && (
-            <span className="inline-block mt-0.5 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{diag.nivel_competitividad}</span>
+            <span className="inline-block mt-0.5 text-[10px] sm:text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{diag.nivel_competitividad}</span>
           )}
         </div>
         <button
           onClick={() => generarAnalisisPDF(analisis, analisis._convNombre || '')}
-          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-on-primary rounded-full text-xs font-bold hover:bg-primary/90 transition-all flex-shrink-0"
+          className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 bg-primary text-on-primary rounded-full text-xs font-bold hover:bg-primary/90 transition-all flex-shrink-0 min-h-[36px]"
         >
           <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
           <span className="hidden sm:inline">Descargar</span>
@@ -573,7 +573,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
 
       {/* Perfil extraído */}
       {(perfil.profesion_principal || diag.resumen) && (
-        <div className="card p-5 bg-gradient-to-br from-primary/8 to-secondary/5 border border-primary/15">
+        <div className="card p-4 sm:p-5 bg-gradient-to-br from-primary/8 to-secondary/5 border border-primary/15">
           <p className="text-xs font-bold text-primary uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
             Tu perfil profesional
@@ -713,7 +713,8 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
               ) : (
                 <>
                   <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Ver {Math.min(opecsPendientes.length, 3)} OPECs más ({opecsPendientes.length} pendientes)
+                  <span className="sm:hidden">Ver más OPECs{opecsPendientes.length > 0 ? ` (${opecsPendientes.length})` : ''}</span>
+                  <span className="hidden sm:inline">Ver {Math.min(opecsPendientes.length, 3)} OPECs más ({opecsPendientes.length} pendientes)</span>
                 </>
               )}
             </button>
@@ -769,12 +770,10 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
         </div>
       )}
 
-      <div className="flex gap-3 pt-1">
-        <button onClick={onReset} className="w-full py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
-          <span className="material-symbols-outlined text-sm">person_search</span>
-          Analizar otro perfil
-        </button>
-      </div>
+      <button onClick={onReset} className="w-full py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2 mt-1">
+        <span className="material-symbols-outlined text-sm">person_search</span>
+        Analizar otro perfil
+      </button>
     </div>
   )
 }
@@ -983,9 +982,6 @@ export default function AnalisisPerfil() {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm border-b border-outline-variant/20 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <button onClick={() => navigate('/material-estudio')} className="p-2 hover:bg-surface-container rounded-lg transition-colors">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-extrabold font-headline">Análisis de Perfil</h1>
             <p className="text-xs text-on-surface-variant hidden sm:block">El Asistente de Praxia compara tu hoja de vida con los cargos disponibles</p>
@@ -993,10 +989,12 @@ export default function AnalisisPerfil() {
           {(historial.length > 0 || localAnalisis) && (
             <button
               onClick={() => setShowHistory(s => !s)}
-              className="lg:hidden flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-3 py-2 rounded-full"
+              className="lg:hidden flex items-center gap-1 text-xs font-bold text-primary bg-primary/10 px-2.5 py-1.5 rounded-full flex-shrink-0"
             >
               <span className="material-symbols-outlined text-sm">history</span>
-              {historial.length > 0 ? `${historial.length} guardado${historial.length !== 1 ? 's' : ''}` : 'Último análisis'}
+              {historial.length > 0
+                ? <><span>{historial.length}</span><span className="hidden sm:inline"> guardado{historial.length !== 1 ? 's' : ''}</span></>
+                : <span className="hidden sm:inline">Último</span>}
             </button>
           )}
         </div>
@@ -1009,7 +1007,7 @@ export default function AnalisisPerfil() {
           <div className="space-y-5 min-w-0">
             {/* Form */}
             {!analisis && (
-              <div className="card p-5 space-y-5 animate-fade-in">
+              <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5 animate-fade-in">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
                   <select
@@ -1043,7 +1041,7 @@ export default function AnalisisPerfil() {
                     onDragLeave={() => setDragging(false)}
                     onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all select-none
+                    className={`flex flex-col items-center justify-center gap-2 p-4 sm:p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all select-none
                       ${dragging ? 'border-primary bg-primary/8 scale-[1.01]' : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container-low'}`}
                   >
                     <span className="material-symbols-outlined text-3xl text-on-surface-variant" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
@@ -1078,7 +1076,7 @@ export default function AnalisisPerfil() {
                 )}
 
                 {analizando ? (
-                  <div className="card p-6 space-y-4 animate-fade-in">
+                  <div className="card p-4 sm:p-6 space-y-4 animate-fade-in">
                     {/* Spinner + texto activo */}
                     <div className="flex items-center gap-4 pb-2 border-b border-outline-variant/20">
                       <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
@@ -1089,8 +1087,8 @@ export default function AnalisisPerfil() {
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-on-surface leading-snug">{LOAD_STEPS[loadStep]?.text}</p>
-                        <p className="text-xs text-on-surface-variant mt-0.5">El Asistente de Praxia está trabajando en tu análisis...</p>
+                        <p className="font-bold text-xs sm:text-sm text-on-surface leading-snug line-clamp-2">{LOAD_STEPS[loadStep]?.text}</p>
+                        <p className="text-xs text-on-surface-variant mt-0.5 hidden sm:block">El Asistente de Praxia está trabajando en tu análisis...</p>
                       </div>
                     </div>
 
@@ -1116,7 +1114,7 @@ export default function AnalisisPerfil() {
                                 <span className="text-[9px] font-bold text-on-surface-variant">{i + 1}</span>
                               </span>
                             )}
-                            <p className={`text-sm leading-snug transition-all
+                            <p className={`text-xs sm:text-sm leading-snug transition-all line-clamp-2
                               ${done ? 'text-green-700 dark:text-green-400 font-medium' : active ? 'font-bold text-primary' : 'text-on-surface-variant/50'}`}>
                               {step.text}
                             </p>

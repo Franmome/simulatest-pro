@@ -75,25 +75,29 @@ export default function App() {
             <Route path="/pago-resultado" element={<PagoResultado />} />
           </Route>
 
-          {/* 🔒 Rutas privadas para usuarios autenticados */}
+          {/* 🔒 Rutas privadas para todos los usuarios autenticados */}
           <Route element={<PrivateRoute><Layout title="Dashboard" /></PrivateRoute>}>
-            <Route path="/dashboard"       element={<Dashboard />} />
-            <Route path="/simulacro/:id"      element={<Simulacro />} />
-            <Route path="/simulacro-ia/:id"   element={<SimulacroIA />} />
-            <Route path="/resultados"      element={<Resultados />} />
-            <Route path="/resultado-final" element={<ResultadoFinal />} />
-            <Route path="/planes"          element={<Suscripciones />} />
-            <Route path="/perfil"          element={<Perfil />} />
-            <Route path="/estudio"         element={<Estudio />} />
-            <Route path="/configuracion"   element={<Configuracion />} />
-            <Route path="/modo-pruebas"    element={<ModoPruebas />} />
-            <Route path="/material-estudio" element={<MaterialEstudio />} />
+            <Route path="/dashboard"        element={<Dashboard />} />
+            <Route path="/configuracion"    element={<Configuracion />} />
             <Route path="/analisis-perfil"  element={<AnalisisPerfil />} />
-            <Route path="/cuaderno/:packageId" element={<CuadernoIA />} />
-            <Route path="/salas"           element={<Salas />} />
+            <Route path="/registros"        element={<Registros />} />
+            <Route path="/modo-pruebas"     element={<ModoPruebas />} />
+            <Route path="/material-estudio" element={<MaterialEstudio />} />
+            <Route path="/salas"            element={<Salas />} />
             <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
             <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />
-            <Route path="/registros"       element={<Registros />} />
+          </Route>
+
+          {/* 👑 Rutas privadas solo para administradores */}
+          <Route element={<PrivateRoute requireAdmin><Layout title="Dashboard" /></PrivateRoute>}>
+            <Route path="/simulacro/:id"      element={<Simulacro />} />
+            <Route path="/simulacro-ia/:id"   element={<SimulacroIA />} />
+            <Route path="/resultados"         element={<Resultados />} />
+            <Route path="/resultado-final"    element={<ResultadoFinal />} />
+            <Route path="/planes"             element={<Suscripciones />} />
+            <Route path="/perfil"             element={<Perfil />} />
+            <Route path="/estudio"            element={<Estudio />} />
+            <Route path="/cuaderno/:packageId" element={<CuadernoIA />} />
           </Route>
 
           {/* 👑 Panel de administración */}

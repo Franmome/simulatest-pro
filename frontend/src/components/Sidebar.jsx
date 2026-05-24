@@ -6,10 +6,10 @@ import APP from '../utils/app.config.js'
 
 const NAV_DEFS = [
   { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard',        hint: 'Vista principal'           },
-  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo',          hint: 'Paquetes y pruebas'        },
-  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',            hint: 'Suscripciones'             },
-  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas'     },
-  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos'       },
+  { icon: 'assignment',        labelKey: 'nav.simulacros', path: '/catalogo',          hint: 'Paquetes y pruebas',        adminOnly: true },
+  { icon: 'workspace_premium', labelKey: 'nav.plans',      path: '/planes',            hint: 'Suscripciones',             adminOnly: true },
+  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas',     adminOnly: true },
+  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos',       adminOnly: true },
   { icon: 'manage_accounts',   label: 'Análisis de perfil', path: '/analisis-perfil',  hint: 'Tu perfil vs convocatoria' },
   { icon: 'history_edu',       label: 'Registros',          path: '/registros',         hint: 'Historial de pruebas y análisis' },
 ]
@@ -35,7 +35,9 @@ export default function Sidebar({ expanded, setExpanded }) {
   const { t } = useLang()
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const navItems = NAV_DEFS.map(d => ({ ...d, label: d.label || t(d.labelKey) }))
+  const navItems = NAV_DEFS
+    .filter(d => !d.adminOnly || esAdmin)
+    .map(d => ({ ...d, label: d.label || t(d.labelKey) }))
 
   const isActive = (path) => location.pathname.startsWith(path)
 
