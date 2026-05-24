@@ -524,7 +524,7 @@ function HistoryCard({ item, onSelect, active }) {
 }
 
 // ── Results: new format ────────────────────────────────────────────────────────
-function ResultsNew({ analisis, onReset, navigate }) {
+function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargandoMas = false, onVerMas }) {
   const perfil = analisis.perfil_candidato || {}
   const diag = analisis.diagnostico_general || {}
   const top = analisis.opec_mas_recomendada || {}
@@ -681,6 +681,27 @@ function ResultsNew({ analisis, onReset, navigate }) {
           <div className="space-y-3">
             {ranking.map((opec, i) => <CargoCard key={i} opec={opec} index={i} />)}
           </div>
+
+          {/* Botón Ver más OPECs */}
+          {(opecsPendientes.length > 0 || cargandoMas) && (
+            <button
+              onClick={onVerMas}
+              disabled={cargandoMas}
+              className="w-full mt-3 py-3 rounded-xl border-2 border-dashed border-primary/40 text-primary font-bold text-sm hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {cargandoMas ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  Buscando más OPECs compatibles...
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-sm">add_circle</span>
+                  Ver {Math.min(opecsPendientes.length, 3)} OPECs más ({opecsPendientes.length} pendientes)
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -803,6 +824,8 @@ export default function AnalisisPerfil() {
   const [loadStep, setLoadStep] = useState(0)
   const [error, setError] = useState(null)
   const [analisis, setAnalisis] = useState(null)
+  const [opecsPendientes, setOpecsPendientes] = useState([])
+  const [cargandoMas, setCargandoMas] = useState(false)
   const [historial, setHistorial] = useState([])
   const [activeHistId, setActiveHistId] = useState(null)
   const [showHistory, setShowHistory] = useState(false)
@@ -862,7 +885,7 @@ export default function AnalisisPerfil() {
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null)
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([])
 
     // avanzar pasos ~45s cada uno (análisis tarda 5-10 min)
     const stepTimer = setInterval(() => {
@@ -878,6 +901,7 @@ export default function AnalisisPerfil() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setAnalisis(json.analisis)
+      setOpecsPendientes(json.opecs_pendientes || [])
       // guardar localmente como respaldo
       const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
       const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
@@ -898,7 +922,41 @@ export default function AnalisisPerfil() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function resetForm() { setAnalisis(null); setActiveHistId(null) }
+  function resetForm() { setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]) }
+
+  async function verMasOpecs() {
+    if (!opecsPendientes.length || cargandoMas) return
+    setCargandoMas(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/mas-opecs`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          convocatoria_id: convId,
+          opecs_pendientes_ids: opecsPendientes,
+          perfil_candidato: analisis?.perfil_candidato || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      const nuevas = json.nuevas_opecs || []
+      if (nuevas.length > 0) {
+        setAnalisis(prev => ({
+          ...prev,
+          ranking_opec_recomendadas: [
+            ...(prev.ranking_opec_recomendadas || []),
+            ...nuevas,
+          ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0)),
+        }))
+      }
+      setOpecsPendientes(json.opecs_pendientes || [])
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setCargandoMas(false)
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -1062,7 +1120,7 @@ export default function AnalisisPerfil() {
             {/* Results */}
             {analisis && (
               isNewFormat(analisis)
-                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} />
+                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} />
                 : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />
             )}
           </div>

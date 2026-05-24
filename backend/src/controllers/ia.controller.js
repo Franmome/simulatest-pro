@@ -1204,6 +1204,28 @@ INSTRUCCIONES ESPECÍFICAS:
   }
 }
 
+// Construye texto descriptivo de OPECs para enviar a DeepSeek
+function buildOpecTexto(lista) {
+  return lista.map((c) => [
+    `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
+    `denominacion: ${c.denominacion || ''}`,
+    `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
+    `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
+    `area_estudio: ${c.area_estudio || ''} | area_funcional: ${c.area_funcional || ''}`,
+    `proposito: ${c.proposito || ''}`,
+    `educacion_requerida: ${c.estudio_texto || ''}`,
+    `requisito_academico: ${c.req_academico || ''}`,
+    `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
+    `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
+    `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
+    `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
+    `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
+    `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
+    `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
+    `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
+  ].filter(Boolean).join('\n')).join('\n---\n')
+}
+
 // Extrae OPECs completas de texto aunque el JSON esté truncado
 function rescueAnalisis(texto) {
   // Intento 1: parse completo
@@ -1310,11 +1332,11 @@ PASO 1 - Determina el nivel de formacion del candidato leyendo su perfil.
 PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel del candidato. NUNCA selecciones un cargo de nivel superior al que el candidato puede acceder.
   Ejemplo: candidato TECNICO → solo puede optar a cargos TECNICO o ASISTENCIAL, JAMAS profesional/asesor/directivo.
   Ejemplo: candidato PROFESIONAL universitario → puede optar a PROFESIONAL, TECNICO o ASISTENCIAL.
-PASO 3 - Entre los cargos de nivel compatible, elige los 6 con mayor afinidad de area, funciones y experiencia. Deben ser 6 distintos.
+PASO 3 - Entre los cargos de nivel compatible, elige los 9 con mayor afinidad de area, funciones y experiencia. Deben ser 9 distintos.
 PASO 4 - Identifica hasta 3 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
 
 IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6"], "descartados": ["id1",...]}`
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6","id7","id8","id9"], "descartados": ["id1",...]}`
 
     const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
@@ -1333,94 +1355,38 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       console.error('[IA] pass1 parse error:', e.message)
     }
 
-    // Si el paso 1 no devolvio IDs validos, tomar los primeros 6 por ID
+    // Si el paso 1 no devolvio IDs validos, tomar los primeros 9 por ID
     if (!top10Ids.length) {
-      top10Ids = todosOpec.slice(0, 6).map(c => String(c.id))
+      top10Ids = todosOpec.slice(0, 9).map(c => String(c.id))
     }
 
-    // ── PASO 2: Análisis en dos lotes de 3 (deepseek-chat: ~8K tokens de salida, 3 OPECs caben bien) ──
-    const opecs10  = todosOpec.filter(c => top10Ids.includes(String(c.id))).slice(0, 6)
+    // ── PASO 2: Análisis del primer lote (3 OPECs — caben en 8192 tokens de salida) ──
+    // Los 6 restantes quedan como opecs_pendientes para el botón "Ver más"
+    const opecs9   = todosOpec.filter(c => top10Ids.includes(String(c.id))).slice(0, 9)
     const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 3)
 
-    const buildOpecTexto = (lista) => lista.map((c) => [
-      `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
-      `denominacion: ${c.denominacion || ''}`,
-      `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
-      `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
-      `area_estudio: ${c.area_estudio || ''} | area_funcional: ${c.area_funcional || ''}`,
-      `proposito: ${c.proposito || ''}`,
-      `educacion_requerida: ${c.estudio_texto || ''}`,
-      `requisito_academico: ${c.req_academico || ''}`,
-      `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
-      `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
-      `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
-      `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
-      `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
-      `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
-      `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
-      `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
-    ].filter(Boolean).join('\n')).join('\n---\n')
+    const batch1          = opecs9.slice(0, 3)
+    const opecsPendientes = opecs9.slice(3).map(c => c.id)
 
-    const batch1 = opecs10.slice(0, 3)
-    const batch2 = opecs10.slice(3)
-
-    const descartadosTxt = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
-
+    const descartadosTxt  = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
     const systemPromptFull = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    // Lote 1: análisis completo (3 OPECs — caben en 8192 tokens de salida)
-    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (3 cargos — lote principal)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 3 cargos siguiendo todos los pasos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
+    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (3 cargos)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 3 cargos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
 
-    // Lote 2: system prompt compacto — solo ranking_opec_recomendadas (3 OPECs adicionales)
-    const systemPromptLote2 = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los 3 cargos OPEC recibidos contra el perfil del candidato y devuelve UNICAMENTE este JSON valido sin texto adicional:
-{"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}]}`
-
-    const promptLote2 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfil_texto || 'Sin descripcion.'}\n${cvText ? '\nPDF HOJA DE VIDA:\n' + cvText : ''}\n\nCARGOS A ANALIZAR (3 cargos adicionales):\n${buildOpecTexto(batch2)}\n\nAnaliza estos 3 cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
-
-    // Lote 1 primero — deepseek-chat limite duro 8192 tokens de salida
     let result1 = null
     try {
       result1 = await deepseekAnalisisPerfil(systemPromptFull, promptLote1, 8192)
-      console.log('[IA] pass2a tokensOut:', result1.tokensOut, '| responseLen:', result1.texto.length)
+      console.log('[IA] pass2 tokensOut:', result1.tokensOut, '| responseLen:', result1.texto.length)
     } catch (e) {
-      console.error('[IA] pass2a error:', e.message)
+      console.error('[IA] pass2 error:', e.message)
     }
 
-    // Intentar parsear lote 1 (con rescate de JSON truncado)
-    let analisis = result1?.texto ? rescueAnalisis(result1.texto) : null
+    const analisis = result1?.texto ? rescueAnalisis(result1.texto) : null
     if (!analisis) {
-      console.error('[IA] pass2a parse failed | preview:', result1?.texto?.slice(0, 300))
+      console.error('[IA] pass2 parse failed | preview:', result1?.texto?.slice(0, 300))
       return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo en unos minutos.' })
     }
-    console.log('[IA] pass2a OPECs rescatadas:', analisis.ranking_opec_recomendadas?.length ?? 0, analisis._parcial ? '(JSON parcial)' : '')
-
-    // Lote 2: solo si hay batch2 y lote 1 no fue un rescate parcial
-    let result2 = null
-    if (batch2.length > 0) {
-      try {
-        result2 = await deepseekAnalisisPerfil(systemPromptLote2, promptLote2, 8192)
-        console.log('[IA] pass2b tokensOut:', result2.tokensOut)
-      } catch (e) {
-        console.error('[IA] pass2b error (ignorado, usando solo lote 1):', e.message)
-      }
-    }
-
-    // Fusionar lote 2 si llegó algo útil
-    if (result2?.texto) {
-      const parsed2 = rescueAnalisis(result2.texto)
-      const ranking2 = parsed2?.ranking_opec_recomendadas || []
-      if (ranking2.length > 0) {
-        console.log('[IA] pass2b OPECs fusionadas:', ranking2.length)
-        analisis.ranking_opec_recomendadas = [
-          ...(analisis.ranking_opec_recomendadas || []),
-          ...ranking2,
-        ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0))
-        const mejor = analisis.ranking_opec_recomendadas[0]
-        if (mejor && (mejor.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
-          analisis.opec_mas_recomendada = mejor
-        }
-      }
-    }
+    console.log('[IA] OPECs analizadas:', analisis.ranking_opec_recomendadas?.length ?? 0, '| pendientes:', opecsPendientes.length)
 
     const { error: saveErr } = await supabase.from('user_profile_analysis').upsert(
       { user_id: userId, convocatoria_id: parseInt(convocatoria_id), convocatoria_nombre: convNombre, analisis, updated_at: new Date().toISOString() },
@@ -1428,9 +1394,77 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
     )
     if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
 
-    return res.json({ analisis })
+    return res.json({ analisis, opecs_pendientes: opecsPendientes })
   } catch (err) {
     console.error('[IA] analizarPerfilCV:', err)
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+// ── Endpoint: Ver más OPECs (usa perfil_candidato del análisis previo) ──────────
+
+const SYSTEM_PROMPT_MAS_OPECS = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los cargos OPEC recibidos contra el perfil estructurado del candidato y devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
+{"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}]}`
+
+export async function masOpecs(req, res) {
+  try {
+    const { convocatoria_id, opecs_pendientes_ids, perfil_candidato } = req.body
+    if (!convocatoria_id || !Array.isArray(opecs_pendientes_ids) || !opecs_pendientes_ids.length) {
+      return res.status(400).json({ error: 'Datos incompletos.' })
+    }
+
+    const batch    = opecs_pendientes_ids.slice(0, 3).map(id => parseInt(id))
+    const restantes = opecs_pendientes_ids.slice(3)
+
+    const [{ data: opecs }, { data: conv }] = await Promise.all([
+      supabase.from('opec_maestro').select('*').in('id', batch).eq('is_active', true),
+      supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle(),
+    ])
+
+    if (!opecs?.length) return res.status(404).json({ error: 'No se encontraron los cargos solicitados.' })
+
+    const convNombre    = conv?.nombre  || 'Convocatoria publica'
+    const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
+
+    // Resumen compacto del perfil (no re-enviamos el PDF)
+    const p = perfil_candidato || {}
+    const perfilResumen = [
+      `Nombre: ${p.nombre || 'No identificado'}`,
+      `Profesion: ${p.profesion_principal || ''}`,
+      `Nivel de formacion: ${p.nivel_formacion || ''}`,
+      `Titulos: ${(p.titulos_identificados || []).join(', ')}`,
+      `Posgrados: ${(p.posgrados_identificados || []).join(', ')}`,
+      `Tarjeta profesional: ${p.tarjeta_profesional?.estado || 'no aplica'}`,
+      `Experiencia total: ${p.experiencia_total_estimada_meses || 0} meses`,
+      `Experiencia profesional: ${p.experiencia_profesional_estimada_meses || 0} meses`,
+      `Experiencia sector publico: ${p.experiencia_sector_publico_meses || 0} meses`,
+      `Areas de experiencia: ${(p.areas_experiencia || []).join(', ')}`,
+      `Funciones principales: ${(p.funciones_principales_identificadas || []).slice(0, 6).join(' | ')}`,
+      `Competencias: ${(p.competencias_clave || []).join(', ')}`,
+      `Nucleos basicos: ${(p.posibles_nucleos_basicos_conocimiento || []).join(', ')}`,
+    ].join('\n')
+
+    const prompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO (extraido del analisis previo):\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(opecs)}\n\nAnaliza estos ${opecs.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
+
+    let result = null
+    try {
+      result = await deepseekAnalisisPerfil(SYSTEM_PROMPT_MAS_OPECS, prompt, 8192)
+      console.log('[IA] masOpecs tokensOut:', result.tokensOut)
+    } catch (e) {
+      console.error('[IA] masOpecs error:', e.message)
+      return res.status(503).json({ error: 'En este momento hay alta demanda. Intenta en unos minutos.' })
+    }
+
+    const parsed    = result?.texto ? rescueAnalisis(result.texto) : null
+    const nuevasOpecs = parsed?.ranking_opec_recomendadas || []
+    if (!nuevasOpecs.length) {
+      return res.status(500).json({ error: 'No se pudieron analizar los cargos. Intenta de nuevo.' })
+    }
+    console.log('[IA] masOpecs OPECs nuevas:', nuevasOpecs.length, '| restantes:', restantes.length)
+
+    return res.json({ nuevas_opecs: nuevasOpecs, opecs_pendientes: restantes })
+  } catch (err) {
+    console.error('[IA] masOpecs:', err)
     return res.status(500).json({ error: err.message })
   }
 }
