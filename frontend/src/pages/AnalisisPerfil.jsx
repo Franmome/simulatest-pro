@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
-import { generarAnalisisPDF } from '../utils/generarAnalisisPDF'
+const generarAnalisisPDF = (...args) =>
+  import('../utils/generarAnalisisPDF').then(m => m.generarAnalisisPDF(...args))
 
 const BASE = import.meta.env.VITE_API_URL || ''
 
