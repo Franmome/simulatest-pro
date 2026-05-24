@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
+import { generarAnalisisPDF } from '../utils/generarAnalisisPDF'
 
 const BASE = import.meta.env.VITE_API_URL || ''
 
@@ -497,7 +498,7 @@ function RecomendacionesHV({ recomendaciones }) {
 }
 
 // ── History sidebar card ───────────────────────────────────────────────────────
-function HistoryCard({ item, onSelect, active }) {
+function HistoryCard({ item, onSelect, onDelete, active }) {
   const top = item.analisis?.ranking_opec_recomendadas?.[0] ?? item.analisis?.cargos_recomendados?.[0]
   const pct = top?.afinidad_porcentaje ?? top?.compatibilidad ?? 0
   const nombre = top?.denominacion ?? top?.nombre_cargo ?? ''
@@ -505,21 +506,28 @@ function HistoryCard({ item, onSelect, active }) {
   const s = pct ? pctStyle(pct) : null
 
   return (
-    <button
-      onClick={() => onSelect(item)}
-      className={`w-full text-left p-3 rounded-xl border transition-all hover:border-primary/40 hover:bg-primary/5
-        ${active ? 'border-primary bg-primary/5' : 'border-outline-variant/30 bg-surface-container-low'}`}
+    <div className={`relative rounded-xl border transition-all group
+      ${active ? 'border-primary bg-primary/5' : 'border-outline-variant/30 bg-surface-container-low hover:border-primary/40 hover:bg-primary/5'}`}
     >
-      <p className="text-xs font-bold text-on-surface line-clamp-2 leading-snug">{item.convocatoria_nombre ?? 'Convocatoria'}</p>
-      <p className="text-xs text-on-surface-variant mt-0.5">{date}</p>
-      {nombre && (
-        <div className="mt-2 flex items-center gap-1.5">
-          <span className="text-sm select-none">🥇</span>
-          <p className="text-xs font-semibold text-on-surface truncate flex-1">{nombre}</p>
-          {s && <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${s.badge}`}>{pct}%</span>}
-        </div>
-      )}
-    </button>
+      <button onClick={() => onSelect(item)} className="w-full text-left p-3">
+        <p className="text-xs font-bold text-on-surface line-clamp-2 leading-snug pr-5">{item.convocatoria_nombre ?? 'Convocatoria'}</p>
+        <p className="text-xs text-on-surface-variant mt-0.5">{date}</p>
+        {nombre && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="text-sm select-none">🥇</span>
+            <p className="text-xs font-semibold text-on-surface truncate flex-1">{nombre}</p>
+            {s && <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${s.badge}`}>{pct}%</span>}
+          </div>
+        )}
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(item.id) }}
+        title="Eliminar este análisis"
+        className="absolute top-2 right-2 w-5 h-5 rounded-full bg-surface-container hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <span className="material-symbols-outlined text-xs text-on-surface-variant hover:text-red-500" style={{ fontSize: '13px' }}>close</span>
+      </button>
+    </div>
   )
 }
 
@@ -800,9 +808,16 @@ function ResultsOld({ analisis, onReset, navigate }) {
         </div>
       )}
       <div className="flex gap-3 pt-1">
-        <button onClick={onReset} className="w-full py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
+        <button
+          onClick={() => generarAnalisisPDF(analisis, analisis._convNombre || '')}
+          className="flex-1 py-3 bg-primary text-on-primary rounded-full font-bold text-sm hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
+          Descargar análisis
+        </button>
+        <button onClick={onReset} className="flex-1 py-3 border border-outline-variant rounded-full font-bold text-sm hover:bg-surface-container transition-all flex items-center justify-center gap-2">
           <span className="material-symbols-outlined text-sm">person_search</span>
-          Analizar otro perfil
+          Nuevo análisis
         </button>
       </div>
     </div>
@@ -861,6 +876,15 @@ export default function AnalisisPerfil() {
     } catch { /* no crítico */ }
   }
 
+  async function deleteAnalisis(id) {
+    try {
+      const headers = await authHeaders()
+      await fetch(`${BASE}/api/ia/mis-analisis/${id}`, { method: 'DELETE', headers })
+      setHistorial(prev => prev.filter(h => h.id !== id))
+      if (activeHistId === id) { setAnalisis(null); setActiveHistId(null) }
+    } catch { /* no crítico */ }
+  }
+
   function addFiles(fileList) {
     const valid = Array.from(fileList).filter(f => ACCEPTED_EXTS.includes(f.name.split('.').pop().toLowerCase()))
     setFiles(prev => [...prev, ...valid])
@@ -900,10 +924,10 @@ export default function AnalisisPerfil() {
       const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setAnalisis(json.analisis)
+      const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
+      setAnalisis({ ...json.analisis, _convNombre: convNombre })
       setOpecsPendientes(json.opecs_pendientes || [])
       // guardar localmente como respaldo
-      const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
       const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
       try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch { /* ignore */ }
       setLocalAnalisis(entry)
@@ -918,7 +942,8 @@ export default function AnalisisPerfil() {
   }
 
   function selectHistItem(item) {
-    setAnalisis(item.analisis); setActiveHistId(item.id); setShowHistory(false)
+    setAnalisis({ ...item.analisis, _convNombre: item.convocatoria_nombre || '' })
+    setActiveHistId(item.id); setOpecsPendientes([]); setShowHistory(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -1146,7 +1171,7 @@ export default function AnalisisPerfil() {
               ) : historial.length > 0 ? (
                 <div className="space-y-2">
                   {historial.map(item => (
-                    <HistoryCard key={item.id} item={item} active={activeHistId === item.id} onSelect={selectHistItem} />
+                    <HistoryCard key={item.id} item={item} active={activeHistId === item.id} onSelect={selectHistItem} onDelete={deleteAnalisis} />
                   ))}
                 </div>
               ) : localAnalisis ? (
