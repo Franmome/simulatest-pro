@@ -1204,6 +1204,38 @@ INSTRUCCIONES ESPECÍFICAS:
   }
 }
 
+// Extrae OPECs completas de texto aunque el JSON esté truncado
+function rescueAnalisis(texto) {
+  // Intento 1: parse completo
+  try {
+    const m = texto.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0])
+  } catch (_) {}
+
+  // Intento 2: extraer objetos individuales del array ranking_opec_recomendadas
+  const keyIdx = texto.indexOf('"ranking_opec_recomendadas"')
+  if (keyIdx === -1) return null
+  const bracketIdx = texto.indexOf('[', keyIdx)
+  if (bracketIdx === -1) return null
+
+  const arr = texto.slice(bracketIdx)
+  const objects = []
+  let depth = 0, objStart = -1
+  for (let i = 0; i < arr.length; i++) {
+    const ch = arr[i]
+    if (ch === '{') { if (depth === 0) objStart = i; depth++ }
+    else if (ch === '}') {
+      depth--
+      if (depth === 0 && objStart !== -1) {
+        try { objects.push(JSON.parse(arr.slice(objStart, i + 1))) } catch (_) {}
+        objStart = -1
+      }
+    }
+  }
+  if (!objects.length) return null
+  return { ranking_opec_recomendadas: objects, _parcial: true }
+}
+
 // ── Endpoint: Analizar perfil vs cargos OPEC ─────────────────────────────────
 
 const SYSTEM_PROMPT_ANALISIS_PERFIL = `Eres una IA agente de Praxia especializada en analisis de hojas de vida, concursos de meritos del sector publico colombiano, empleo publico, verificacion de requisitos minimos, comparacion contra OPEC y orientacion estrategica para candidatos.
@@ -1278,11 +1310,11 @@ PASO 1 - Determina el nivel de formacion del candidato leyendo su perfil.
 PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel del candidato. NUNCA selecciones un cargo de nivel superior al que el candidato puede acceder.
   Ejemplo: candidato TECNICO → solo puede optar a cargos TECNICO o ASISTENCIAL, JAMAS profesional/asesor/directivo.
   Ejemplo: candidato PROFESIONAL universitario → puede optar a PROFESIONAL, TECNICO o ASISTENCIAL.
-PASO 3 - Entre los cargos de nivel compatible, elige los 10 con mayor afinidad de area, funciones y experiencia. Deben ser 10 distintos.
-PASO 4 - Identifica hasta 5 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
+PASO 3 - Entre los cargos de nivel compatible, elige los 6 con mayor afinidad de area, funciones y experiencia. Deben ser 6 distintos.
+PASO 4 - Identifica hasta 3 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
 
 IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"], "descartados": ["id1",...]}`
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6"], "descartados": ["id1",...]}`
 
     const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
@@ -1301,14 +1333,14 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       console.error('[IA] pass1 parse error:', e.message)
     }
 
-    // Si el paso 1 no devolvio IDs validos, tomar los primeros 10 por ID
+    // Si el paso 1 no devolvio IDs validos, tomar los primeros 6 por ID
     if (!top10Ids.length) {
-      top10Ids = todosOpec.slice(0, 10).map(c => String(c.id))
+      top10Ids = todosOpec.slice(0, 6).map(c => String(c.id))
     }
 
-    // ── PASO 2: Analisis en dos lotes paralelos de 5 (DeepSeek-chat tiene ~8K tokens de salida) ──
-    const opecs10  = todosOpec.filter(c => top10Ids.includes(String(c.id)))
-    const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 5)
+    // ── PASO 2: Análisis en dos lotes de 3 (deepseek-chat: ~8K tokens de salida, 3 OPECs caben bien) ──
+    const opecs10  = todosOpec.filter(c => top10Ids.includes(String(c.id))).slice(0, 6)
+    const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 3)
 
     const buildOpecTexto = (lista) => lista.map((c) => [
       `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
@@ -1329,23 +1361,23 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
     ].filter(Boolean).join('\n')).join('\n---\n')
 
-    const batch1 = opecs10.slice(0, 5)
-    const batch2 = opecs10.slice(5)
+    const batch1 = opecs10.slice(0, 3)
+    const batch2 = opecs10.slice(3)
 
     const descartadosTxt = opecsDes.length ? '\n\nCARGOS IDENTIFICADOS COMO NO COMPATIBLES (para incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
     const systemPromptFull = await getPrompt('analisis_perfil', SYSTEM_PROMPT_ANALISIS_PERFIL, 'deepseek')
 
-    // Lote 1: análisis completo con todos los campos globales
-    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (5 cargos — lote principal)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 5 cargos siguiendo todos los pasos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
+    // Lote 1: análisis completo (3 OPECs — caben en 8192 tokens de salida)
+    const promptLote1 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\nTotal de cargos en la convocatoria: ${todosOpec.length}\n\n==============================\nHOJA DE VIDA / PERFIL DEL CANDIDATO\n==============================\n${perfil_texto ? 'DESCRIPCION:\n' + perfil_texto + '\n' : 'Sin descripcion en texto.'}\n${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\n==============================\nCARGOS PARA ANALISIS DETALLADO (3 cargos — lote principal)\n==============================\n${buildOpecTexto(batch1)}${descartadosTxt}\n\n==============================\nINSTRUCCION\n==============================\nEjecuta el analisis completo de estos 3 cargos siguiendo todos los pasos. Devuelve UNICAMENTE el JSON valido con la estructura exacta. Sin texto antes ni despues del JSON.`
 
-    // Lote 2: system prompt compacto — solo devuelve el array ranking_opec_recomendadas
-    const systemPromptLote2 = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los 5 cargos OPEC recibidos contra el perfil del candidato y devuelve UNICAMENTE este JSON valido sin texto adicional:
+    // Lote 2: system prompt compacto — solo ranking_opec_recomendadas (3 OPECs adicionales)
+    const systemPromptLote2 = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los 3 cargos OPEC recibidos contra el perfil del candidato y devuelve UNICAMENTE este JSON valido sin texto adicional:
 {"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}]}`
 
-    const promptLote2 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfil_texto || 'Sin descripcion.'}\n${cvText ? '\nPDF HOJA DE VIDA:\n' + cvText : ''}\n\nCARGOS A ANALIZAR (5 cargos adicionales):\n${buildOpecTexto(batch2)}\n\nAnaliza estos 5 cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
+    const promptLote2 = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfil_texto || 'Sin descripcion.'}\n${cvText ? '\nPDF HOJA DE VIDA:\n' + cvText : ''}\n\nCARGOS A ANALIZAR (3 cargos adicionales):\n${buildOpecTexto(batch2)}\n\nAnaliza estos 3 cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
 
-    // Lote 1 primero — deepseek-chat tiene un límite duro de 8192 tokens de salida
+    // Lote 1 primero — deepseek-chat limite duro 8192 tokens de salida
     let result1 = null
     try {
       result1 = await deepseekAnalisisPerfil(systemPromptFull, promptLote1, 8192)
@@ -1354,9 +1386,17 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       console.error('[IA] pass2a error:', e.message)
     }
 
-    // Lote 2 solo si lote 1 tuvo éxito y hay más OPECs
+    // Intentar parsear lote 1 (con rescate de JSON truncado)
+    let analisis = result1?.texto ? rescueAnalisis(result1.texto) : null
+    if (!analisis) {
+      console.error('[IA] pass2a parse failed | preview:', result1?.texto?.slice(0, 300))
+      return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo en unos minutos.' })
+    }
+    console.log('[IA] pass2a OPECs rescatadas:', analisis.ranking_opec_recomendadas?.length ?? 0, analisis._parcial ? '(JSON parcial)' : '')
+
+    // Lote 2: solo si hay batch2 y lote 1 no fue un rescate parcial
     let result2 = null
-    if (result1 && batch2.length > 0) {
+    if (batch2.length > 0) {
       try {
         result2 = await deepseekAnalisisPerfil(systemPromptLote2, promptLote2, 8192)
         console.log('[IA] pass2b tokensOut:', result2.tokensOut)
@@ -1365,37 +1405,20 @@ Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3",
       }
     }
 
-    let analisis
-    try {
-      if (!result1) throw new Error('El lote principal fallo. Intenta de nuevo.')
-      const m1 = result1.texto.match(/\{[\s\S]*\}/)
-      if (!m1) throw new Error('DeepSeek no devolvio JSON valido en lote 1.')
-      analisis = JSON.parse(m1[0])
-    } catch (parseErr) {
-      console.error('[IA] pass2a parse error:', parseErr.message, '| preview:', result1?.texto?.slice(0, 200))
-      return res.status(500).json({ error: 'El analisis no pudo procesarse. Intenta de nuevo.' })
-    }
-
-    // Agregar ranking del lote 2 si existe (degradacion elegante si falla)
+    // Fusionar lote 2 si llegó algo útil
     if (result2?.texto) {
-      try {
-        const m2 = result2.texto.match(/\{[\s\S]*\}/)
-        if (m2) {
-          const parsed2  = JSON.parse(m2[0])
-          const ranking2 = parsed2.ranking_opec_recomendadas || []
-          if (ranking2.length > 0) {
-            analisis.ranking_opec_recomendadas = [
-              ...(analisis.ranking_opec_recomendadas || []),
-              ...ranking2,
-            ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0))
-            const mejor = analisis.ranking_opec_recomendadas[0]
-            if (mejor && (mejor.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
-              analisis.opec_mas_recomendada = mejor
-            }
-          }
+      const parsed2 = rescueAnalisis(result2.texto)
+      const ranking2 = parsed2?.ranking_opec_recomendadas || []
+      if (ranking2.length > 0) {
+        console.log('[IA] pass2b OPECs fusionadas:', ranking2.length)
+        analisis.ranking_opec_recomendadas = [
+          ...(analisis.ranking_opec_recomendadas || []),
+          ...ranking2,
+        ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0))
+        const mejor = analisis.ranking_opec_recomendadas[0]
+        if (mejor && (mejor.afinidad_porcentaje || 0) > (analisis.opec_mas_recomendada?.afinidad_porcentaje || 0)) {
+          analisis.opec_mas_recomendada = mejor
         }
-      } catch (e2) {
-        console.error('[IA] pass2b parse error (ignorado, mostrando solo lote 1):', e2.message)
       }
     }
 
