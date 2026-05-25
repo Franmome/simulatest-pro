@@ -120,7 +120,7 @@ function CargoCardOld({ cargo, index }) {
 }
 
 // ── New format OPEC card ───────────────────────────────────────────────────────
-function CargoCard({ opec, index }) {
+function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
   const [open, setOpen] = useState(index === 0)
   const [tab, setTab] = useState('guia')
   const s = pctStyle(opec.afinidad_porcentaje)
@@ -289,10 +289,11 @@ function CargoCard({ opec, index }) {
                   <span className="material-symbols-outlined text-sm">search</span>
                   Buscar en SIMO
                 </a>
-                {opec.entidad?.toLowerCase().includes('procuradur') && (
+                {plataformaUrl && (
                   <a
-                    href="https://meritoconstruyendoexcelencia.com.co/"
+                    href={plataformaUrl}
                     target="_blank" rel="noopener noreferrer"
+                    title={plataformaNombre || 'Plataforma de inscripción'}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-all"
                   >
                     <span className="material-symbols-outlined text-sm">how_to_reg</span>
@@ -598,7 +599,7 @@ function HistoryCard({ item, onSelect, onDelete, active }) {
 }
 
 // ── Results: new format ────────────────────────────────────────────────────────
-function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargandoMas = false, onVerMas }) {
+function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargandoMas = false, onVerMas, plataformaUrl, plataformaNombre }) {
   const perfil = analisis.perfil_candidato || {}
   const diag = analisis.diagnostico_general || {}
   const top = analisis.opec_mas_recomendada || {}
@@ -760,7 +761,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
             Cargos recomendados para ti
           </p>
           <div className="space-y-3">
-            {ranking.map((opec, i) => <CargoCard key={i} opec={opec} index={i} />)}
+            {ranking.map((opec, i) => <CargoCard key={i} opec={opec} index={i} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />)}
           </div>
 
           {/* Botón Ver más OPECs */}
@@ -909,9 +910,11 @@ export default function AnalisisPerfil() {
   const [showHistory, setShowHistory] = useState(false)
   const [localAnalisis, setLocalAnalisis] = useState(null)
   const [opecCount,     setOpecCount]     = useState(null)
+  const [plataformaUrl, setPlataformaUrl] = useState(null)
+  const [plataformaNombre, setPlataformaNombre] = useState(null)
 
   useEffect(() => {
-    supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad').eq('is_active', true).order('nombre')
+    supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad, plataforma_nombre, plataforma_url').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
     fetchHistory()
     try {
@@ -983,7 +986,7 @@ export default function AnalisisPerfil() {
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]); setPocasOpecLocal(false)
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
 
     // avanzar pasos ~45s cada uno (análisis tarda 5-10 min)
     const stepTimer = setInterval(() => {
@@ -1003,6 +1006,7 @@ export default function AnalisisPerfil() {
       setAnalisis({ ...json.analisis, _convNombre: convNombre })
       setOpecsPendientes(json.opecs_pendientes || [])
       if (json.pocas_opec_local) setPocasOpecLocal(true)
+      if (json.plataforma_url) { setPlataformaUrl(json.plataforma_url); setPlataformaNombre(json.plataforma_nombre || null) }
       // guardar localmente como respaldo
       const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
       try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch { /* ignore */ }
@@ -1306,7 +1310,7 @@ export default function AnalisisPerfil() {
             {/* Results */}
             {analisis && (
               isNewFormat(analisis)
-                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} />
+                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />
                 : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />
             )}
           </div>

@@ -1309,7 +1309,7 @@ export async function analizarPerfilCV(req, res) {
 
     const [allOpec, conv] = await Promise.all([
       fetchAllOpecs(parseInt(convocatoria_id)),
-      supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
+      supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
     ])
 
     if (!allOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
@@ -1493,7 +1493,12 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     )
     if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
 
-    return res.json({ analisis, opecs_pendientes: opecsPendientes, pocas_opec_local, ciudad_filtro: ciudad_filtro || null })
+    return res.json({
+      analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,
+      ciudad_filtro: ciudad_filtro || null,
+      plataforma_url:    conv?.plataforma_url    || null,
+      plataforma_nombre: conv?.plataforma_nombre || null,
+    })
   } catch (err) {
     console.error('[IA] analizarPerfilCV:', err)
     return res.status(500).json({ error: err.message })
@@ -1597,7 +1602,7 @@ export async function listConvocatorias(req, res) {
   const { todas } = req.query
   let query = supabase
     .from('convocatorias')
-    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad')
+    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url')
     .order('anio', { ascending: false })
     .order('nombre')
   if (!todas) query = query.eq('is_active', true)
@@ -1695,13 +1700,19 @@ export async function getCiudadesConvocatoria(req, res) {
 }
 
 export async function createConvocatoria(req, res) {
-  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad } = req.body
+  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad, plataforma_nombre, plataforma_url } = req.body
   if (!codigo?.trim()) return res.status(400).json({ error: 'El código es requerido.' })
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido.' })
   if (!entidad?.trim()) return res.status(400).json({ error: 'La entidad es requerida.' })
   const { data, error } = await supabase
     .from('convocatorias')
-    .insert({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim(), entidad: entidad.trim(), anio: anio ? parseInt(anio) : null, descripcion: descripcion?.trim() || null, departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null })
+    .insert({
+      codigo: codigo.trim().toUpperCase(), nombre: nombre.trim(), entidad: entidad.trim(),
+      anio: anio ? parseInt(anio) : null, descripcion: descripcion?.trim() || null,
+      departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null,
+      plataforma_nombre: plataforma_nombre?.trim() || null,
+      plataforma_url:    plataforma_url?.trim()    || null,
+    })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.status(201).json({ convocatoria: data })
@@ -1709,10 +1720,15 @@ export async function createConvocatoria(req, res) {
 
 export async function updateConvocatoria(req, res) {
   const { id } = req.params
-  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad } = req.body
+  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url } = req.body
   const { data, error } = await supabase
     .from('convocatorias')
-    .update({ nombre, entidad, anio: anio ? parseInt(anio) : null, descripcion, is_active, departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null })
+    .update({
+      nombre, entidad, anio: anio ? parseInt(anio) : null, descripcion, is_active,
+      departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null,
+      plataforma_nombre: plataforma_nombre?.trim() || null,
+      plataforma_url:    plataforma_url?.trim()    || null,
+    })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ convocatoria: data })
@@ -2000,94 +2016,184 @@ export async function statsProcuraduriaOpecs(req, res) {
   return res.json({ total, activos, porNivel })
 }
 
+// ── Normaliza un registro OPEC desde cualquier formato de fuente ──────────────
+// Soporta: formato interno, SIMO camelCase, exports con nombres alternativos,
+// arrays de municipios/ciudades, experiencia en años o meses, etc.
+function normalizarRegistroOPEC(r, entidadConv, convocatoriaId) {
+  // Auto-desempaquetar subobjetos comunes (ej: r.empleo, r.cargo)
+  if (r.empleo && typeof r.empleo === 'object' && !Array.isArray(r.empleo)) r = { ...r, ...r.empleo }
+  if (r.cargo  && typeof r.cargo  === 'object' && !Array.isArray(r.cargo))  r = { ...r, ...r.cargo  }
+
+  const denominacion = (
+    r.denominacion || r.nombreEmpleo || r.nombre_empleo || r.cargoNombre ||
+    r.nombre_cargo || r.nombre || ''
+  ).toString().trim()
+  if (!denominacion) return null
+
+  // Vacantes
+  const vacantesRaw = r.vacantes ?? r.total_vacantes ?? r.cupos ?? r.cuposDisponibles ??
+    r.plazas ?? r.num_vacantes ?? r.cupos_disponibles ?? 1
+  const vacantes = Math.max(1, parseInt(vacantesRaw) || 1)
+
+  // Número de convocatoria y de OPEC
+  const num_convocatoria = r.num_convocatoria || r.numero_convocatoria ||
+    r.numeroConvocatoria || r.codigoConvocatoria || r.convocatoria || null
+  const numero_opec_raw  = r.numero_opec || r.codigoOpec || r.codigo_opec ||
+    r.numeroOpec || r.opecCodigo || null
+  const numero_opec      = numero_opec_raw ? String(numero_opec_raw) : null
+
+  // Nivel / grado / salario
+  const nivel   = r.nivel || r.nivelJerarquico || r.nivel_jerarquico || r.nivelEmpleo || r.nivel_empleo || null
+  const gradoRaw = r.grado ?? r.gradoBienestar ?? r.grado_salarial ?? r.gradoSalarial ?? null
+  const grado   = gradoRaw != null ? parseInt(gradoRaw) || null : null
+  const salRaw   = r.salario ?? r.salarioBasico ?? r.salario_basico ?? r.sueldo ?? null
+  const salario = salRaw != null ? parseInt(salRaw) || null : null
+
+  // Dependencia / area / código
+  const dependencia  = r.dependencia || r.dependenciaNombre || r.nombre_dependencia || null
+  const area_estudio = r.area_estudio || r.areaEstudio || r.area_conocimiento ||
+    r.areaConocimiento || r.nucleo_basico || r.nucleoBasico || null
+  const codigo = r.codigo || r.codigoEmpleo || r.codigo_empleo || null
+
+  // Requisitos de estudio y experiencia
+  const estudio_texto = r.estudio_texto || r.educacion_requerida || r.requisito_estudio ||
+    r.requisitoEstudio || r.educacion || r.requisito_academico || null
+  const exp_texto = r.exp_texto || r.experiencia_requerida || r.requisito_experiencia ||
+    r.requisitoExperiencia || r.experiencia || null
+
+  // Experiencia: meses preferido; si viene en años se convierte
+  let exp_anios = r.exp_anios ?? r.anos_exp ?? r.meses_experiencia ?? null
+  if (exp_anios == null && r.aniosExperiencia != null) exp_anios = Math.round(parseFloat(r.aniosExperiencia) * 12)
+  if (exp_anios == null && r.anos_experiencia != null) exp_anios = Math.round(parseFloat(r.anos_experiencia) * 12)
+  if (exp_anios == null && r.years_experience != null) exp_anios = Math.round(parseFloat(r.years_experience) * 12)
+  exp_anios = exp_anios != null ? parseInt(exp_anios) || 0 : 0
+
+  const exp_tipo = r.exp_tipo || r.tipo_exp || r.tipoExperiencia || r.tipo_experiencia || null
+
+  // Entidad
+  const entidad = r.entidad || r.entidadNombre || r.nombre_entidad || entidadConv
+
+  // ── Ubicaciones — múltiples formatos ─────────────────────────────────────────
+  let ubicaciones = []
+  if (Array.isArray(r.ubicaciones) && r.ubicaciones.length > 0) {
+    // Formato interno: [{ciudad, vacantes, departamento}]
+    ubicaciones = r.ubicaciones.map(u => ({
+      ciudad:      u.ciudad      || u.municipio    || u.municipioNombre || null,
+      departamento:u.departamento|| u.depto        || null,
+      vacantes:    parseInt(u.vacantes || u.cantidad || 0) || 0,
+    })).filter(u => u.ciudad)
+  } else if (Array.isArray(r.municipios) && r.municipios.length > 0) {
+    ubicaciones = r.municipios.map(m =>
+      typeof m === 'string'
+        ? { ciudad: m, vacantes: 0 }
+        : { ciudad: m.nombre || m.municipio || m.ciudad || null, vacantes: parseInt(m.vacantes || m.cantidad || 0) || 0, departamento: m.departamento || null }
+    ).filter(u => u.ciudad)
+  } else if (Array.isArray(r.ciudades) && r.ciudades.length > 0) {
+    ubicaciones = r.ciudades.map(c =>
+      typeof c === 'string' ? { ciudad: c, vacantes: 0 } : { ciudad: c.nombre || c.ciudad || null, vacantes: parseInt(c.vacantes || 0) || 0 }
+    ).filter(u => u.ciudad)
+  } else {
+    const ciudad = r.municipio || r.ciudad || r.municipioNombre || r.nombreMunicipio || null
+    const depto  = r.departamento || r.departamentoNombre || r.nombreDepartamento || null
+    if (ciudad || depto) ubicaciones = [{ ciudad, departamento: depto, vacantes }]
+  }
+
+  // Funciones: array de strings, array de objetos, o string separado por saltos
+  let funciones = []
+  if (Array.isArray(r.funciones)) {
+    funciones = r.funciones.map(f => typeof f === 'string' ? f : f.descripcion || f.funcion || '').filter(Boolean)
+  } else if (typeof r.funciones === 'string' && r.funciones.trim()) {
+    funciones = r.funciones.split(/\n|;/).map(s => s.trim()).filter(Boolean)
+  }
+
+  // Conocimientos
+  let conocimientos = Array.isArray(r.conocimientos) ? r.conocimientos : []
+  if (!conocimientos.length && r.conocimientos_especificos) {
+    conocimientos = typeof r.conocimientos_especificos === 'string'
+      ? r.conocimientos_especificos.split(',').map(s => s.trim()).filter(Boolean)
+      : Array.isArray(r.conocimientos_especificos) ? r.conocimientos_especificos : []
+  }
+
+  // Fecha cierre
+  const cierreRaw = r.cierre_inscripciones || r.fechaInscripcion || r.fecha_cierre || null
+  const cierre = cierreRaw && /^\d{4}-\d{2}-\d{2}/.test(cierreRaw) ? cierreRaw.slice(0, 10) : null
+
+  return {
+    convocatoria_id:            parseInt(convocatoriaId),
+    entidad,
+    num_convocatoria,
+    denominacion,
+    nivel,
+    codigo,
+    grado,
+    salario,
+    vacantes,
+    dependencia,
+    area_estudio,
+    requiere_posgrado:          !!(r.requiere_posgrado || r.requierePosgrado || r.req_posgrado),
+    requiere_tarjeta:           !!(r.requiere_tarjeta  || r.requiereTarjeta  || r.req_tarjeta),
+    exp_anios,
+    exp_tipo,
+    estudio_texto,
+    exp_texto,
+    proceso:                    r.proceso || r.tipo_proceso || null,
+    funciones,
+    conocimientos,
+    competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
+    competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
+    ubicaciones,
+    numero_opec,
+    manual_url:                 r.manual_url   || r.url_manual  || null,
+    proposito:                  r.proposito    || r.objeto       || r.descripcion_cargo || null,
+    municipio:                  r.municipio    || r.municipioNombre || null,
+    departamento:               r.departamento || r.departamentoNombre || null,
+    proceso_de_seleccion:       r.proceso_de_seleccion || null,
+    requisito_otros:            r.requisito_otros || r.requisitoOtros || null,
+    vigencia_salarial:          r.vigencia_salarial ? parseInt(r.vigencia_salarial) : null,
+    cierre_inscripciones:       cierre,
+    anio_convocatoria:          r.anio_convocatoria ? parseInt(r.anio_convocatoria) : null,
+    nit_entidad:                r.nit_entidad ? String(r.nit_entidad) : null,
+    fuente:                     r.fuente || 'manual',
+    is_active:                  r.is_active !== false,
+  }
+}
+
 export async function importOpecMaestro(req, res) {
-  const { registros, convocatoria_id } = req.body
+  let { registros, convocatoria_id } = req.body
   if (!Array.isArray(registros) || !registros.length) return res.status(400).json({ error: 'Se requiere un array de registros.' })
   if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido.' })
-  if (registros.length > 1500) return res.status(400).json({ error: 'Máximo 1500 registros por importación.' })
+  if (registros.length > 2000) return res.status(400).json({ error: 'Máximo 2000 registros por importación.' })
 
-  // Obtener entidad de la convocatoria para desnormalizar
   const { data: conv } = await supabase.from('convocatorias').select('entidad').eq('id', parseInt(convocatoria_id)).maybeSingle()
   const entidadConv = conv?.entidad || 'Entidad pública'
 
-  const rows = registros.map(r => {
-    // ── Campos con nombres diferentes según la fuente (SIMO vs formato interno) ──
-    const vacantes     = r.vacantes      ?? r.total_vacantes    ?? 1
-    const exp_anios    = r.exp_anios     ?? r.anos_exp          ?? 0
-    const exp_tipo     = r.exp_tipo      ?? r.tipo_exp          ?? null
-    const estudio_texto = r.estudio_texto ?? r.educacion_requerida ?? r.requisito_estudio ?? null
-    const exp_texto    = r.exp_texto     ?? r.experiencia_requerida ?? r.requisito_experiencia ?? null
-    const entidad      = r.entidad       || entidadConv
+  const rows = registros
+    .map(r => normalizarRegistroOPEC(r, entidadConv, convocatoria_id))
+    .filter(Boolean)
 
-    // ── ubicaciones: construir desde municipio/departamento si no viene el array ──
-    let ubicaciones = Array.isArray(r.ubicaciones) ? r.ubicaciones : []
-    if (!ubicaciones.length && (r.municipio || r.departamento)) {
-      ubicaciones = [{ ciudad: r.municipio || null, departamento: r.departamento || null, tipo: r.tipo_entidad || null }]
-    }
+  if (!rows.length) return res.status(400).json({ error: 'Ningún registro tiene denominación (nombre del cargo). Revisa el formato del JSON.' })
 
-    // ── funciones SIMO: array de strings o array de objetos {descripcion} ──
-    let funciones = []
-    if (Array.isArray(r.funciones)) {
-      funciones = r.funciones.map(f => (typeof f === 'string' ? f : f.descripcion || '')).filter(Boolean)
-    }
+  // Stats para el feedback al admin
+  const stats = {
+    total_archivo:   registros.length,
+    con_denominacion: rows.length,
+    sin_denominacion: registros.length - rows.length,
+    con_numero_opec: rows.filter(r => r.numero_opec).length,
+    con_ubicaciones: rows.filter(r => r.ubicaciones?.length > 0).length,
+    con_vacantes:    rows.filter(r => r.vacantes > 1).length,
+  }
 
-    // cierre_inscripciones: validar que sea fecha válida
-    const cierreRaw = r.cierre_inscripciones || r.fechaInscripcion || null
-    const cierre = cierreRaw && /^\d{4}-\d{2}-\d{2}/.test(cierreRaw) ? cierreRaw.slice(0, 10) : null
-
-    return {
-      convocatoria_id:            parseInt(convocatoria_id),
-      entidad,
-      num_convocatoria:           r.num_convocatoria                     || null,
-      denominacion:               (r.denominacion || '').trim(),
-      nivel:                      r.nivel                                || null,
-      codigo:                     r.codigo                               || null,
-      grado:                      r.grado       ? parseInt(r.grado)      : null,
-      salario:                    r.salario     ? parseInt(r.salario)    : null,
-      vacantes:                   vacantes      ? parseInt(vacantes)     : 1,
-      dependencia:                r.dependencia                          || null,
-      area_estudio:               r.area_estudio                         || null,
-      requiere_posgrado:          !!r.requiere_posgrado,
-      requiere_tarjeta:           !!r.requiere_tarjeta,
-      exp_anios:                  exp_anios     ? parseInt(exp_anios)    : 0,
-      exp_tipo,
-      estudio_texto,
-      exp_texto,
-      proceso:                    r.proceso                              || null,
-      funciones,
-      conocimientos:              Array.isArray(r.conocimientos)         ? r.conocimientos : [],
-      competencias_transversales: r.competencias_transversales && typeof r.competencias_transversales === 'object' ? r.competencias_transversales : {},
-      competencias_perfil:        r.competencias_perfil        && typeof r.competencias_perfil        === 'object' ? r.competencias_perfil        : {},
-      ubicaciones,
-      // ── Campos SIMO y complementarios ─────────────────────────────────────
-      numero_opec:                r.numero_opec          ? String(r.numero_opec)           : null,
-      manual_url:                 r.manual_url                           || null,
-      proposito:                  r.proposito                            || null,
-      municipio:                  r.municipio                            || null,
-      departamento:               r.departamento                         || null,
-      proceso_de_seleccion:       r.proceso_de_seleccion                 || null,
-      requisito_otros:            r.requisito_otros      || r.requisitoOtros               || null,
-      vigencia_salarial:          r.vigencia_salarial    ? parseInt(r.vigencia_salarial)   : null,
-      cierre_inscripciones:       cierre,
-      anio_convocatoria:          r.anio_convocatoria    ? parseInt(r.anio_convocatoria)   : null,
-      nit_entidad:                r.nit_entidad          ? String(r.nit_entidad)           : null,
-      fuente:                     r.fuente                               || 'manual',
-      is_active:                  r.is_active !== false,
-    }
-  }).filter(r => r.denominacion)
-
-  // Insertar en chunks de 500 para no saturar Supabase
   let insertados = 0
   const insertedRows = []
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500)
     const { data, error } = await supabase.from('opec_maestro').insert(chunk).select('id, num_convocatoria, denominacion')
-    if (error) return res.status(500).json({ error: error.message, insertados_antes: insertados })
+    if (error) return res.status(500).json({ error: error.message, insertados_antes: insertados, stats })
     insertados += data.length
     insertedRows.push(...data)
   }
 
-  return res.status(201).json({ insertados, registros: insertedRows })
+  return res.status(201).json({ insertados, stats, registros: insertedRows })
 }
 
 // ── Historial de análisis de perfil del usuario ───────────────────────────────

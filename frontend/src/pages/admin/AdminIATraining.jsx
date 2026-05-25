@@ -331,7 +331,7 @@ function AsignacionCerebros({ records, onCambiar }) {
 
 // ── Modal nueva/editar convocatoria ──────────────────────────────────────────
 
-const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '' }
+const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '', plataforma_nombre: '', plataforma_url: '' }
 
 const ENTIDADES_COMUNES = [
   'Procuraduría General de la Nación',
@@ -340,6 +340,15 @@ const ENTIDADES_COMUNES = [
   'Fiscalía General de la Nación',
   'Defensoría del Pueblo',
   'Consejo de Estado',
+]
+
+const PLATAFORMAS_PRESET = [
+  { nombre: 'SIMO — CNSC',                                      url: 'https://simo-opec.cnsc.gov.co/' },
+  { nombre: 'Mérito Construyendo Excelencia (Procuraduría)',     url: 'https://meritoconstruyendoexcelencia.com.co/' },
+  { nombre: 'Contraloría General de la República',              url: 'https://www.contraloria.gov.co/' },
+  { nombre: 'DIAN',                                             url: 'https://www.dian.gov.co/' },
+  { nombre: 'Fiscalía General de la Nación',                    url: 'https://www.fiscalia.gov.co/' },
+  { nombre: 'Función Pública',                                  url: 'https://www.funcionpublica.gov.co/' },
 ]
 
 function ConvocatoriaModal({ conv, onClose, onSaved }) {
@@ -442,6 +451,45 @@ function ConvocatoriaModal({ conv, onClose, onSaved }) {
             <textarea value={form.descripcion} onChange={e => set('descripcion', e.target.value)}
               rows={2} placeholder="Ej: Convocatoria regional 2025 — 45 cargos"
               className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 resize-none" />
+          </div>
+
+          {/* Plataforma de inscripción */}
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm text-blue-500">open_in_new</span>
+              Plataforma donde se inscribe el candidato
+            </p>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Preset de plataforma</label>
+              <select
+                value={PLATAFORMAS_PRESET.find(p => p.url === form.plataforma_url)?.nombre || ''}
+                onChange={e => {
+                  const preset = PLATAFORMAS_PRESET.find(p => p.nombre === e.target.value)
+                  if (preset) { set('plataforma_nombre', preset.nombre); set('plataforma_url', preset.url) }
+                  else if (!e.target.value) { set('plataforma_nombre', ''); set('plataforma_url', '') }
+                }}
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400"
+              >
+                <option value="">— Selecciona o escribe manual —</option>
+                {PLATAFORMAS_PRESET.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="text-xs font-bold text-on-surface mb-1 block">Nombre de la plataforma</label>
+                <input value={form.plataforma_nombre} onChange={e => set('plataforma_nombre', e.target.value)}
+                  placeholder="Ej: Mérito Construyendo Excelencia"
+                  className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-on-surface mb-1 block">URL de inscripción</label>
+                <input value={form.plataforma_url} onChange={e => set('plataforma_url', e.target.value)}
+                  placeholder="https://..."
+                  type="url"
+                  className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 font-mono text-xs" />
+                <p className="text-[10px] text-on-surface-variant mt-1">Esta URL aparecerá como botón "Inscribirse" en el análisis de perfil del usuario.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -799,12 +847,24 @@ function ProcuraduriaOpecPanel() {
     setImporting(true)
     try {
       const text = await file.text()
-      const arr = JSON.parse(text)
-      if (!Array.isArray(arr)) throw new Error('El archivo debe contener un array JSON.')
+      let parsed = JSON.parse(text)
+
+      // Auto-desempaquetar formatos envueltos: {data:[...]}, {empleos:[...]}, etc.
+      if (!Array.isArray(parsed)) {
+        const KEYS = ['data', 'empleos', 'cargos', 'registros', 'opecs', 'items', 'results', 'vacantes', 'empleados']
+        let found = null
+        for (const k of KEYS) { if (Array.isArray(parsed[k])) { found = parsed[k]; break } }
+        if (!found) found = Object.values(parsed).find(v => Array.isArray(v))
+        if (!found) throw new Error('No se encontró un array de registros en el JSON. Debe ser un array [...] o un objeto con una propiedad que contenga el array.')
+        parsed = found
+      }
+
       const headers = await authHeaders()
       let insertados = 0
-      for (let i = 0; i < arr.length; i += 500) {
-        const chunk = arr.slice(i, i + 500)
+      let statsAcum = null
+
+      for (let i = 0; i < parsed.length; i += 500) {
+        const chunk = parsed.slice(i, i + 500)
         const res = await fetch(`${BASE}/api/ia/opec-maestro/import`, {
           method: 'POST', headers,
           body: JSON.stringify({ registros: chunk, convocatoria_id: parseInt(convId) }),
@@ -812,8 +872,24 @@ function ProcuraduriaOpecPanel() {
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Error importando')
         insertados += data.insertados
+        // Acumular stats del último chunk (representativo)
+        if (data.stats) statsAcum = data.stats
       }
-      alert(`¡Importados ${insertados} de ${arr.length} registros exitosamente!`)
+
+      // Mostrar resumen completo
+      const s = statsAcum || {}
+      const conUb  = s.con_ubicaciones ?? '?'
+      const conNum = s.con_numero_opec ?? '?'
+      const sinNom = s.sin_denominacion ?? 0
+      alert(
+        `✅ Importación completada\n\n` +
+        `• Registros en archivo: ${parsed.length}\n` +
+        `• Importados: ${insertados}\n` +
+        `• Con N° OPEC: ${conNum}\n` +
+        `• Con ciudades/ubicaciones: ${conUb}\n` +
+        (sinNom > 0 ? `• Omitidos (sin nombre): ${sinNom}\n` : '') +
+        `\nYa puedes hacer análisis de perfil con esta convocatoria.`
+      )
       fetchData(q, nivel, 1, convId)
       setPage(1)
     } catch (e) {
