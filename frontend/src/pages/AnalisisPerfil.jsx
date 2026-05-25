@@ -1013,16 +1013,24 @@ export default function AnalisisPerfil() {
 
                 {/* Filtros de ubicación */}
                 {(() => {
-                  const depts = [...new Set(convocatorias.map(c => c.departamento).filter(Boolean))].sort()
-                  const ciudades = [...new Set(
-                    convocatorias
-                      .filter(c => !filtroDept || c.departamento === filtroDept)
-                      .map(c => c.ciudad)
-                      .filter(Boolean)
-                  )].sort()
+                  const norm = s => s?.trim().toLowerCase().replace(/\s+/g, ' ') || ''
+                  const titleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                  const normLabel = s => titleCase(s.trim().replace(/\s+/g, ' '))
+
+                  // Mapas clave-normalizada → label legible (primera aparición gana)
+                  const deptMap = new Map()
+                  convocatorias.forEach(c => { if (c.departamento) { const k = norm(c.departamento); if (!deptMap.has(k)) deptMap.set(k, normLabel(c.departamento)) } })
+                  const depts = [...deptMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+
+                  const ciudadMap = new Map()
+                  convocatorias
+                    .filter(c => !filtroDept || norm(c.departamento) === filtroDept)
+                    .forEach(c => { if (c.ciudad) { const k = norm(c.ciudad); if (!ciudadMap.has(k)) ciudadMap.set(k, normLabel(c.ciudad)) } })
+                  const ciudades = [...ciudadMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+
                   const convsFiltradas = convocatorias.filter(c =>
-                    (!filtroDept || c.departamento === filtroDept) &&
-                    (!filtroCiudad || c.ciudad === filtroCiudad)
+                    (!filtroDept || norm(c.departamento) === filtroDept) &&
+                    (!filtroCiudad || norm(c.ciudad) === filtroCiudad)
                   )
                   return (
                     <>
@@ -1035,7 +1043,7 @@ export default function AnalisisPerfil() {
                             className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                           >
                             <option value="">Todo Colombia</option>
-                            {depts.map(d => <option key={d} value={d}>{d}</option>)}
+                            {depts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                           </select>
                           {filtroDept && ciudades.length > 0 && (
                             <select
@@ -1044,7 +1052,7 @@ export default function AnalisisPerfil() {
                               className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                             >
                               <option value="">Todas las ciudades</option>
-                              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+                              {ciudades.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                             </select>
                           )}
                           {filtroDept && (
