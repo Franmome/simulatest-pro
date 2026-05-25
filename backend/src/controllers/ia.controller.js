@@ -1613,6 +1613,7 @@ export async function getCiudadesConvocatoria(req, res) {
 
     const ciudades = [...normMap.values()]
       .map(({ ciudad, vacantes, opecs }) => ({ ciudad, vacantes, opecs }))
+      .filter(c => c.vacantes > 0)   // ocultar ciudades sin vacantes asignadas
       .sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'))
 
     return res.json({ ciudades, total_opecs: allOpecs.length })
