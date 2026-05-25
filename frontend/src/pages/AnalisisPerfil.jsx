@@ -1017,45 +1017,67 @@ export default function AnalisisPerfil() {
                   const titleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
                   const normLabel = s => titleCase(s.trim().replace(/\s+/g, ' '))
 
-                  // Mapas clave-normalizada → label legible (primera aparición gana)
+                  // Deptos: solo convocatorias que tengan departamento
                   const deptMap = new Map()
-                  convocatorias.forEach(c => { if (c.departamento) { const k = norm(c.departamento); if (!deptMap.has(k)) deptMap.set(k, normLabel(c.departamento)) } })
+                  convocatorias.forEach(c => {
+                    if (c.departamento) { const k = norm(c.departamento); if (!deptMap.has(k)) deptMap.set(k, normLabel(c.departamento)) }
+                  })
                   const depts = [...deptMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
 
+                  // Ciudades disponibles según depto seleccionado:
+                  // Si hay depto: ciudades de convs con ese depto O convs con solo ciudad (sin depto)
+                  // Si no hay depto: todas las ciudades
                   const ciudadMap = new Map()
                   convocatorias
-                    .filter(c => !filtroDept || norm(c.departamento) === filtroDept)
+                    .filter(c => {
+                      if (!filtroDept) return !!c.ciudad
+                      // tiene el depto seleccionado, O tiene esa ciudad pero sin depto asignado
+                      return norm(c.departamento) === filtroDept || (!c.departamento && c.ciudad)
+                    })
                     .forEach(c => { if (c.ciudad) { const k = norm(c.ciudad); if (!ciudadMap.has(k)) ciudadMap.set(k, normLabel(c.ciudad)) } })
                   const ciudades = [...ciudadMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
 
-                  const convsFiltradas = convocatorias.filter(c =>
-                    (!filtroDept || norm(c.departamento) === filtroDept) &&
-                    (!filtroCiudad || norm(c.ciudad) === filtroCiudad)
-                  )
+                  // Convocatorias filtradas:
+                  // - si solo depto: las que tienen ese depto (tengan o no ciudad)
+                  // - si depto + ciudad: las que tienen ese depto Y esa ciudad, O las que solo tienen esa ciudad sin depto
+                  // - si solo ciudad (sin depto elegido): las que tienen esa ciudad
+                  const convsFiltradas = convocatorias.filter(c => {
+                    const matchDept  = !filtroDept  || norm(c.departamento) === filtroDept
+                    const matchCiudad = !filtroCiudad || norm(c.ciudad) === filtroCiudad
+                    if (filtroDept && filtroCiudad) {
+                      return (norm(c.departamento) === filtroDept && norm(c.ciudad) === filtroCiudad)
+                          || (!c.departamento && norm(c.ciudad) === filtroCiudad)
+                    }
+                    return matchDept && matchCiudad
+                  })
+
+                  const hayFiltros = depts.length > 0 || ciudades.length > 0
                   return (
                     <>
-                      {depts.length > 0 && (
+                      {hayFiltros && (
                         <div className="flex gap-2 flex-wrap items-center">
                           <span className="material-symbols-outlined text-sm text-on-surface-variant flex-shrink-0">location_on</span>
-                          <select
-                            value={filtroDept}
-                            onChange={e => { setFiltroDept(e.target.value); setFiltroCiudad(''); setConvId('') }}
-                            className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                          >
-                            <option value="">Todo Colombia</option>
-                            {depts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                          </select>
-                          {filtroDept && ciudades.length > 0 && (
+                          {depts.length > 0 && (
+                            <select
+                              value={filtroDept}
+                              onChange={e => { setFiltroDept(e.target.value); setFiltroCiudad(''); setConvId('') }}
+                              className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="">Todo Colombia</option>
+                              {depts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                            </select>
+                          )}
+                          {ciudades.length > 0 && (
                             <select
                               value={filtroCiudad}
                               onChange={e => { setFiltroCiudad(e.target.value); setConvId('') }}
                               className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                             >
-                              <option value="">Todas las ciudades</option>
+                              <option value="">{filtroDept ? 'Todas las ciudades' : 'Cualquier ciudad'}</option>
                               {ciudades.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                             </select>
                           )}
-                          {filtroDept && (
+                          {(filtroDept || filtroCiudad) && (
                             <button
                               onClick={() => { setFiltroDept(''); setFiltroCiudad(''); setConvId('') }}
                               className="text-xs text-primary font-bold whitespace-nowrap flex items-center gap-0.5 hover:underline"
