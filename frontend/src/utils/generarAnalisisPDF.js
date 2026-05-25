@@ -177,10 +177,17 @@ export function generarAnalisisPDF(analisis, convNombre) {
 
     // Info básica
     const infoRows = []
-    if (opec.entidad)  infoRows.push(['Entidad', opec.entidad])
-    if (opec.nivel)    infoRows.push(['Nivel / Grado', `${opec.nivel} ${opec.grado ? `— Grado ${opec.grado}` : ''}`.trim()])
-    if (opec.salario)  infoRows.push(['Salario', opec.salario])
-    if (opec.vacantes) infoRows.push(['Vacantes', String(opec.vacantes)])
+    if (opec.numero_opec)      infoRows.push(['N° OPEC', String(opec.numero_opec)])
+    if (opec.num_convocatoria) infoRows.push(['N° Convocatoria', String(opec.num_convocatoria)])
+    if (opec.entidad)          infoRows.push(['Entidad', opec.entidad])
+    if (opec.dependencia)      infoRows.push(['Dependencia', truncate(opec.dependencia, 80)])
+    if (opec.nivel)            infoRows.push(['Nivel / Grado', `${opec.nivel} ${opec.grado ? `— Grado ${opec.grado}` : ''}`.trim()])
+    if (opec.salario)          infoRows.push(['Salario', opec.salario])
+    if (opec.vacantes)         infoRows.push(['Vacantes totales', String(opec.vacantes)])
+    if (opec.ubicaciones_norm?.length > 0) {
+      const ciudades = opec.ubicaciones_norm.map(u => `${u.ciudad}${u.vacantes ? ` (${u.vacantes})` : ''}`).join(', ')
+      infoRows.push(['Ciudades', truncate(ciudades, 120)])
+    }
     if (opec.justificacion) infoRows.push(['Justificación', truncate(opec.justificacion, 120)])
 
     if (infoRows.length) {
@@ -236,6 +243,21 @@ export function generarAnalisisPDF(analisis, convNombre) {
       doc.setFont('helvetica', 'normal')
       doc.text(msgLines, marginX + 3, y + 4)
       y += msgLines.length * 4 + 8
+    }
+
+    // Instrucción para encontrar el cargo
+    if (opec.numero_opec || opec.num_convocatoria) {
+      if (y > 265) { doc.addPage(); y = 20 }
+      doc.setFillColor(237, 230, 255)
+      doc.roundedRect(marginX, y, W - marginX * 2, 10, 2, 2, 'F')
+      doc.setTextColor(...PRAXIA_PURPLE)
+      doc.setFontSize(7.5)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Búsqueda:', marginX + 3, y + 6.5)
+      doc.setFont('helvetica', 'normal')
+      const simoTxt = `Ingresa a simo-opec.cnsc.gov.co → busca OPEC ${opec.numero_opec || ''} o la denominación del cargo`
+      doc.text(simoTxt, marginX + 22, y + 6.5)
+      y += 14
     }
 
     y += 4

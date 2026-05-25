@@ -175,7 +175,7 @@ function CargoCard({ opec, index }) {
           <p className="font-bold text-sm leading-snug">{opec.denominacion}</p>
           <p className="text-xs text-on-surface-variant mt-0.5 truncate">
             {opec.entidad && <span>{opec.entidad} · </span>}
-            Conv. {opec.codigo_opec ?? opec.convocatoria ?? '—'}
+            {opec.numero_opec ? `OPEC ${opec.numero_opec}` : `Conv. ${opec.codigo_opec ?? opec.convocatoria ?? '—'}`}
             {opec.nivel ? ` · ${opec.nivel}` : ''}
             {opec.grado ? ` grado ${opec.grado}` : ''}
             {opec.vacantes ? ` · ${opec.vacantes} vac.` : ''}
@@ -237,6 +237,71 @@ function CargoCard({ opec, index }) {
               </span>
             )}
           </div>
+
+          {/* Identificación y dónde aplicar */}
+          {(opec.numero_opec || opec.num_convocatoria || opec.dependencia || opec.ubicaciones_norm?.length > 0) && (
+            <div className="bg-surface-container rounded-xl p-3 space-y-2.5">
+              <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>badge</span>
+                Cómo identificar y aplicar a este cargo
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {opec.numero_opec && (
+                  <div className="bg-primary/8 rounded-lg p-2">
+                    <p className="text-[10px] text-on-surface-variant">N° OPEC</p>
+                    <p className="text-xs font-extrabold text-primary">{opec.numero_opec}</p>
+                  </div>
+                )}
+                {(opec.num_convocatoria || opec.codigo_opec) && (
+                  <div className="bg-surface-container-low rounded-lg p-2">
+                    <p className="text-[10px] text-on-surface-variant">N° Convocatoria</p>
+                    <p className="text-xs font-bold text-on-surface">{opec.num_convocatoria || opec.codigo_opec}</p>
+                  </div>
+                )}
+              </div>
+              {opec.dependencia && (
+                <div>
+                  <p className="text-[10px] text-on-surface-variant">Dependencia</p>
+                  <p className="text-xs text-on-surface leading-snug">{opec.dependencia}</p>
+                </div>
+              )}
+              {opec.ubicaciones_norm?.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-on-surface-variant mb-1">Ciudades con vacantes</p>
+                  <div className="flex flex-wrap gap-1">
+                    {opec.ubicaciones_norm.slice(0, 15).map((u, i) => (
+                      <span key={i} className="text-[10px] bg-surface-container-low text-on-surface px-2 py-0.5 rounded-full border border-outline-variant/30">
+                        {u.ciudad}{u.vacantes ? ` · ${u.vacantes}` : ''}
+                      </span>
+                    ))}
+                    {opec.ubicaciones_norm.length > 15 && (
+                      <span className="text-[10px] text-on-surface-variant italic px-1">+{opec.ubicaciones_norm.length - 15} más</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 pt-1 border-t border-outline-variant/20">
+                <a
+                  href="https://simo-opec.cnsc.gov.co/"
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary/90 transition-all"
+                >
+                  <span className="material-symbols-outlined text-sm">search</span>
+                  Buscar en SIMO
+                </a>
+                {opec.entidad?.toLowerCase().includes('procuradur') && (
+                  <a
+                    href="https://meritoconstruyendoexcelencia.com.co/"
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-sm">how_to_reg</span>
+                    Inscribirse
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1 bg-surface-container-low rounded-xl p-1">

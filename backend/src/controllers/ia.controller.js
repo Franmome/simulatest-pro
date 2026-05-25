@@ -1467,6 +1467,24 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       opec_mas_recomendada:      opecsData?.opec_mas_recomendada || null,
       cargos_descartados_relevantes: opecsData?.cargos_descartados_relevantes || [],
     }
+
+    // Enriquecer con datos originales de opec_maestro (num OPEC, convocatoria, dependencia, ciudades)
+    const opecLookup = new Map()
+    for (const op of [...batch1, ...opecsDes]) {
+      opecLookup.set(String(op.numero_opec || op.num_convocatoria || op.id), op)
+    }
+    analisis.ranking_opec_recomendadas = analisis.ranking_opec_recomendadas.map(item => {
+      const orig = opecLookup.get(String(item.codigo_opec))
+      if (!orig) return item
+      return {
+        ...item,
+        numero_opec:      orig.numero_opec      || null,
+        num_convocatoria: orig.num_convocatoria  || null,
+        dependencia:      orig.dependencia       || item.proceso || null,
+        ubicaciones_norm: orig._ubNorm           || [],
+      }
+    })
+
     console.log('[IA] OPECs en resultado:', analisis.ranking_opec_recomendadas.length, '| pendientes:', opecsPendientes.length)
 
     const now = new Date().toISOString()
@@ -1546,9 +1564,27 @@ export async function masOpecs(req, res) {
     if (!nuevasOpecs.length) {
       return res.status(500).json({ error: 'No se pudieron analizar los cargos. Intenta de nuevo.' })
     }
-    console.log('[IA] masOpecs OPECs nuevas:', nuevasOpecs.length, '| restantes:', restantes.length)
 
-    return res.json({ nuevas_opecs: nuevasOpecs, opecs_pendientes: restantes })
+    // Enriquecer con datos originales de opec_maestro
+    const opecLookupMas = new Map()
+    for (const op of opecsMasNorm) {
+      opecLookupMas.set(String(op.numero_opec || op.num_convocatoria || op.id), op)
+    }
+    const nuevasEnriquecidas = nuevasOpecs.map(item => {
+      const orig = opecLookupMas.get(String(item.codigo_opec))
+      if (!orig) return item
+      return {
+        ...item,
+        numero_opec:      orig.numero_opec      || null,
+        num_convocatoria: orig.num_convocatoria  || null,
+        dependencia:      orig.dependencia       || item.proceso || null,
+        ubicaciones_norm: orig._ubNorm           || [],
+      }
+    })
+
+    console.log('[IA] masOpecs OPECs nuevas:', nuevasEnriquecidas.length, '| restantes:', restantes.length)
+
+    return res.json({ nuevas_opecs: nuevasEnriquecidas, opecs_pendientes: restantes })
   } catch (err) {
     console.error('[IA] masOpecs:', err)
     return res.status(500).json({ error: err.message })
