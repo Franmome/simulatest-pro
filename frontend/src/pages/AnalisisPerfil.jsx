@@ -825,6 +825,8 @@ export default function AnalisisPerfil() {
   const fileInputRef = useRef()
 
   const [convocatorias, setConvocatorias] = useState([])
+  const [filtroDept, setFiltroDept] = useState('')
+  const [filtroCiudad, setFiltroCiudad] = useState('')
   const [convId, setConvId] = useState(searchParams.get('conv') || '')
   const [perfilTexto, setPerfilTexto] = useState('')
   const [files, setFiles] = useState([])
@@ -842,7 +844,7 @@ export default function AnalisisPerfil() {
   const [opecCount,     setOpecCount]     = useState(null)
 
   useEffect(() => {
-    supabase.from('convocatorias').select('id, nombre, entidad').eq('is_active', true).order('nombre')
+    supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
     fetchHistory()
     try {
@@ -1008,17 +1010,69 @@ export default function AnalisisPerfil() {
             {/* Form */}
             {!analisis && (
               <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5 animate-fade-in">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
-                  <select
-                    value={convId}
-                    onChange={e => setConvId(e.target.value)}
-                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Selecciona una convocatoria</option>
-                    {convocatorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                  </select>
-                </div>
+
+                {/* Filtros de ubicación */}
+                {(() => {
+                  const depts = [...new Set(convocatorias.map(c => c.departamento).filter(Boolean))].sort()
+                  const ciudades = [...new Set(
+                    convocatorias
+                      .filter(c => !filtroDept || c.departamento === filtroDept)
+                      .map(c => c.ciudad)
+                      .filter(Boolean)
+                  )].sort()
+                  const convsFiltradas = convocatorias.filter(c =>
+                    (!filtroDept || c.departamento === filtroDept) &&
+                    (!filtroCiudad || c.ciudad === filtroCiudad)
+                  )
+                  return (
+                    <>
+                      {depts.length > 0 && (
+                        <div className="flex gap-2 flex-wrap items-center">
+                          <span className="material-symbols-outlined text-sm text-on-surface-variant flex-shrink-0">location_on</span>
+                          <select
+                            value={filtroDept}
+                            onChange={e => { setFiltroDept(e.target.value); setFiltroCiudad(''); setConvId('') }}
+                            className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <option value="">Todo Colombia</option>
+                            {depts.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                          {filtroDept && ciudades.length > 0 && (
+                            <select
+                              value={filtroCiudad}
+                              onChange={e => { setFiltroCiudad(e.target.value); setConvId('') }}
+                              className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="">Todas las ciudades</option>
+                              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          )}
+                          {filtroDept && (
+                            <button
+                              onClick={() => { setFiltroDept(''); setFiltroCiudad(''); setConvId('') }}
+                              className="text-xs text-primary font-bold whitespace-nowrap flex items-center gap-0.5 hover:underline"
+                            >
+                              <span className="material-symbols-outlined text-sm">close</span>
+                              Limpiar
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
+                        <select
+                          value={convId}
+                          onChange={e => setConvId(e.target.value)}
+                          className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        >
+                          <option value="">Selecciona una convocatoria</option>
+                          {convsFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  )
+                })()}
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Cuéntanos tu perfil</label>
@@ -1124,13 +1178,33 @@ export default function AnalisisPerfil() {
                     </div>
                   </div>
                 ) : (
-                  <button
-                    onClick={analizar}
-                    className="btn-primary w-full py-3.5 rounded-full font-bold flex items-center justify-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
-                    Analizar mi perfil
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={analizar}
+                      className="btn-primary w-full py-3.5 rounded-full font-bold flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
+                      Analizar mi perfil
+                    </button>
+
+                    {/* Wompi — placeholder de pago */}
+                    <div className="flex items-center gap-3 p-3 rounded-2xl border border-amber-200 bg-amber-50">
+                      <div className="w-8 h-8 rounded-xl bg-amber-400 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-amber-800 leading-tight">Análisis Premium</p>
+                        <p className="text-[10px] text-amber-700 leading-tight">Informe completo · PDF · 2.000 COP</p>
+                      </div>
+                      <button
+                        disabled
+                        title="Próximamente disponible"
+                        className="text-xs font-bold text-amber-700 bg-amber-200 hover:bg-amber-300 px-3 py-1.5 rounded-full transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        Pagar con Wompi
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

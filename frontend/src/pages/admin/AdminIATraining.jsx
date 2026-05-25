@@ -331,7 +331,7 @@ function AsignacionCerebros({ records, onCambiar }) {
 
 // ── Modal nueva/editar convocatoria ──────────────────────────────────────────
 
-const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '' }
+const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '' }
 
 const ENTIDADES_COMUNES = [
   'Procuraduría General de la Nación',
@@ -418,6 +418,21 @@ function ConvocatoriaModal({ conv, onClose, onSaved }) {
               <label className="text-xs font-bold text-on-surface mb-1 block">Año</label>
               <input type="number" value={form.anio} onChange={e => set('anio', e.target.value)}
                 placeholder="2025"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Departamento <span className="font-normal text-on-surface-variant">(opcional)</span></label>
+              <input value={form.departamento} onChange={e => set('departamento', e.target.value)}
+                placeholder="Ej: Cundinamarca"
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">Ciudad <span className="font-normal text-on-surface-variant">(opcional)</span></label>
+              <input value={form.ciudad} onChange={e => set('ciudad', e.target.value)}
+                placeholder="Ej: Bogotá"
                 className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" />
             </div>
           </div>

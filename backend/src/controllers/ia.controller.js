@@ -1525,7 +1525,7 @@ export async function listConvocatorias(req, res) {
   const { todas } = req.query
   let query = supabase
     .from('convocatorias')
-    .select('id, codigo, nombre, entidad, anio, descripcion, is_active')
+    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad')
     .order('anio', { ascending: false })
     .order('nombre')
   if (!todas) query = query.eq('is_active', true)
@@ -1535,13 +1535,13 @@ export async function listConvocatorias(req, res) {
 }
 
 export async function createConvocatoria(req, res) {
-  const { codigo, nombre, entidad, anio, descripcion } = req.body
+  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad } = req.body
   if (!codigo?.trim()) return res.status(400).json({ error: 'El código es requerido.' })
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido.' })
   if (!entidad?.trim()) return res.status(400).json({ error: 'La entidad es requerida.' })
   const { data, error } = await supabase
     .from('convocatorias')
-    .insert({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim(), entidad: entidad.trim(), anio: anio ? parseInt(anio) : null, descripcion: descripcion?.trim() || null })
+    .insert({ codigo: codigo.trim().toUpperCase(), nombre: nombre.trim(), entidad: entidad.trim(), anio: anio ? parseInt(anio) : null, descripcion: descripcion?.trim() || null, departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.status(201).json({ convocatoria: data })
@@ -1549,10 +1549,10 @@ export async function createConvocatoria(req, res) {
 
 export async function updateConvocatoria(req, res) {
   const { id } = req.params
-  const { nombre, entidad, anio, descripcion, is_active } = req.body
+  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad } = req.body
   const { data, error } = await supabase
     .from('convocatorias')
-    .update({ nombre, entidad, anio: anio ? parseInt(anio) : null, descripcion, is_active })
+    .update({ nombre, entidad, anio: anio ? parseInt(anio) : null, descripcion, is_active, departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ convocatoria: data })
