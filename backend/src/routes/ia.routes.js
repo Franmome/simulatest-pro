@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { authMiddleware } from '../middleware/auth.middleware.js'
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -27,6 +27,7 @@ router.get('/mis-analisis-simulacros', authMiddleware, getMisAnalisisSimulacros)
 
 // ── Convocatorias (catálogo para dropdown del usuario y admin) ───────────────
 router.get('/convocatorias',             authMiddleware, listConvocatorias)
+router.get('/convocatorias/:id/ciudades', authMiddleware, getCiudadesConvocatoria)
 router.post('/convocatorias',            authMiddleware, createConvocatoria)
 router.put('/convocatorias/:id',         authMiddleware, updateConvocatoria)
 router.delete('/convocatorias/:id',      authMiddleware, deleteConvocatoria)

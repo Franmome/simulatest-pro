@@ -1290,7 +1290,7 @@ Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown, s
 export async function analizarPerfilCV(req, res) {
   try {
     const userId = req.user.id
-    const { convocatoria_id, perfil_texto } = req.body
+    const { convocatoria_id, perfil_texto, ciudad_filtro } = req.body
     const file = req.file
     const cvText = await extractCvText(file)
     console.log('[IA] cvText extraido:', cvText.length, 'chars')
@@ -1298,7 +1298,7 @@ export async function analizarPerfilCV(req, res) {
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
 
-    const [{ data: todosOpec }, { data: conv }] = await Promise.all([
+    const [{ data: allOpec }, { data: conv }] = await Promise.all([
       supabase.from('opec_maestro').select('*')
         .eq('convocatoria_id', parseInt(convocatoria_id))
         .eq('is_active', true)
@@ -1306,7 +1306,25 @@ export async function analizarPerfilCV(req, res) {
       supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle(),
     ])
 
-    if (!todosOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
+    if (!allOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
+
+    // Filtrar por ciudad si se especificó
+    const ciudadNorm = ciudad_filtro?.trim().toLowerCase()
+    let todosOpec = allOpec
+    let pocas_opec_local = false
+    if (ciudadNorm) {
+      const filtrados = allOpec.filter(op =>
+        Array.isArray(op.ubicaciones) &&
+        op.ubicaciones.some(ub => ub.ciudad?.toLowerCase() === ciudadNorm)
+      )
+      if (filtrados.length >= 3) {
+        todosOpec = filtrados
+      } else {
+        // muy pocas OPECs locales → usar todas pero avisar
+        pocas_opec_local = true
+        console.log(`[IA] ciudad_filtro="${ciudad_filtro}" → solo ${filtrados.length} OPECs, usando todas (${allOpec.length})`)
+      }
+    }
 
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
@@ -1444,7 +1462,7 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     )
     if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
 
-    return res.json({ analisis, opecs_pendientes: opecsPendientes })
+    return res.json({ analisis, opecs_pendientes: opecsPendientes, pocas_opec_local, ciudad_filtro: ciudad_filtro || null })
   } catch (err) {
     console.error('[IA] analizarPerfilCV:', err)
     return res.status(500).json({ error: err.message })
@@ -1532,6 +1550,31 @@ export async function listConvocatorias(req, res) {
   const { data, error } = await query
   if (error) return res.status(500).json({ error: error.message })
   return res.json({ convocatorias: data || [] })
+}
+
+export async function getCiudadesConvocatoria(req, res) {
+  const { id } = req.params
+  const { data, error } = await supabase
+    .from('opec_maestro')
+    .select('ubicaciones')
+    .eq('convocatoria_id', parseInt(id))
+    .eq('is_active', true)
+    .not('ubicaciones', 'is', null)
+  if (error) return res.status(500).json({ error: error.message })
+
+  const ciudadMap = new Map()
+  for (const opec of data || []) {
+    if (!Array.isArray(opec.ubicaciones)) continue
+    for (const ub of opec.ubicaciones) {
+      if (!ub.ciudad) continue
+      const entry = ciudadMap.get(ub.ciudad) || { ciudad: ub.ciudad, vacantes: 0, opecs: 0 }
+      entry.vacantes += ub.vacantes || 0
+      entry.opecs += 1
+      ciudadMap.set(ub.ciudad, entry)
+    }
+  }
+  const ciudades = [...ciudadMap.values()].sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'))
+  return res.json({ ciudades, total_opecs: data?.length || 0 })
 }
 
 export async function createConvocatoria(req, res) {

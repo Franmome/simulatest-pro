@@ -825,9 +825,10 @@ export default function AnalisisPerfil() {
   const fileInputRef = useRef()
 
   const [convocatorias, setConvocatorias] = useState([])
-  const [filtroDept, setFiltroDept] = useState('')
-  const [filtroCiudad, setFiltroCiudad] = useState('')
   const [convId, setConvId] = useState(searchParams.get('conv') || '')
+  const [ciudadesDisp, setCiudadesDisp] = useState([])   // [{ciudad, vacantes, opecs}]
+  const [ciudadFiltro, setCiudadFiltro] = useState('')   // ciudad seleccionada
+  const [pocasOpecLocal, setPocasOpecLocal] = useState(false)
   const [perfilTexto, setPerfilTexto] = useState('')
   const [files, setFiles] = useState([])
   const [dragging, setDragging] = useState(false)
@@ -854,13 +855,22 @@ export default function AnalisisPerfil() {
   }, [])
 
   useEffect(() => {
-    if (!convId) { setOpecCount(null); return }
+    if (!convId) { setOpecCount(null); setCiudadesDisp([]); setCiudadFiltro(''); return }
+    // conteo total
     supabase
       .from('opec_maestro')
       .select('id', { count: 'exact', head: true })
       .eq('convocatoria_id', parseInt(convId))
       .eq('is_active', true)
       .then(({ count }) => setOpecCount(count ?? 0))
+    // ciudades disponibles desde OPECs
+    setCiudadFiltro('')
+    authHeaders().then(headers =>
+      fetch(`${BASE}/api/ia/convocatorias/${convId}/ciudades`, { headers })
+        .then(r => r.json())
+        .then(json => setCiudadesDisp(json.ciudades || []))
+        .catch(() => setCiudadesDisp([]))
+    )
   }, [convId])
 
   async function fetchHistory() {
@@ -905,7 +915,7 @@ export default function AnalisisPerfil() {
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([])
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]); setPocasOpecLocal(false)
 
     // avanzar pasos ~45s cada uno (análisis tarda 5-10 min)
     const stepTimer = setInterval(() => {
@@ -916,6 +926,7 @@ export default function AnalisisPerfil() {
       const fd = new FormData()
       fd.append('convocatoria_id', convId)
       fd.append('perfil_texto', perfilTexto)
+      if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
       if (files.length > 0) fd.append('pdf', files[0])
       const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
@@ -923,6 +934,7 @@ export default function AnalisisPerfil() {
       const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
       setAnalisis({ ...json.analisis, _convNombre: convNombre })
       setOpecsPendientes(json.opecs_pendientes || [])
+      if (json.pocas_opec_local) setPocasOpecLocal(true)
       // guardar localmente como respaldo
       const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
       try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch { /* ignore */ }
@@ -1011,98 +1023,57 @@ export default function AnalisisPerfil() {
             {!analisis && (
               <div className="card p-4 sm:p-5 space-y-4 sm:space-y-5 animate-fade-in">
 
-                {/* Filtros de ubicación */}
-                {(() => {
-                  const norm = s => s?.trim().toLowerCase().replace(/\s+/g, ' ') || ''
-                  const titleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-                  const normLabel = s => titleCase(s.trim().replace(/\s+/g, ' '))
+                {/* 1. Convocatoria */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
+                  <select
+                    value={convId}
+                    onChange={e => setConvId(e.target.value)}
+                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Selecciona una convocatoria</option>
+                    {convocatorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </div>
 
-                  // Deptos: solo convocatorias que tengan departamento
-                  const deptMap = new Map()
-                  convocatorias.forEach(c => {
-                    if (c.departamento) { const k = norm(c.departamento); if (!deptMap.has(k)) deptMap.set(k, normLabel(c.departamento)) }
-                  })
-                  const depts = [...deptMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
-
-                  // Ciudades disponibles según depto seleccionado:
-                  // Si hay depto: ciudades de convs con ese depto O convs con solo ciudad (sin depto)
-                  // Si no hay depto: todas las ciudades
-                  const ciudadMap = new Map()
-                  convocatorias
-                    .filter(c => {
-                      if (!filtroDept) return !!c.ciudad
-                      // tiene el depto seleccionado, O tiene esa ciudad pero sin depto asignado
-                      return norm(c.departamento) === filtroDept || (!c.departamento && c.ciudad)
-                    })
-                    .forEach(c => { if (c.ciudad) { const k = norm(c.ciudad); if (!ciudadMap.has(k)) ciudadMap.set(k, normLabel(c.ciudad)) } })
-                  const ciudades = [...ciudadMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
-
-                  // Convocatorias filtradas:
-                  // - si solo depto: las que tienen ese depto (tengan o no ciudad)
-                  // - si depto + ciudad: las que tienen ese depto Y esa ciudad, O las que solo tienen esa ciudad sin depto
-                  // - si solo ciudad (sin depto elegido): las que tienen esa ciudad
-                  const convsFiltradas = convocatorias.filter(c => {
-                    const matchDept  = !filtroDept  || norm(c.departamento) === filtroDept
-                    const matchCiudad = !filtroCiudad || norm(c.ciudad) === filtroCiudad
-                    if (filtroDept && filtroCiudad) {
-                      return (norm(c.departamento) === filtroDept && norm(c.ciudad) === filtroCiudad)
-                          || (!c.departamento && norm(c.ciudad) === filtroCiudad)
-                    }
-                    return matchDept && matchCiudad
-                  })
-
-                  const hayFiltros = depts.length > 0 || ciudades.length > 0
-                  return (
-                    <>
-                      {hayFiltros && (
-                        <div className="flex gap-2 flex-wrap items-center">
-                          <span className="material-symbols-outlined text-sm text-on-surface-variant flex-shrink-0">location_on</span>
-                          {depts.length > 0 && (
-                            <select
-                              value={filtroDept}
-                              onChange={e => { setFiltroDept(e.target.value); setFiltroCiudad(''); setConvId('') }}
-                              className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                            >
-                              <option value="">Todo Colombia</option>
-                              {depts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                            </select>
-                          )}
-                          {ciudades.length > 0 && (
-                            <select
-                              value={filtroCiudad}
-                              onChange={e => { setFiltroCiudad(e.target.value); setConvId('') }}
-                              className="flex-1 min-w-0 bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                            >
-                              <option value="">{filtroDept ? 'Todas las ciudades' : 'Cualquier ciudad'}</option>
-                              {ciudades.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                            </select>
-                          )}
-                          {(filtroDept || filtroCiudad) && (
-                            <button
-                              onClick={() => { setFiltroDept(''); setFiltroCiudad(''); setConvId('') }}
-                              className="text-xs text-primary font-bold whitespace-nowrap flex items-center gap-0.5 hover:underline"
-                            >
-                              <span className="material-symbols-outlined text-sm">close</span>
-                              Limpiar
-                            </button>
-                          )}
-                        </div>
+                {/* 2. Filtro de ciudad — aparece solo si la convocatoria tiene OPECs con ubicaciones */}
+                {convId && ciudadesDisp.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>location_on</span>
+                        ¿Dónde quieres aplicar?
+                      </label>
+                      {ciudadFiltro && (
+                        <button onClick={() => setCiudadFiltro('')} className="text-[10px] text-primary font-bold flex items-center gap-0.5 hover:underline">
+                          <span className="material-symbols-outlined text-xs">close</span>
+                          Ver todo Colombia
+                        </button>
                       )}
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Convocatoria</label>
-                        <select
-                          value={convId}
-                          onChange={e => setConvId(e.target.value)}
-                          className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                        >
-                          <option value="">Selecciona una convocatoria</option>
-                          {convsFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                      </div>
-                    </>
-                  )
-                })()}
+                    </div>
+                    <select
+                      value={ciudadFiltro}
+                      onChange={e => setCiudadFiltro(e.target.value)}
+                      className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="">Todo Colombia ({opecCount ?? '...'} OPECs)</option>
+                      {ciudadesDisp.map(c => (
+                        <option key={c.ciudad} value={c.ciudad}>
+                          {c.ciudad} — {c.opecs} OPEC{c.opecs !== 1 ? 's' : ''} · {c.vacantes} vacante{c.vacantes !== 1 ? 's' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {ciudadFiltro && (() => {
+                      const info = ciudadesDisp.find(c => c.ciudad === ciudadFiltro)
+                      return info ? (
+                        <p className="text-[11px] text-primary font-semibold flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>adjust</span>
+                          {info.opecs} cargo{info.opecs !== 1 ? 's' : ''} con vacantes en {ciudadFiltro} · {info.vacantes} vacante{info.vacantes !== 1 ? 's' : ''}
+                        </p>
+                      ) : null
+                    })()}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Cuéntanos tu perfil</label>
@@ -1236,6 +1207,23 @@ export default function AnalisisPerfil() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Banner: pocas OPECs locales → sugerir Todo Colombia */}
+            {analisis && pocasOpecLocal && ciudadFiltro && (
+              <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 animate-fade-in">
+                <span className="material-symbols-outlined text-amber-500 flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>travel_explore</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-amber-800">Pocos cargos en {ciudadFiltro}</p>
+                  <p className="text-[11px] text-amber-700 mt-0.5">El análisis se hizo con todos los cargos disponibles. Para ver más oportunidades, analiza sin filtro de ciudad.</p>
+                </div>
+                <button
+                  onClick={() => { setCiudadFiltro(''); resetForm() }}
+                  className="text-[11px] font-bold text-amber-700 bg-amber-200 hover:bg-amber-300 px-2.5 py-1.5 rounded-full flex-shrink-0 transition-all whitespace-nowrap"
+                >
+                  Ver Todo Colombia
+                </button>
               </div>
             )}
 
