@@ -1311,8 +1311,7 @@ export async function analizarPerfilCV(req, res) {
     let pocas_opec_local = false
     if (ciudadKey) {
       const filtrados = allOpec.filter(op =>
-        Array.isArray(op.ubicaciones) &&
-        op.ubicaciones.some(ub => normCiudad(ub.ciudad) === ciudadKey)
+        normUbicaciones(op).some(ub => normCiudad(ub.ciudad) === ciudadKey)
       )
       if (filtrados.length >= 3) {
         todosOpec = filtrados
@@ -1578,28 +1577,35 @@ async function fetchAllOpecs(convocatoriaId) {
   return all
 }
 
+// Normaliza ubicaciones a array uniforme [{ciudad, vacantes}]
+// Soporta: array [{ciudad, vacantes}] (Procuraduría) y objeto {ciudad, departamento} (Territorial)
+function normUbicaciones(opec) {
+  const ub = opec.ubicaciones
+  if (!ub) return []
+  if (Array.isArray(ub)) return ub
+  // objeto simple → un solo elemento; vacantes vienen del campo raíz del OPEC
+  return [{ ciudad: ub.ciudad, departamento: ub.departamento, vacantes: opec.vacantes ?? 0 }]
+}
+
 export async function getCiudadesConvocatoria(req, res) {
   const { id } = req.params
   try {
     const allOpecs = await fetchAllOpecs(parseInt(id))
 
     // Agrupa por clave normalizada; el label es la variante más frecuente
-    const normMap = new Map() // normKey → { label, vacantes, opecs }
+    const normMap = new Map()
     for (const opec of allOpecs) {
-      if (!Array.isArray(opec.ubicaciones)) continue
-      for (const ub of opec.ubicaciones) {
+      for (const ub of normUbicaciones(opec)) {
         const raw = ub.ciudad?.trim()
         if (!raw) continue
         const key = normCiudad(raw)
         if (CIUDAD_BLACKLIST.has(key)) continue
-        if (!normMap.has(key)) {
-          normMap.set(key, { ciudad: raw, _counts: {}, vacantes: 0, opecs: 0 })
-        }
+        if (!normMap.has(key)) normMap.set(key, { ciudad: raw, _counts: {}, vacantes: 0, opecs: 0 })
         const entry = normMap.get(key)
         entry._counts[raw] = (entry._counts[raw] || 0) + 1
         entry.vacantes += ub.vacantes || 0
         entry.opecs += 1
-        // elegir el label más frecuente (con tilde gana si empatan por ser más largo)
+        // elegir el label más frecuente (con tilde gana si empatan)
         const best = Object.entries(entry._counts).sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0][0]
         entry.ciudad = best
       }
