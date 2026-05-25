@@ -826,8 +826,9 @@ export default function AnalisisPerfil() {
 
   const [convocatorias, setConvocatorias] = useState([])
   const [convId, setConvId] = useState(searchParams.get('conv') || '')
-  const [ciudadesDisp, setCiudadesDisp] = useState([])   // [{ciudad, vacantes, opecs}]
-  const [ciudadFiltro, setCiudadFiltro] = useState('')   // ciudad seleccionada
+  const [ciudadesDisp, setCiudadesDisp] = useState([])     // [{ciudad, vacantes, opecs}]
+  const [ciudadFiltro, setCiudadFiltro] = useState('')     // ciudad seleccionada
+  const [ciudadesLoading, setCiudadesLoading] = useState(false)
   const [pocasOpecLocal, setPocasOpecLocal] = useState(false)
   const [perfilTexto, setPerfilTexto] = useState('')
   const [files, setFiles] = useState([])
@@ -855,7 +856,7 @@ export default function AnalisisPerfil() {
   }, [])
 
   useEffect(() => {
-    if (!convId) { setOpecCount(null); setCiudadesDisp([]); setCiudadFiltro(''); return }
+    if (!convId) { setOpecCount(null); setCiudadesDisp([]); setCiudadFiltro(''); setCiudadesLoading(false); return }
     // conteo total
     supabase
       .from('opec_maestro')
@@ -863,13 +864,15 @@ export default function AnalisisPerfil() {
       .eq('convocatoria_id', parseInt(convId))
       .eq('is_active', true)
       .then(({ count }) => setOpecCount(count ?? 0))
-    // ciudades disponibles desde OPECs
+    // ciudades disponibles desde OPECs — mostrar sección inmediatamente
     setCiudadFiltro('')
+    setCiudadesDisp([])
+    setCiudadesLoading(true)
     authHeaders().then(headers =>
       fetch(`${BASE}/api/ia/convocatorias/${convId}/ciudades`, { headers })
         .then(r => r.json())
-        .then(json => setCiudadesDisp(json.ciudades || []))
-        .catch(() => setCiudadesDisp([]))
+        .then(json => { setCiudadesDisp(json.ciudades || []); setCiudadesLoading(false) })
+        .catch(() => { setCiudadesDisp([]); setCiudadesLoading(false) })
     )
   }, [convId])
 
@@ -1037,8 +1040,8 @@ export default function AnalisisPerfil() {
                   </select>
                 </div>
 
-                {/* 2. Filtro de ciudad — aparece solo si la convocatoria tiene OPECs con ubicaciones */}
-                {convId && ciudadesDisp.length > 0 && (
+                {/* 2. Filtro de ciudad — aparece inmediatamente al seleccionar convocatoria */}
+                {convId && (ciudadesLoading || ciudadesDisp.length > 0) && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
@@ -1052,18 +1055,25 @@ export default function AnalisisPerfil() {
                         </button>
                       )}
                     </div>
-                    <select
-                      value={ciudadFiltro}
-                      onChange={e => setCiudadFiltro(e.target.value)}
-                      className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      <option value="">Todo Colombia ({opecCount ?? '...'} OPECs)</option>
-                      {ciudadesDisp.map(c => (
-                        <option key={c.ciudad} value={c.ciudad}>
-                          {c.ciudad} — {c.opecs} OPEC{c.opecs !== 1 ? 's' : ''} · {c.vacantes} vacante{c.vacantes !== 1 ? 's' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    {ciudadesLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant p-3 bg-surface-container-low rounded-xl">
+                        <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
+                        Cargando ciudades disponibles...
+                      </div>
+                    ) : (
+                      <select
+                        value={ciudadFiltro}
+                        onChange={e => setCiudadFiltro(e.target.value)}
+                        className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Todo Colombia ({opecCount ?? '...'} OPECs)</option>
+                        {ciudadesDisp.map(c => (
+                          <option key={c.ciudad} value={c.ciudad}>
+                            {c.ciudad} — {c.opecs} OPEC{c.opecs !== 1 ? 's' : ''} · {c.vacantes} vacante{c.vacantes !== 1 ? 's' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {ciudadFiltro && (() => {
                       const info = ciudadesDisp.find(c => c.ciudad === ciudadFiltro)
                       return info ? (
