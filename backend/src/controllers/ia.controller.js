@@ -1205,25 +1205,34 @@ INSTRUCCIONES ESPECÍFICAS:
 }
 
 // Construye texto descriptivo de OPECs para enviar a DeepSeek
-function buildOpecTexto(lista) {
-  return lista.map((c) => [
-    `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
-    `denominacion: ${c.denominacion || ''}`,
-    `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes: ${c.vacantes || 1}`,
-    `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
-    `area_estudio: ${c.area_estudio || ''} | area_funcional: ${c.area_funcional || ''}`,
-    `proposito: ${c.proposito || ''}`,
-    `educacion_requerida: ${c.estudio_texto || ''}`,
-    `requisito_academico: ${c.req_academico || ''}`,
-    `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
-    `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
-    `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
-    `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
-    `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
-    `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
-    `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
-    `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
-  ].filter(Boolean).join('\n')).join('\n---\n')
+// ciudadKey: si hay filtro de ciudad, agrega vacantes locales por cargo
+function buildOpecTexto(lista, ciudadKey = '') {
+  return lista.map((c) => {
+    // Vacantes en la ciudad filtrada (si aplica)
+    let vacantesLocal = ''
+    if (ciudadKey && Array.isArray(c._ubNorm)) {
+      const ub = c._ubNorm.find(u => normCiudad(u.ciudad) === ciudadKey)
+      if (ub) vacantesLocal = ` | vacantes_en_ciudad_filtrada: ${ub.vacantes}`
+    }
+    return [
+      `codigo_opec: ${c.numero_opec || c.num_convocatoria || c.id}`,
+      `denominacion: ${c.denominacion || ''}`,
+      `nivel: ${c.nivel || ''} | grado: ${c.grado || ''} | salario: ${c.salario || ''} | vacantes_total: ${c.vacantes || 1}${vacantesLocal}`,
+      `dependencia: ${c.dependencia || ''} | proceso: ${c.proceso || ''}`,
+      `area_estudio: ${c.area_estudio || ''} | area_funcional: ${c.area_funcional || ''}`,
+      `proposito: ${c.proposito || ''}`,
+      `educacion_requerida: ${c.estudio_texto || ''}`,
+      `requisito_academico: ${c.req_academico || ''}`,
+      `profesiones_admitidas: ${Array.isArray(c.profesiones) ? c.profesiones.join(', ') : (c.profesiones || '')}`,
+      `nucleos_basicos: ${Array.isArray(c.nucleos_conocimiento) ? c.nucleos_conocimiento.join(', ') : (c.nucleos_conocimiento || '')}`,
+      `requiere_posgrado: ${c.requiere_posgrado ? 'Si' : 'No'} | tipo: ${c.tipo_posgrado || ''} | area: ${c.area_posgrado || ''}`,
+      `requiere_tarjeta: ${c.requiere_tarjeta ? 'Si' : 'No'}`,
+      `experiencia_requerida: ${c.exp_texto || ''} | anios: ${c.exp_anios || ''} | tipo: ${c.tipo_experiencia || ''}`,
+      `funciones: ${Array.isArray(c.funciones) ? c.funciones.join(' | ') : (c.funciones || '')}`,
+      `conocimientos: ${Array.isArray(c.conocimientos) ? c.conocimientos.join(', ') : (c.conocimientos || '')}`,
+      `competencias: ${JSON.stringify(c.competencias_transversales || c.competencias_perfil || {})}`,
+    ].filter(Boolean).join('\n')
+  }).join('\n---\n')
 }
 
 // Extrae OPECs completas de texto aunque el JSON esté truncado
@@ -1321,6 +1330,9 @@ export async function analizarPerfilCV(req, res) {
       }
     }
 
+    // Pre-calcular ubicaciones normalizadas en cada OPEC (para buildOpecTexto)
+    todosOpec = todosOpec.map(op => ({ ...op, _ubNorm: normUbicaciones(op) }))
+
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
@@ -1354,7 +1366,10 @@ PASO 4 - Identifica hasta 3 cargos que parecen afines pero deben descartarse (ni
 IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
 Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6","id7","id8","id9"], "descartados": ["id1",...]}`
 
-    const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
+    const ciudadContexto = ciudadKey
+      ? `\nUBICACION DE INTERES DEL CANDIDATO: ${ciudad_filtro} (los cargos listados tienen vacantes en esta ciudad)\n`
+      : ''
+    const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
     let top10Ids = []
     let descartadosIds = []
@@ -1431,7 +1446,10 @@ REGLAS: No infles porcentajes. Si no cumple formacion minima no recomiendes. Cal
 Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
 {"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}],"opec_mas_recomendada":{"codigo_opec":"","denominacion":"","afinidad_porcentaje":0,"razon_principal":"","accion_prioritaria_antes_de_postularse":""},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
 
-    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(batch1)}${descartadosTxt}\n\nAnaliza estos ${batch1.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON.`
+    const ciudadLine = ciudadKey
+      ? `UBICACION DE INTERES: ${ciudad_filtro} — el candidato busca cargos con vacantes en esta ciudad. Menciona las vacantes locales en la guia al usuario cuando estén disponibles.\n\n`
+      : ''
+    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(batch1, ciudadKey)}${descartadosTxt}\n\nAnaliza estos ${batch1.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON.`
 
     let opecsData = null
     try {
@@ -1471,7 +1489,7 @@ const SYSTEM_PROMPT_MAS_OPECS = `Eres un experto en seleccion de personal del se
 
 export async function masOpecs(req, res) {
   try {
-    const { convocatoria_id, opecs_pendientes_ids, perfil_candidato } = req.body
+    const { convocatoria_id, opecs_pendientes_ids, perfil_candidato, ciudad_filtro: ciudadFiltroMas } = req.body
     if (!convocatoria_id || !Array.isArray(opecs_pendientes_ids) || !opecs_pendientes_ids.length) {
       return res.status(400).json({ error: 'Datos incompletos.' })
     }
@@ -1507,7 +1525,12 @@ export async function masOpecs(req, res) {
       `Nucleos basicos: ${(p.posibles_nucleos_basicos_conocimiento || []).join(', ')}`,
     ].join('\n')
 
-    const prompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nPERFIL DEL CANDIDATO (extraido del analisis previo):\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(opecs)}\n\nAnaliza estos ${opecs.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
+    const ciudadKeyMas = normCiudad(ciudadFiltroMas || '')
+    const opecsMasNorm = opecs.map(op => ({ ...op, _ubNorm: normUbicaciones(op) }))
+    const ciudadLineMas = ciudadKeyMas
+      ? `UBICACION DE INTERES: ${ciudadFiltroMas} — menciona vacantes locales en la guia al usuario.\n\n`
+      : ''
+    const prompt = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${ciudadLineMas}PERFIL DEL CANDIDATO (extraido del analisis previo):\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(opecsMasNorm, ciudadKeyMas)}\n\nAnaliza estos ${opecs.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON con el array ranking_opec_recomendadas. Sin texto extra.`
 
     let result = null
     try {

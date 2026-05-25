@@ -969,6 +969,7 @@ export default function AnalisisPerfil() {
           convocatoria_id: convId,
           opecs_pendientes_ids: opecsPendientes,
           perfil_candidato: analisis?.perfil_candidato || null,
+          ciudad_filtro: ciudadFiltro || null,
         }),
       })
       const json = await res.json()
