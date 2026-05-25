@@ -1298,29 +1298,25 @@ export async function analizarPerfilCV(req, res) {
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
 
-    const [{ data: allOpec }, { data: conv }] = await Promise.all([
-      supabase.from('opec_maestro').select('*')
-        .eq('convocatoria_id', parseInt(convocatoria_id))
-        .eq('is_active', true)
-        .order('num_convocatoria'),
-      supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle(),
+    const [allOpec, conv] = await Promise.all([
+      fetchAllOpecs(parseInt(convocatoria_id)),
+      supabase.from('convocatorias').select('nombre, entidad').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
     ])
 
     if (!allOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
 
-    // Filtrar por ciudad si se especificó
-    const ciudadNorm = ciudad_filtro?.trim().toLowerCase()
+    // Filtrar por ciudad si se especificó (comparación normalizada sin tildes)
+    const ciudadKey = normCiudad(ciudad_filtro || '')
     let todosOpec = allOpec
     let pocas_opec_local = false
-    if (ciudadNorm) {
+    if (ciudadKey) {
       const filtrados = allOpec.filter(op =>
         Array.isArray(op.ubicaciones) &&
-        op.ubicaciones.some(ub => ub.ciudad?.toLowerCase() === ciudadNorm)
+        op.ubicaciones.some(ub => normCiudad(ub.ciudad) === ciudadKey)
       )
       if (filtrados.length >= 3) {
         todosOpec = filtrados
       } else {
-        // muy pocas OPECs locales → usar todas pero avisar
         pocas_opec_local = true
         console.log(`[IA] ciudad_filtro="${ciudad_filtro}" → solo ${filtrados.length} OPECs, usando todas (${allOpec.length})`)
       }
@@ -1552,29 +1548,71 @@ export async function listConvocatorias(req, res) {
   return res.json({ convocatorias: data || [] })
 }
 
+// Normaliza para agrupar: sin tildes, minúscula, sin espacios extra
+const normCiudad = s => s?.trim().toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/\s+/g, ' ') || ''
+
+// Lista de valores que no son ciudades reales (basura del import)
+const CIUDAD_BLACKLIST = new Set(['cargos', 'cargo', 'todos', 'nacional', 'colombia', 'n/a', 'ninguno', 'na'])
+
+// Fetch paginado de OPECs — Supabase limita 1000 por request
+async function fetchAllOpecs(convocatoriaId) {
+  const PAGE = 1000
+  let offset = 0
+  const all = []
+  while (true) {
+    const { data, error } = await supabase
+      .from('opec_maestro')
+      .select('*')
+      .eq('convocatoria_id', convocatoriaId)
+      .eq('is_active', true)
+      .order('num_convocatoria')
+      .range(offset, offset + PAGE - 1)
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+    all.push(...data)
+    if (data.length < PAGE) break
+    offset += PAGE
+  }
+  return all
+}
+
 export async function getCiudadesConvocatoria(req, res) {
   const { id } = req.params
-  const { data, error } = await supabase
-    .from('opec_maestro')
-    .select('ubicaciones')
-    .eq('convocatoria_id', parseInt(id))
-    .eq('is_active', true)
-    .not('ubicaciones', 'is', null)
-  if (error) return res.status(500).json({ error: error.message })
+  try {
+    const allOpecs = await fetchAllOpecs(parseInt(id))
 
-  const ciudadMap = new Map()
-  for (const opec of data || []) {
-    if (!Array.isArray(opec.ubicaciones)) continue
-    for (const ub of opec.ubicaciones) {
-      if (!ub.ciudad) continue
-      const entry = ciudadMap.get(ub.ciudad) || { ciudad: ub.ciudad, vacantes: 0, opecs: 0 }
-      entry.vacantes += ub.vacantes || 0
-      entry.opecs += 1
-      ciudadMap.set(ub.ciudad, entry)
+    // Agrupa por clave normalizada; el label es la variante más frecuente
+    const normMap = new Map() // normKey → { label, vacantes, opecs }
+    for (const opec of allOpecs) {
+      if (!Array.isArray(opec.ubicaciones)) continue
+      for (const ub of opec.ubicaciones) {
+        const raw = ub.ciudad?.trim()
+        if (!raw) continue
+        const key = normCiudad(raw)
+        if (CIUDAD_BLACKLIST.has(key)) continue
+        if (!normMap.has(key)) {
+          normMap.set(key, { ciudad: raw, _counts: {}, vacantes: 0, opecs: 0 })
+        }
+        const entry = normMap.get(key)
+        entry._counts[raw] = (entry._counts[raw] || 0) + 1
+        entry.vacantes += ub.vacantes || 0
+        entry.opecs += 1
+        // elegir el label más frecuente (con tilde gana si empatan por ser más largo)
+        const best = Object.entries(entry._counts).sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0][0]
+        entry.ciudad = best
+      }
     }
+
+    const ciudades = [...normMap.values()]
+      .map(({ ciudad, vacantes, opecs }) => ({ ciudad, vacantes, opecs }))
+      .sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'))
+
+    return res.json({ ciudades, total_opecs: allOpecs.length })
+  } catch (err) {
+    return res.status(500).json({ error: err.message })
   }
-  const ciudades = [...ciudadMap.values()].sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'))
-  return res.json({ ciudades, total_opecs: data?.length || 0 })
 }
 
 export async function createConvocatoria(req, res) {
