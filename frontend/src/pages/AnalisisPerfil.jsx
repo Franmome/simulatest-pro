@@ -914,7 +914,7 @@ export default function AnalisisPerfil() {
   const [plataformaNombre, setPlataformaNombre] = useState(null)
 
   useEffect(() => {
-    supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad').eq('is_active', true).order('nombre')
+    supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad, plataforma_nombre, plataforma_url').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
     fetchHistory()
     try {
