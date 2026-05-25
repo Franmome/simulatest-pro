@@ -1578,12 +1578,26 @@ async function fetchAllOpecs(convocatoriaId) {
 }
 
 // Normaliza ubicaciones a array uniforme [{ciudad, vacantes}]
-// Soporta: array [{ciudad, vacantes}] (Procuraduría) y objeto {ciudad, departamento} (Territorial)
+// Soporta tres formatos encontrados en los datos:
+//   1. Array [{ciudad, vacantes}]      — Procuraduría (import correcto)
+//   2. Array [{ciudad, vacantes:0}]    — Procuraduría OPECs 378/384 (import roto)
+//   3. Objeto {tipo, ciudad, depto}    — Territorial 12 (vacantes en raíz del OPEC)
 function normUbicaciones(opec) {
   const ub = opec.ubicaciones
   if (!ub) return []
-  if (Array.isArray(ub)) return ub
-  // objeto simple → un solo elemento; vacantes vienen del campo raíz del OPEC
+
+  if (Array.isArray(ub)) {
+    const sumaUb = ub.reduce((s, e) => s + (e.vacantes || 0), 0)
+    const raiz   = opec.vacantes || 0
+    // Import roto: todas las ubicaciones tienen 0 pero el OPEC tiene vacantes reales
+    if (sumaUb === 0 && raiz > 0 && ub.length > 0) {
+      const porCiudad = Math.max(1, Math.round(raiz / ub.length))
+      return ub.map(e => ({ ...e, vacantes: porCiudad }))
+    }
+    return ub
+  }
+
+  // Objeto simple (Territorial 12) → vacantes del campo raíz del OPEC
   return [{ ciudad: ub.ciudad, departamento: ub.departamento, vacantes: opec.vacantes ?? 0 }]
 }
 
@@ -1613,7 +1627,6 @@ export async function getCiudadesConvocatoria(req, res) {
 
     const ciudades = [...normMap.values()]
       .map(({ ciudad, vacantes, opecs }) => ({ ciudad, vacantes, opecs }))
-      .filter(c => c.vacantes > 0)   // ocultar ciudades sin vacantes asignadas
       .sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'))
 
     return res.json({ ciudades, total_opecs: allOpecs.length })
