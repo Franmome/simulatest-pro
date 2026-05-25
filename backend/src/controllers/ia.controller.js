@@ -1317,7 +1317,10 @@ export async function analizarPerfilCV(req, res) {
       `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}a ${c.tipo_experiencia || ''}|posgrado:${c.requiere_posgrado ? 'si' : 'no'}|tarjeta:${c.requiere_tarjeta ? 'si' : 'no'}|${c.req_academico || ''}`
     ).join('\n')
 
-    const perfil_base = ((perfil_texto || '') + ' ' + cvText).trim()
+    // Si hay PDF, es la fuente principal; el textarea es complemento opcional
+    const perfil_base = cvText
+      ? (perfil_texto?.trim() ? `INFO ADICIONAL DEL CANDIDATO:\n${perfil_texto.trim()}\n\nHOJA DE VIDA (PDF):\n${cvText}` : cvText)
+      : (perfil_texto || '').trim()
 
     const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 10 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
 
@@ -1367,7 +1370,14 @@ Lee el CV/perfil del candidato y extrae su informacion profesional estructurada.
 Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
 {"estado_analisis":"","observacion_general":"","perfil_candidato":{"nombre":"","profesion_principal":"","nivel_formacion":"","titulos_identificados":[],"posgrados_identificados":[],"tarjeta_profesional":{"estado":"","detalle":""},"experiencia_total_estimada_meses":0,"experiencia_profesional_estimada_meses":0,"experiencia_relacionada_estimada_meses":0,"experiencia_sector_publico_meses":0,"experiencia_sector_privado_meses":0,"areas_experiencia":[],"funciones_principales_identificadas":[],"categorias_funcionales_perfil":[],"competencias_clave":[],"posibles_nucleos_basicos_conocimiento":[],"alertas_validacion":[]},"diagnostico_general":{"nivel_competitividad":"","resumen":"","fortalezas_principales":[],"debilidades_principales":[],"tipo_de_cargos_mas_convenientes":[],"tipo_de_cargos_no_recomendados":[]},"recomendaciones_para_mejorar_hoja_de_vida":{"perfil_profesional":[],"experiencia_laboral":[],"funciones":[],"certificaciones":[],"palabras_clave":[]},"acciones_prioritarias":[{"prioridad":1,"accion":"","motivo":""}]}`
 
-    const promptPerfil = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\nHOJA DE VIDA / PERFIL DEL CANDIDATO:\n${perfil_texto ? perfil_texto + '\n' : ''}${cvText ? '\nTEXTO EXTRAIDO DEL PDF:\n' + cvText : ''}\n\nExtrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.`
+    const promptPerfil = [
+      `CONVOCATORIA: ${convNombre} - ${entidadNombre}`,
+      '',
+      cvText ? `HOJA DE VIDA (TEXTO EXTRAIDO DEL PDF):\n${cvText}` : '',
+      perfil_texto?.trim() ? `INFO ADICIONAL ESCRITA POR EL CANDIDATO:\n${perfil_texto.trim()}` : '',
+      '',
+      'Extrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.',
+    ].filter(Boolean).join('\n')
 
     let perfilData = null
     try {
