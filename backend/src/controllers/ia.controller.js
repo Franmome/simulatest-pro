@@ -1336,14 +1336,7 @@ export async function analizarPerfilCV(req, res) {
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
-    // ── Parámetros del torneo de pre-screening ────────────────────────────────────
-    // El pool se divide en grupos; cada grupo elige sus mejores candidatos en
-    // paralelo. Los ganadores de todos los grupos compiten en la ronda final.
-    const BATCH_SIZE    = 120  // OPECs por grupo (ajusta según tamaño del pool)
-    const TOP_PER_BATCH = 5    // Semifinalistas por grupo
-    const FINAL_TOP     = 15   // Top final que pasa a análisis detallado
-
-    // Línea compacta por OPEC para el pre-screening
+    // Línea compacta por OPEC para el pre-screening (cabe en 64K tokens de entrada)
     const compactLine = c => {
       const ciudades = (c._ubNorm || []).map(u => u.ciudad).filter(Boolean).join('/')
       return `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}m|pos:${c.requiere_posgrado ? 'S' : 'N'}|tar:${c.requiere_tarjeta ? 'S' : 'N'}|loc:${ciudades || 'Nacional'}`
@@ -1358,19 +1351,16 @@ export async function analizarPerfilCV(req, res) {
       ? `\nUBICACION DE INTERES DEL CANDIDATO: ${ciudad_filtro} (los cargos listados tienen vacantes en esta ciudad)\n`
       : ''
 
-    // ── Sistema de prompts ────────────────────────────────────────────────────────
+    // ── Prompts ───────────────────────────────────────────────────────────────────
     const NIVEL_REGLA = `REGLA DE NIVEL (obligatoria):
 - ASISTENCIAL: bachillerato | TECNICO: tecnico/tecnologo | PROFESIONAL: universitario | ASESOR/DIRECTIVO: universitario + experiencia directiva
 Nunca selecciones un cargo de nivel superior al del candidato.`
 
-    const SP_BATCH = `Eres un experto en seleccion de personal del sector publico colombiano. Analiza estos cargos OPEC contra el perfil del candidato y selecciona los ${TOP_PER_BATCH} MAS COMPATIBLES en area, funciones y experiencia.
+    const SP_PASS1 = `Eres un experto en seleccion de personal del sector publico colombiano. Lee TODOS los cargos OPEC y selecciona los 25 MAS COMPATIBLES con el perfil del candidato en area de conocimiento, funciones, nivel y experiencia requerida.
 ${NIVEL_REGLA}
-La primera columna de cada fila es el ID unico del cargo. Devuelve UNICAMENTE este JSON: {"top": ["id1","id2","id3","id4","id5"]}`
-
-    const SP_FINAL_PASS1 = `Eres un experto en seleccion de personal del sector publico colombiano. Del pool de semifinalistas selecciona los ${FINAL_TOP} MAS COMPATIBLES para el candidato.
-${NIVEL_REGLA}
-Identifica ademas hasta 3 cargos que parecen afines pero deben descartarse (requisito incumplible).
-La primera columna es el ID unico. Devuelve UNICAMENTE este JSON: {"top${FINAL_TOP}": ["id1",...], "descartados": ["id1",...]}`
+Identifica ademas hasta 5 cargos que parecen afines pero tienen un requisito incumplible (descartados).
+La primera columna de cada linea es el ID unico del cargo.
+Devuelve UNICAMENTE este JSON sin texto adicional: {"top25": ["id1","id2",...], "descartados": ["id1",...]}`
 
     const SP_PERFIL = `Eres un experto en analisis de hojas de vida del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia), Ley 909 de 2004, clasificacion de empleos, tipos de experiencia y requisitos academicos.
 
@@ -1387,69 +1377,43 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       'Extrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.',
     ].filter(Boolean).join('\n')
 
-    // ── Mezclar aleatoriamente antes de agrupar ───────────────────────────────────
-    // Sin shuffle los grupos quedan agrupados por entidad/departamento (orden de BD)
-    // y el mismo departamento domina varios grupos → semifinalistas sesgados geográficamente.
+    // Mezclar para mitigar "lost in the middle" (ítems en el centro reciben menos atención)
     const shuffled = [...todosOpec]
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
     }
+    console.log(`[IA] pass1: leyendo las ${shuffled.length} OPECs completas en un solo llamado`)
 
-    // ── Dividir en grupos según tamaño del pool ───────────────────────────────────
-    const batches = []
-    for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
-      batches.push(shuffled.slice(i, i + BATCH_SIZE))
-    }
-    console.log(`[IA] torneo: ${shuffled.length} OPECs → ${batches.length} grupos de ~${BATCH_SIZE} (mezclados)`)
-
-    // ── Lanzar pass2a (perfil) y TODOS los grupos en paralelo ─────────────────────
-    const batchPromises = batches.map((batch, i) =>
-      deepseekAnalisisPerfil(SP_BATCH,
-        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nCARGOS (${batch.length}):\n${batch.map(compactLine).join('\n')}`,
-        256
-      ).then(r => {
-        const m = r.texto.match(/\{[\s\S]*\}/)
-        if (!m) return []
-        const p = JSON.parse(m[0])
-        return Array.isArray(p.top) ? p.top.map(String) : []
-      }).catch(e => { console.error(`[IA] batch${i} error:`, e.message); return [] })
-    )
-
-    const [rPerfil, ...batchResults] = await Promise.all([
-      deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192).catch(e => { console.error('[IA] pass2a error:', e.message); return null }),
-      ...batchPromises,
+    // ── Lanzar pass2a (perfil) y pass1 (todas las OPECs) en paralelo ──────────────
+    const [rPerfil, rPass1] = await Promise.all([
+      deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
+        .catch(e => { console.error('[IA] pass2a error:', e.message); return null }),
+      deepseekAnalisisPerfil(SP_PASS1,
+        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nCARGOS (${shuffled.length}) — formato ID|cargo|nivel grado|area|exp|posgrado|tarjeta|ciudades:\n${shuffled.map(compactLine).join('\n')}`,
+        400
+      ).catch(e => { console.error('[IA] pass1 error:', e.message); return null }),
     ])
 
-    // ── Recoger semifinalistas únicos ─────────────────────────────────────────────
-    const semifinalistIds = [...new Set(batchResults.flat())]
-    const semifinalists   = todosOpec.filter(c => semifinalistIds.includes(String(c.id)))
-    console.log(`[IA] semifinalistas: ${semifinalists.length} (de ${batches.length} grupos × ${TOP_PER_BATCH})`)
-
-    // Si ningún batch devolvió IDs (todos fallaron), usar los primeros como fallback
-    const poolFinal = semifinalists.length > 0 ? semifinalists : todosOpec.slice(0, BATCH_SIZE)
-
-    // ── Ronda final: elegir top 15 del pool de semifinalistas ─────────────────────
+    // ── Parsear top 25 ────────────────────────────────────────────────────────────
     let top10Ids = []
     let descartadosIds = []
-    try {
-      const rFinal = await deepseekAnalisisPerfil(SP_FINAL_PASS1,
-        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nSEMIFINALISTAS (${poolFinal.length} cargos) — formato: ID|cargo|nivel grado|area|exp|posgrado|tarjeta:\n${poolFinal.map(compactLine).join('\n')}`
-      )
-      console.log('[IA] final pass1 tokensOut:', rFinal.tokensOut)
-      const m = rFinal.texto.match(/\{[\s\S]*\}/)
-      if (m) {
-        const parsed = JSON.parse(m[0])
-        // acepta top15, top10, o top (según lo que devuelva DeepSeek)
-        top10Ids = (parsed[`top${FINAL_TOP}`] || parsed.top15 || parsed.top10 || parsed.top || []).map(String)
-        descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
+    if (rPass1) {
+      try {
+        const m = rPass1.texto.match(/\{[\s\S]*\}/)
+        if (m) {
+          const parsed = JSON.parse(m[0])
+          top10Ids = (parsed.top25 || parsed.top15 || parsed.top10 || parsed.top || []).map(String)
+          descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
+        }
+        console.log(`[IA] pass1 seleccionó ${top10Ids.length} OPECs de ${shuffled.length} leídas`)
+      } catch (e) {
+        console.error('[IA] pass1 parse error:', e.message)
       }
-    } catch (e) {
-      console.error('[IA] final pass1 error:', e.message)
     }
 
     if (!top10Ids.length) {
-      top10Ids = poolFinal.slice(0, FINAL_TOP).map(c => String(c.id))
+      top10Ids = shuffled.slice(0, 25).map(c => String(c.id))
     }
 
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
