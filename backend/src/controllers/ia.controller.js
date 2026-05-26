@@ -1344,8 +1344,10 @@ export async function analizarPerfilCV(req, res) {
     const FINAL_TOP     = 15   // Top final que pasa a análisis detallado
 
     // Línea compacta por OPEC para el pre-screening
-    const compactLine = c =>
-      `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}m|pos:${c.requiere_posgrado ? 'S' : 'N'}|tar:${c.requiere_tarjeta ? 'S' : 'N'}`
+    const compactLine = c => {
+      const ciudades = (c._ubNorm || []).map(u => u.ciudad).filter(Boolean).join('/')
+      return `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}m|pos:${c.requiere_posgrado ? 'S' : 'N'}|tar:${c.requiere_tarjeta ? 'S' : 'N'}|loc:${ciudades || 'Nacional'}`
+    }
 
     // Si hay PDF, es la fuente principal; el textarea es complemento opcional
     const perfil_base = cvText
@@ -1385,12 +1387,21 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       'Extrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.',
     ].filter(Boolean).join('\n')
 
+    // ── Mezclar aleatoriamente antes de agrupar ───────────────────────────────────
+    // Sin shuffle los grupos quedan agrupados por entidad/departamento (orden de BD)
+    // y el mismo departamento domina varios grupos → semifinalistas sesgados geográficamente.
+    const shuffled = [...todosOpec]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+
     // ── Dividir en grupos según tamaño del pool ───────────────────────────────────
     const batches = []
-    for (let i = 0; i < todosOpec.length; i += BATCH_SIZE) {
-      batches.push(todosOpec.slice(i, i + BATCH_SIZE))
+    for (let i = 0; i < shuffled.length; i += BATCH_SIZE) {
+      batches.push(shuffled.slice(i, i + BATCH_SIZE))
     }
-    console.log(`[IA] torneo: ${todosOpec.length} OPECs → ${batches.length} grupos de ~${BATCH_SIZE}`)
+    console.log(`[IA] torneo: ${shuffled.length} OPECs → ${batches.length} grupos de ~${BATCH_SIZE} (mezclados)`)
 
     // ── Lanzar pass2a (perfil) y TODOS los grupos en paralelo ─────────────────────
     const batchPromises = batches.map((batch, i) =>
