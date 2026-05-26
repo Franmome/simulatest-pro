@@ -1336,62 +1336,40 @@ export async function analizarPerfilCV(req, res) {
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
-    // ── PASO 1: Pre-screening — DeepSeek lee TODOS los cargos y elige los top 5 ──────
-    // Usar c.id como identificador único (num_convocatoria puede ser null en OPECs SIMO)
-    const compactCargos = todosOpec.map(c =>
-      `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}a ${c.tipo_experiencia || ''}|posgrado:${c.requiere_posgrado ? 'si' : 'no'}|tarjeta:${c.requiere_tarjeta ? 'si' : 'no'}|${c.req_academico || ''}`
-    ).join('\n')
+    // ── Parámetros del torneo de pre-screening ────────────────────────────────────
+    // El pool se divide en grupos; cada grupo elige sus mejores candidatos en
+    // paralelo. Los ganadores de todos los grupos compiten en la ronda final.
+    const BATCH_SIZE    = 120  // OPECs por grupo (ajusta según tamaño del pool)
+    const TOP_PER_BATCH = 5    // Semifinalistas por grupo
+    const FINAL_TOP     = 15   // Top final que pasa a análisis detallado
+
+    // Línea compacta por OPEC para el pre-screening
+    const compactLine = c =>
+      `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}m|pos:${c.requiere_posgrado ? 'S' : 'N'}|tar:${c.requiere_tarjeta ? 'S' : 'N'}`
 
     // Si hay PDF, es la fuente principal; el textarea es complemento opcional
     const perfil_base = cvText
       ? (perfil_texto?.trim() ? `INFO ADICIONAL DEL CANDIDATO:\n${perfil_texto.trim()}\n\nHOJA DE VIDA (PDF):\n${cvText}` : cvText)
       : (perfil_texto || '').trim()
 
-    const pass1System = `Eres un experto en seleccion de personal del sector publico colombiano. Tu tarea es identificar los 10 cargos MAS COMPATIBLES para el candidato, aplicando estrictamente las reglas del escalafon de la funcion publica colombiana.
-
-REGLA CRITICA DE NIVEL (obligatoria, no negociable):
-- Nivel ASISTENCIAL: solo requiere bachillerato o menos
-- Nivel TECNICO: requiere titulo de formacion tecnica o tecnologica (SENA u otro)
-- Nivel PROFESIONAL: requiere titulo universitario (pregrado) - MINIMO
-- Nivel ASESOR: requiere titulo universitario + posgrado o amplia experiencia profesional
-- Nivel DIRECTIVO/EJECUTIVO: requiere titulo universitario + experiencia directiva
-
-PASO 1 - Determina el nivel de formacion del candidato leyendo su perfil.
-PASO 2 - Filtra UNICAMENTE los cargos cuyo nivel sea IGUAL O INFERIOR al nivel del candidato. NUNCA selecciones un cargo de nivel superior al que el candidato puede acceder.
-  Ejemplo: candidato TECNICO → solo puede optar a cargos TECNICO o ASISTENCIAL, JAMAS profesional/asesor/directivo.
-  Ejemplo: candidato PROFESIONAL universitario → puede optar a PROFESIONAL, TECNICO o ASISTENCIAL.
-PASO 3 - Entre los cargos de nivel compatible, elige los 9 con mayor afinidad de area, funciones y experiencia. Deben ser 9 distintos.
-PASO 4 - Identifica hasta 3 cargos que parecen afines pero deben descartarse (nivel incompatible u otro motivo).
-
-IMPORTANTE: La primera columna de cada cargo es su ID unico interno. Devuelve exactamente esos IDs numericos.
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top10": ["id1","id2","id3","id4","id5","id6","id7","id8","id9"], "descartados": ["id1",...]}`
-
     const ciudadContexto = ciudadKey
       ? `\nUBICACION DE INTERES DEL CANDIDATO: ${ciudad_filtro} (los cargos listados tienen vacantes en esta ciudad)\n`
       : ''
-    const pass1Prompt = `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nLISTA COMPLETA DE CARGOS (${todosOpec.length} cargos) — formato: ID|cargo|nivel grado|area|experiencia|posgrado|tarjeta|req_academico:\n${compactCargos}`
 
-    let top10Ids = []
-    let descartadosIds = []
-    try {
-      const pass1 = await deepseekAnalisisPerfil(pass1System, pass1Prompt)
-      console.log('[IA] pass1 tokensOut:', pass1.tokensOut, '| responseLen:', pass1.texto.length)
-      const m = pass1.texto.match(/\{[\s\S]*\}/)
-      if (m) {
-        const parsed = JSON.parse(m[0])
-        top10Ids = Array.isArray(parsed.top10) ? parsed.top10.map(String) : []
-        descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
-      }
-    } catch (e) {
-      console.error('[IA] pass1 parse error:', e.message)
-    }
+    // ── Sistema de prompts ────────────────────────────────────────────────────────
+    const NIVEL_REGLA = `REGLA DE NIVEL (obligatoria):
+- ASISTENCIAL: bachillerato | TECNICO: tecnico/tecnologo | PROFESIONAL: universitario | ASESOR/DIRECTIVO: universitario + experiencia directiva
+Nunca selecciones un cargo de nivel superior al del candidato.`
 
-    // Si el paso 1 no devolvio IDs validos, tomar los primeros 9 por ID
-    if (!top10Ids.length) {
-      top10Ids = todosOpec.slice(0, 9).map(c => String(c.id))
-    }
+    const SP_BATCH = `Eres un experto en seleccion de personal del sector publico colombiano. Analiza estos cargos OPEC contra el perfil del candidato y selecciona los ${TOP_PER_BATCH} MAS COMPATIBLES en area, funciones y experiencia.
+${NIVEL_REGLA}
+La primera columna de cada fila es el ID unico del cargo. Devuelve UNICAMENTE este JSON: {"top": ["id1","id2","id3","id4","id5"]}`
 
-    // ── PASO 2a: Extracción del perfil del candidato (sin OPECs — siempre cabe en 8192) ──
+    const SP_FINAL_PASS1 = `Eres un experto en seleccion de personal del sector publico colombiano. Del pool de semifinalistas selecciona los ${FINAL_TOP} MAS COMPATIBLES para el candidato.
+${NIVEL_REGLA}
+Identifica ademas hasta 3 cargos que parecen afines pero deben descartarse (requisito incumplible).
+La primera columna es el ID unico. Devuelve UNICAMENTE este JSON: {"top${FINAL_TOP}": ["id1",...], "descartados": ["id1",...]}`
+
     const SP_PERFIL = `Eres un experto en analisis de hojas de vida del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia), Ley 909 de 2004, clasificacion de empleos, tipos de experiencia y requisitos academicos.
 
 Lee el CV/perfil del candidato y extrae su informacion profesional estructurada. NO analices ningun cargo OPEC.
@@ -1407,14 +1385,64 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       'Extrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.',
     ].filter(Boolean).join('\n')
 
-    let perfilData = null
-    try {
-      const rPerfil = await deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
-      console.log('[IA] pass2a (perfil) tokensOut:', rPerfil.tokensOut)
-      perfilData = rescueAnalisis(rPerfil.texto)
-    } catch (e) {
-      console.error('[IA] pass2a error:', e.message)
+    // ── Dividir en grupos según tamaño del pool ───────────────────────────────────
+    const batches = []
+    for (let i = 0; i < todosOpec.length; i += BATCH_SIZE) {
+      batches.push(todosOpec.slice(i, i + BATCH_SIZE))
     }
+    console.log(`[IA] torneo: ${todosOpec.length} OPECs → ${batches.length} grupos de ~${BATCH_SIZE}`)
+
+    // ── Lanzar pass2a (perfil) y TODOS los grupos en paralelo ─────────────────────
+    const batchPromises = batches.map((batch, i) =>
+      deepseekAnalisisPerfil(SP_BATCH,
+        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nCARGOS (${batch.length}):\n${batch.map(compactLine).join('\n')}`,
+        256
+      ).then(r => {
+        const m = r.texto.match(/\{[\s\S]*\}/)
+        if (!m) return []
+        const p = JSON.parse(m[0])
+        return Array.isArray(p.top) ? p.top.map(String) : []
+      }).catch(e => { console.error(`[IA] batch${i} error:`, e.message); return [] })
+    )
+
+    const [rPerfil, ...batchResults] = await Promise.all([
+      deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192).catch(e => { console.error('[IA] pass2a error:', e.message); return null }),
+      ...batchPromises,
+    ])
+
+    // ── Recoger semifinalistas únicos ─────────────────────────────────────────────
+    const semifinalistIds = [...new Set(batchResults.flat())]
+    const semifinalists   = todosOpec.filter(c => semifinalistIds.includes(String(c.id)))
+    console.log(`[IA] semifinalistas: ${semifinalists.length} (de ${batches.length} grupos × ${TOP_PER_BATCH})`)
+
+    // Si ningún batch devolvió IDs (todos fallaron), usar los primeros como fallback
+    const poolFinal = semifinalists.length > 0 ? semifinalists : todosOpec.slice(0, BATCH_SIZE)
+
+    // ── Ronda final: elegir top 15 del pool de semifinalistas ─────────────────────
+    let top10Ids = []
+    let descartadosIds = []
+    try {
+      const rFinal = await deepseekAnalisisPerfil(SP_FINAL_PASS1,
+        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nSEMIFINALISTAS (${poolFinal.length} cargos) — formato: ID|cargo|nivel grado|area|exp|posgrado|tarjeta:\n${poolFinal.map(compactLine).join('\n')}`
+      )
+      console.log('[IA] final pass1 tokensOut:', rFinal.tokensOut)
+      const m = rFinal.texto.match(/\{[\s\S]*\}/)
+      if (m) {
+        const parsed = JSON.parse(m[0])
+        // acepta top15, top10, o top (según lo que devuelva DeepSeek)
+        top10Ids = (parsed[`top${FINAL_TOP}`] || parsed.top15 || parsed.top10 || parsed.top || []).map(String)
+        descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
+      }
+    } catch (e) {
+      console.error('[IA] final pass1 error:', e.message)
+    }
+
+    if (!top10Ids.length) {
+      top10Ids = poolFinal.slice(0, FINAL_TOP).map(c => String(c.id))
+    }
+
+    // ── Resultado de pass2a ───────────────────────────────────────────────────────
+    let perfilData = rPerfil ? rescueAnalisis(rPerfil.texto) : null
     if (!perfilData) return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
 
     // ── PASO 2b: Análisis de OPECs usando el perfil ya estructurado ──────────────
