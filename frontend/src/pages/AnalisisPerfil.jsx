@@ -57,57 +57,6 @@ function isNewFormat(analisis) {
   return !!(analisis?.ranking_opec_recomendadas || analisis?.perfil_candidato || analisis?.diagnostico_general)
 }
 
-function generarTextoParaCuaderno(analisis) {
-  const fecha = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
-  const perfil = analisis.perfil_candidato || {}
-  const diag   = analisis.diagnostico_general || {}
-  const ranking = (analisis.ranking_opec_recomendadas || []).slice(0, 5)
-  const recs    = analisis.recomendaciones_para_mejorar_hoja_de_vida || {}
-
-  const lineas = []
-  lineas.push(`ANÁLISIS DE PERFIL PRAXIA · ${fecha}`)
-  lineas.push(`Candidato: ${perfil.nombre || 'Sin nombre'} | Profesión: ${perfil.profesion_principal || '—'}`)
-  lineas.push('')
-
-  if (diag.nivel_competitividad || diag.resumen) {
-    lineas.push('── DIAGNÓSTICO GENERAL ──')
-    if (diag.nivel_competitividad) lineas.push(`Nivel de competitividad: ${diag.nivel_competitividad}`)
-    if (diag.resumen) lineas.push(diag.resumen)
-    lineas.push('')
-  }
-
-  if (ranking.length) {
-    lineas.push('── CARGOS MÁS COMPATIBLES ──')
-    ranking.forEach((o, i) => {
-      lineas.push(`${i + 1}. ${o.denominacion} | ${o.entidad || '—'} | Afinidad: ${o.afinidad_porcentaje ?? 0}%`)
-      if (o.nivel) lineas.push(`   Nivel: ${o.nivel}${o.grado ? ` Grado ${o.grado}` : ''} | Vacantes: ${o.vacantes || '—'}`)
-      if (o.guia_para_el_usuario?.decision_recomendada) lineas.push(`   → ${o.guia_para_el_usuario.decision_recomendada}`)
-      // Áreas a reforzar de este cargo
-      const cumFaltantes = Object.entries(o.cumplimiento || {})
-        .filter(([, v]) => v && (v.toLowerCase().includes('no cumple') || v.toLowerCase().includes('parcial')))
-        .map(([k, v]) => `     · ${k.replace(/_/g, ' ')}: ${v}`)
-      if (cumFaltantes.length) {
-        lineas.push('   Requisitos a trabajar:')
-        cumFaltantes.forEach(l => lineas.push(l))
-      }
-    })
-    lineas.push('')
-  }
-
-  const recEntries = Object.entries(recs).filter(([, v]) => Array.isArray(v) && v.length)
-  if (recEntries.length) {
-    lineas.push('── RECOMENDACIONES PARA TU HOJA DE VIDA ──')
-    recEntries.forEach(([k, items]) => {
-      lineas.push(`${k.replace(/_/g, ' ').toUpperCase()}:`)
-      items.slice(0, 3).forEach(item => lineas.push(`  • ${item}`))
-    })
-    lineas.push('')
-  }
-
-  lineas.push('Usa este análisis para orientar tus sesiones de estudio. El tutor del cuaderno ya sabe en qué enfocarse.')
-  return lineas.join('\n')
-}
-
 // ── Old format (backward compat) ───────────────────────────────────────────────
 function CargoCardOld({ cargo, index }) {
   const [open, setOpen] = useState(index < 2)
@@ -680,65 +629,12 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
           )}
         </div>
         <button
-          onClick={abrirEnviarCuaderno}
-          className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 bg-violet-600 text-white rounded-full text-xs font-bold hover:bg-violet-700 transition-all flex-shrink-0 min-h-[36px]"
-          title="Enviar análisis al Cuaderno IA"
-        >
-          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-          <span className="hidden sm:inline">Al Cuaderno</span>
-        </button>
-        <button
           onClick={() => generarAnalisisPDF(analisis, analisis._convNombre || '')}
           className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 bg-primary text-on-primary rounded-full text-xs font-bold hover:bg-primary/90 transition-all flex-shrink-0 min-h-[36px]"
         >
           <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
           <span className="hidden sm:inline">Descargar</span>
         </button>
-
-        {/* Modal enviar al cuaderno */}
-        {modalCuaderno && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !modalCuaderno.enviando && setModalCuaderno(null)}>
-            <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
-              {modalCuaderno.enviado ? (
-                <div className="text-center py-4 space-y-3">
-                  <span className="material-symbols-outlined text-4xl text-violet-600" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  <p className="font-bold text-on-surface">¡Análisis enviado al Cuaderno!</p>
-                  <p className="text-xs text-on-surface-variant">El tutor IA ya sabe en qué áreas enfocarse contigo.</p>
-                  <button onClick={() => setModalCuaderno(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition-colors">Cerrar</button>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <h3 className="font-bold text-on-surface">Enviar al Cuaderno IA</h3>
-                    <p className="text-xs text-on-surface-variant mt-1">El análisis se guardará como fuente de estudio en el cuaderno que elijas.</p>
-                  </div>
-                  {modalCuaderno.paquetes.length === 0 ? (
-                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                      No tienes paquetes activos con el Cuaderno IA habilitado.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Selecciona el cuaderno</p>
-                      {modalCuaderno.paquetes.map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => confirmarEnvioCuaderno(p.id)}
-                          disabled={modalCuaderno.enviando}
-                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-outline-variant/20 hover:border-violet-400 hover:bg-violet-50 transition-all text-left disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-violet-600 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                          <span className="text-sm font-medium text-on-surface">{p.name}</span>
-                          {modalCuaderno.enviando && <span className="ml-auto text-[10px] text-on-surface-variant">Enviando…</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <button onClick={() => setModalCuaderno(null)} className="w-full py-2 text-xs text-on-surface-variant hover:text-on-surface transition-colors">Cancelar</button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Estado de análisis */}
@@ -1024,37 +920,8 @@ export default function AnalisisPerfil() {
   const [opecCount,     setOpecCount]     = useState(null)
   const [plataformaUrl, setPlataformaUrl] = useState(null)
   const [plataformaNombre, setPlataformaNombre] = useState(null)
-  const [modalCuaderno, setModalCuaderno] = useState(null) // null | { paquetes, enviando, enviado }
 
   const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
-
-  async function abrirEnviarCuaderno() {
-    const { data: { session } } = await supabase.auth.getSession()
-    const userId = session?.user?.id
-    if (!userId) return
-
-    const { data: compras } = await supabase
-      .from('purchases')
-      .select('package_id, packages(id, name, herramientas)')
-      .eq('user_id', userId)
-      .in('status', ['active', 'manual'])
-
-    const paquetesConCuaderno = (compras || [])
-      .map(c => c.packages)
-      .filter(p => p?.herramientas?.cuaderno?.activo)
-
-    setModalCuaderno({ paquetes: paquetesConCuaderno, enviando: false, enviado: false })
-  }
-
-  async function confirmarEnvioCuaderno(packageId) {
-    setModalCuaderno(m => ({ ...m, enviando: true }))
-    const { data: { session } } = await supabase.auth.getSession()
-    const userId = session?.user?.id
-    const texto = generarTextoParaCuaderno(analisis)
-    const nombre = `Análisis de Perfil · ${new Date().toLocaleDateString('es-CO')}`
-    await supabase.from('user_cuaderno_fuentes').insert({ user_id: userId, package_id: packageId, nombre, texto })
-    setModalCuaderno(m => ({ ...m, enviando: false, enviado: true }))
-  }
 
   // Cuando el análisis termina (aunque el usuario haya navegado fuera y vuelto)
   useEffect(() => {
