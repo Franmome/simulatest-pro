@@ -279,6 +279,14 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   </button>
                 )}
                 <button
+                  onClick={() => enviarAnalisisCuaderno(ultimoAnalisis)}
+                  className="px-3 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold hover:bg-violet-700 transition-colors flex items-center gap-1 active:scale-95"
+                  title="Enviar análisis al Cuaderno IA"
+                >
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                  Cuaderno
+                </button>
+                <button
                   onClick={() => navigate('/registros')}
                   className="px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-on-surface-variant hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
                 >
@@ -685,6 +693,7 @@ export default function DetallePrueba() {
   const [loadingSimsEx,    setLoadingSimsEx]    = useState(false)
 
   // ── Modo Práctica IA ────────────────────────────────────────────────────────
+  const [modalCuaderno,     setModalCuaderno]     = useState(null) // null | { paquetes, enviando, enviado, analisis }
   const [practicaLista,     setPracticaLista]     = useState(null)
   const [generandoPractica, setGenerandoPractica] = useState(false)
   const [errorPractica,     setErrorPractica]     = useState('')
@@ -1117,6 +1126,53 @@ export default function DetallePrueba() {
     } finally {
       setLoadingPreflight(false)
     }
+  }
+
+  async function enviarAnalisisCuaderno(ultimoAn) {
+    const an = ultimoAn?.analisis || {}
+    const { data: compras } = await supabase
+      .from('purchases')
+      .select('package_id, packages(id, name, herramientas)')
+      .eq('user_id', user.id)
+      .in('status', ['active', 'manual'])
+
+    const paquetes = (compras || [])
+      .map(c => c.packages)
+      .filter(p => p?.herramientas?.cuaderno?.activo)
+
+    setModalCuaderno({ paquetes, enviando: false, enviado: false, analisis: ultimoAn })
+  }
+
+  async function confirmarEnvioCuaderno(packageId) {
+    if (!modalCuaderno?.analisis) return
+    setModalCuaderno(m => ({ ...m, enviando: true }))
+    const an = modalCuaderno.analisis.analisis || {}
+    const fecha = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+
+    const lineas = [
+      `RESULTADO DE PRUEBA IA - Praxia · ${fecha}`,
+      `Cargo: ${modalCuaderno.analisis.cargo || 'Prueba'}`,
+      `Score: ${Math.round(modalCuaderno.analisis.score_pct || 0)}% | ${modalCuaderno.analisis.score_correctas || 0}/${modalCuaderno.analisis.score_total || 0} correctas`,
+      an.nivel_preparacion ? `Nivel de preparación: ${an.nivel_preparacion}` : '',
+      '',
+    ]
+    if (an.patron_error) { lineas.push('PATRÓN DE ERROR:', an.patron_error, '') }
+    if (an.areas_mejora?.length) {
+      lineas.push('ÁREAS A REFORZAR (prioridad de estudio):')
+      an.areas_mejora.forEach(a => lineas.push(`  • ${a}`))
+      lineas.push('')
+    }
+    if (an.fortalezas?.length) {
+      lineas.push('FORTALEZAS:')
+      an.fortalezas.forEach(f => lineas.push(`  • ${f}`))
+      lineas.push('')
+    }
+    lineas.push('Usa este análisis para orientar tus sesiones de estudio. El tutor del cuaderno ya sabe en qué enfocarse.')
+
+    const texto = lineas.filter(l => l !== undefined).join('\n')
+    const nombre = `Análisis de prueba · ${fecha}`
+    await supabase.from('user_cuaderno_fuentes').insert({ user_id: user.id, package_id: packageId, nombre, texto })
+    setModalCuaderno(m => ({ ...m, enviando: false, enviado: true }))
   }
 
   async function confirmarGenerarPractica() {
@@ -2594,6 +2650,48 @@ export default function DetallePrueba() {
                 Empezar examen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Modal enviar análisis al cuaderno */}
+      {modalCuaderno && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !modalCuaderno.enviando && setModalCuaderno(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            {modalCuaderno.enviado ? (
+              <div className="text-center py-4 space-y-3">
+                <span className="material-symbols-outlined text-4xl text-violet-600" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                <p className="font-bold text-slate-800">¡Enviado al Cuaderno!</p>
+                <p className="text-xs text-slate-500">El tutor IA ya sabe en qué áreas enfocarse contigo.</p>
+                <button onClick={() => setModalCuaderno(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-sm font-bold">Cerrar</button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <h3 className="font-bold text-slate-800">Enviar análisis al Cuaderno IA</h3>
+                  <p className="text-xs text-slate-500 mt-1">Las áreas débiles y recomendaciones se guardarán como contexto de estudio en el cuaderno.</p>
+                </div>
+                {modalCuaderno.paquetes.length === 0 ? (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">No tienes paquetes activos con el Cuaderno IA habilitado.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Selecciona el cuaderno</p>
+                    {modalCuaderno.paquetes.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => confirmarEnvioCuaderno(p.id)}
+                        disabled={modalCuaderno.enviando}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-all text-left disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-violet-600 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+                        <span className="text-sm font-medium text-slate-800">{p.name}</span>
+                        {modalCuaderno.enviando && <span className="ml-auto text-[10px] text-slate-400">Enviando…</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => setModalCuaderno(null)} className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors">Cancelar</button>
+              </>
+            )}
           </div>
         </div>
       )}
