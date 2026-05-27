@@ -138,23 +138,32 @@ function parseJsonBlock(text) {
   try { return JSON.parse(m ? m[1] : text.trim()) } catch { return null }
 }
 
-async function buildContexto(packageId, userId) {
-  // Fuentes admin (study_materials)
-  const { data: mats } = await supabase
-    .from('study_materials').select('title, description')
-    .eq('package_id', packageId).eq('is_active', true)
+async function isAdmin(userId) {
+  const { data } = await supabase.from('users').select('role').eq('id', userId).maybeSingle()
+  return data?.role === 'admin'
+}
 
-  // Fuentes del usuario (PDFs subidos)
-  const { data: userSrcs } = await supabase
-    .from('user_cuaderno_fuentes').select('nombre, texto')
-    .eq('user_id', userId).eq('package_id', packageId)
-    .order('created_at', { ascending: false }).limit(5)
+async function buildContexto(packageId, userId) {
+  const [{ data: adminSrcs }, { data: userSrcs }] = await Promise.all([
+    supabase.from('package_cuaderno_fuentes').select('nombre, texto')
+      .eq('package_id', packageId).order('created_at', { ascending: true }),
+    supabase.from('user_cuaderno_fuentes').select('nombre, texto')
+      .eq('user_id', userId).eq('package_id', packageId)
+      .order('created_at', { ascending: false }).limit(5),
+  ])
 
   const partes = []
-  if (mats?.length)
-    partes.push(`Material del paquete:\n${mats.map(m => `• ${m.title}${m.description ? ': ' + m.description : ''}`).join('\n')}`)
+
+  if (adminSrcs?.length) {
+    // Distribuir presupuesto de 25K chars entre todos los materiales admin
+    const charsPorFuente = Math.floor(25000 / adminSrcs.length)
+    partes.push(
+      `Material base del paquete:\n${adminSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, charsPorFuente)}`).join('\n\n')}`
+    )
+  }
+
   if (userSrcs?.length)
-    partes.push(`Documentos subidos por el usuario:\n${userSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 40000)}`).join('\n\n')}`)
+    partes.push(`Documentos personales del usuario:\n${userSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 15000)}`).join('\n\n')}`)
 
   return partes.length ? partes.join('\n\n') : 'Material aún no cargado para este paquete.'
 }
@@ -395,8 +404,8 @@ export const listarFuentes = async (req, res) => {
   if (!(await tieneAcceso(userId, packageId))) return res.status(403).json({ error: 'Sin acceso.' })
 
   const [{ data: admin }, { data: user }] = await Promise.all([
-    supabase.from('study_materials').select('id, title, url, type')
-      .eq('package_id', packageId).eq('is_active', true).order('sort_order'),
+    supabase.from('package_cuaderno_fuentes').select('id, nombre, tipo, created_at')
+      .eq('package_id', packageId).order('created_at', { ascending: true }),
     supabase.from('user_cuaderno_fuentes').select('id, nombre, texto, created_at')
       .eq('user_id', userId).eq('package_id', packageId).order('created_at', { ascending: false }),
   ])
@@ -405,6 +414,91 @@ export const listarFuentes = async (req, res) => {
     admin: (admin || []).map(f => ({ ...f, origen: 'admin' })),
     user:  (user  || []).map(f => ({ ...f, origen: 'user'  })),
   })
+}
+
+// ── GET /api/cuaderno/admin/:packageId/fuentes ────────────────────────────────
+export const listarFuentesAdmin = async (req, res) => {
+  if (!(await isAdmin(req.user.id))) return res.status(403).json({ error: 'Solo administradores.' })
+  const packageId = parseInt(req.params.packageId)
+  const { data, error } = await supabase
+    .from('package_cuaderno_fuentes')
+    .select('id, nombre, tipo, created_at')
+    .eq('package_id', packageId)
+    .order('created_at', { ascending: true })
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ fuentes: data || [] })
+}
+
+// ── POST /api/cuaderno/admin/:packageId/fuentes ───────────────────────────────
+export const subirFuenteAdmin = async (req, res) => {
+  if (!(await isAdmin(req.user.id))) return res.status(403).json({ error: 'Solo administradores.' })
+  const packageId = parseInt(req.params.packageId)
+  if (!req.file) return res.status(400).json({ error: 'No se recibió archivo.' })
+
+  let texto
+  try {
+    texto = await extraerContenido(req.file.buffer, req.file.mimetype, req.file.originalname)
+  } catch (err) {
+    console.error('[subirFuenteAdmin]', err.message)
+    return res.status(502).json({ error: 'Error al procesar el archivo. Intenta de nuevo.' })
+  }
+  if (!texto) return res.status(422).json({ error: 'No se pudo extraer contenido del archivo.' })
+
+  const nombre = req.file.originalname.replace(/\.[^.]+$/, '')
+  const { data, error } = await supabase
+    .from('package_cuaderno_fuentes')
+    .insert({ package_id: packageId, nombre, tipo: 'archivo', texto })
+    .select('id, nombre, tipo, created_at').single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ fuente: data })
+}
+
+// ── POST /api/cuaderno/admin/:packageId/fuentes/youtube ──────────────────────
+export const agregarYoutubeAdmin = async (req, res) => {
+  if (!(await isAdmin(req.user.id))) return res.status(403).json({ error: 'Solo administradores.' })
+  const packageId = parseInt(req.params.packageId)
+  const { url } = req.body
+  if (!url?.trim()) return res.status(400).json({ error: 'URL requerida.' })
+
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+  if (!match) return res.status(400).json({ error: 'URL de YouTube inválida.' })
+  const videoId = match[1]
+
+  let transcript
+  try {
+    transcript = await fetchYTTranscript(videoId)
+  } catch (err) {
+    console.error('[youtubeAdmin]', err.message)
+    return res.status(422).json({ error: 'Sin subtítulos automáticos en este video.' })
+  }
+  if (!transcript || transcript.length < 50)
+    return res.status(422).json({ error: 'El video no tiene subtítulos disponibles.' })
+
+  let nombreVideo = `YouTube-${videoId}`
+  try {
+    const info = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini', max_tokens: 60,
+      messages: [{ role: 'user', content: `Dame SOLO el título probable de este video de YouTube cuyo transcript empieza: "${transcript.slice(0, 300)}". Solo el título, sin comillas.` }],
+    })
+    nombreVideo = info.choices[0].message.content?.trim() || nombreVideo
+  } catch { /* usa ID como nombre */ }
+
+  const textoFinal = transcript.length > 120000 ? transcript.slice(0, 120000) : transcript
+  const { data, error } = await supabase
+    .from('package_cuaderno_fuentes')
+    .insert({ package_id: packageId, nombre: nombreVideo, tipo: 'youtube', texto: textoFinal })
+    .select('id, nombre, tipo, created_at').single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ fuente: data })
+}
+
+// ── DELETE /api/cuaderno/admin/:packageId/fuentes/:fuenteId ──────────────────
+export const eliminarFuenteAdmin = async (req, res) => {
+  if (!(await isAdmin(req.user.id))) return res.status(403).json({ error: 'Solo administradores.' })
+  await supabase.from('package_cuaderno_fuentes').delete().eq('id', req.params.fuenteId)
+  return res.json({ ok: true })
 }
 
 // ── POST /api/cuaderno/:packageId/fuentes ────────────────────────────────────

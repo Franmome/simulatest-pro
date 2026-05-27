@@ -1,5 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../../utils/supabase'
+
+const BASE_URL = (() => {
+  const env = import.meta.env.VITE_BACKEND_URL
+  if (env && !env.includes('localhost')) return env
+  if (!window.location.hostname.includes('localhost')) return window.location.origin
+  return 'http://localhost:3000'
+})()
 
 // ─── Catálogo de cerebros IA ──────────────────────────────────────────────────
 // Precios verificados mayo 2026 · USD por millón de tokens
@@ -447,6 +454,175 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
   )
 }
 
+// ─── Modal materiales base del cuaderno ──────────────────────────────────────
+function ModalMateriales({ paquete, onClose }) {
+  const [fuentes, setFuentes] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [subiendo, setSubiendo] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [error, setError] = useState('')
+  const fileRef = useRef()
+
+  async function getToken() {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
+  const cargar = useCallback(async () => {
+    setCargando(true)
+    const token = await getToken()
+    const r = await fetch(`${BASE_URL}/api/cuaderno/admin/${paquete.id}/fuentes`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = await r.json()
+    setFuentes(json.fuentes || [])
+    setCargando(false)
+  }, [paquete.id])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function subirArchivo(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSubiendo(true); setError('')
+    const token = await getToken()
+    const fd = new FormData()
+    fd.append('pdf', file)
+    const r = await fetch(`${BASE_URL}/api/cuaderno/admin/${paquete.id}/fuentes`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+    })
+    const json = await r.json()
+    setSubiendo(false)
+    if (!r.ok) { setError(json.error || 'Error al subir archivo'); return }
+    cargar()
+    fileRef.current.value = ''
+  }
+
+  async function agregarYoutube() {
+    if (!youtubeUrl.trim()) return
+    setSubiendo(true); setError('')
+    const token = await getToken()
+    const r = await fetch(`${BASE_URL}/api/cuaderno/admin/${paquete.id}/fuentes/youtube`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: youtubeUrl }),
+    })
+    const json = await r.json()
+    setSubiendo(false)
+    if (!r.ok) { setError(json.error || 'Error al agregar YouTube'); return }
+    setYoutubeUrl('')
+    cargar()
+  }
+
+  async function eliminar(id) {
+    const token = await getToken()
+    await fetch(`${BASE_URL}/api/cuaderno/admin/${paquete.id}/fuentes/${id}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    })
+    cargar()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
+
+        {/* Header */}
+        <div className="border-b border-outline-variant/15 p-5 flex items-center justify-between">
+          <div>
+            <h2 className="font-extrabold text-on-surface">Materiales del Cuaderno</h2>
+            <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-1">{paquete.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-surface-container transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+
+          {/* Info */}
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            <span className="material-symbols-outlined text-amber-500 text-sm shrink-0 mt-0.5">lightbulb</span>
+            <p>Los materiales aquí se cargan <strong>una sola vez</strong> y todos los usuarios del paquete los comparten automáticamente en su cuaderno. Ahorra tokens de ingestión por usuario.</p>
+          </div>
+
+          {/* Subir archivo */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Subir documento</p>
+            <label className={`flex items-center justify-center gap-3 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${subiendo ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/30 hover:border-primary/40 hover:bg-primary/3'}`}>
+              <span className="material-symbols-outlined text-on-surface-variant text-2xl">upload_file</span>
+              <div className="text-sm text-on-surface-variant">
+                <p className="font-medium">Haz clic para subir</p>
+                <p className="text-[10px]">PDF · Word · Excel · Imágenes — máx 20 MB</p>
+              </div>
+              <input ref={fileRef} type="file" className="hidden" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp" onChange={subirArchivo} disabled={subiendo} />
+            </label>
+          </div>
+
+          {/* YouTube */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Agregar video de YouTube</p>
+            <div className="flex gap-2">
+              <input
+                value={youtubeUrl}
+                onChange={e => setYoutubeUrl(e.target.value)}
+                placeholder="https://youtube.com/watch?v=..."
+                className="flex-1 px-3 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <button
+                onClick={agregarYoutube}
+                disabled={subiendo || !youtubeUrl.trim()}
+                className="px-4 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-40 transition-opacity"
+              >
+                {subiendo ? '…' : 'Agregar'}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>
+          )}
+
+          {/* Lista materiales */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Materiales cargados ({fuentes.length})
+            </p>
+            {cargando ? (
+              <div className="flex justify-center py-6">
+                <div className="w-6 h-6 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            ) : fuentes.length === 0 ? (
+              <p className="text-xs text-on-surface-variant text-center py-6 italic">Sin materiales todavía</p>
+            ) : (
+              <div className="space-y-2">
+                {fuentes.map(f => (
+                  <div key={f.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-container border border-outline-variant/15">
+                    <span className="material-symbols-outlined text-primary text-xl shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {f.tipo === 'youtube' ? 'smart_display' : 'description'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-on-surface truncate">{f.nombre}</p>
+                      <p className="text-[10px] text-on-surface-variant">
+                        {f.tipo === 'youtube' ? 'Video YouTube' : 'Documento'} · {new Date(f.created_at).toLocaleDateString('es-CO')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => eliminar(f.id)}
+                      className="p-1.5 rounded-lg text-on-surface-variant hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-base">delete</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function AdminPaquetes() {
   const [paquetes, setPaquetes] = useState([])
@@ -455,6 +631,7 @@ export default function AdminPaquetes() {
   const [busqueda, setBusqueda] = useState('')
   const [modal, setModal] = useState(null)          // null | {} (nuevo) | {id,...} (editar)
   const [confirmar, setConfirmar] = useState(null)  // paquete a eliminar
+  const [materiales, setMateriales] = useState(null) // paquete para gestionar materiales
   const [panelCerebros, setPanelCerebros] = useState(false)
   const [eliminando, setEliminando] = useState(false)
 
@@ -657,6 +834,13 @@ export default function AdminPaquetes() {
 
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => setMateriales(pkg)}
+                          title="Materiales del Cuaderno"
+                          className="p-2 rounded-xl text-on-surface-variant hover:bg-violet-50 hover:text-violet-600 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-xl">auto_stories</span>
+                        </button>
+                        <button
                           onClick={() => toggleActivo(pkg)}
                           title={pkg.is_active ? 'Desactivar' : 'Publicar'}
                           className={`p-2 rounded-xl transition-colors ${pkg.is_active ? 'text-emerald-600 hover:bg-emerald-50' : 'text-on-surface-variant hover:bg-surface-container'}`}
@@ -728,6 +912,9 @@ export default function AdminPaquetes() {
 
       {/* Panel cerebros */}
       {panelCerebros && <PanelCerebros onClose={() => setPanelCerebros(false)} />}
+
+      {/* Modal materiales cuaderno */}
+      {materiales && <ModalMateriales paquete={materiales} onClose={() => setMateriales(null)} />}
     </div>
   )
 }

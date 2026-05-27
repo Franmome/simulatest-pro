@@ -6,6 +6,7 @@ import {
   guardarNota, getNotas, eliminarNota, fijarNota,
   generarArtefacto,
   listarFuentes, subirFuente, eliminarFuente, agregarYoutube,
+  listarFuentesAdmin, subirFuenteAdmin, eliminarFuenteAdmin, agregarYoutubeAdmin,
   getTokens, audioOverview,
 } from '../controllers/cuaderno.controller.js'
 
@@ -50,5 +51,11 @@ router.get('/:packageId/tokens',                  authMiddleware, getTokens)
 
 // Audio Overview
 router.post('/:packageId/audio-overview',         authMiddleware, audioOverview)
+
+// ── Admin: materiales base del cuaderno por paquete ───────────────────────────
+router.get('/admin/:packageId/fuentes',            authMiddleware, listarFuentesAdmin)
+router.post('/admin/:packageId/fuentes',           authMiddleware, upload.single('pdf'), subirFuenteAdmin)
+router.post('/admin/:packageId/fuentes/youtube',   authMiddleware, agregarYoutubeAdmin)
+router.delete('/admin/:packageId/fuentes/:fuenteId', authMiddleware, eliminarFuenteAdmin)
 
 export default router
