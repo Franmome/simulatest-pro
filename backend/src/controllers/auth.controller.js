@@ -6,7 +6,7 @@ export const login = async (req, res) => {
     const { email, password } = req.body
     // TODO: verificar con Supabase Auth
     // Por ahora retorna token mock
-    const token = jwt.sign({ id: '1', email, rol: 'estudiante' }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' })
+    const token = jwt.sign({ id: '1', email, rol: 'estudiante' }, process.env.JWT_SECRET, { expiresIn: '7d' })
     res.json({ token, user: { id: '1', email, nombre: 'Carlos Pérez', rol: 'estudiante' } })
   } catch (err) {
     res.status(401).json({ error: 'Credenciales inválidas' })
@@ -17,7 +17,7 @@ export const register = async (req, res) => {
   try {
     const { nombre, apellido, email, password, tipo } = req.body
     // TODO: crear usuario en Supabase Auth + tabla usuarios
-    const token = jwt.sign({ id: '1', email, rol: 'estudiante' }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' })
+    const token = jwt.sign({ id: '1', email, rol: 'estudiante' }, process.env.JWT_SECRET, { expiresIn: '7d' })
     res.status(201).json({ token, user: { id: '1', nombre, email, rol: 'estudiante' } })
   } catch (err) {
     res.status(400).json({ error: err.message })

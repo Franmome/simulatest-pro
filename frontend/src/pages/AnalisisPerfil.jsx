@@ -761,7 +761,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
             Cargos recomendados para ti
           </p>
           <div className="space-y-3">
-            {ranking.map((opec, i) => <CargoCard key={i} opec={opec} index={i} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />)}
+            {ranking.map((opec, i) => <CargoCard key={opec.id ?? opec.numero_opec ?? i} opec={opec} index={i} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />)}
           </div>
 
           {/* Botón Ver más OPECs */}
@@ -983,10 +983,20 @@ export default function AnalisisPerfil() {
     { icon: 'task_alt',          text: 'Armando resultado...' },
   ]
 
+  const analysisAbortRef = useRef(null)
+
+  // Cancelar análisis en curso si el usuario navega fuera de la página
+  useEffect(() => {
+    return () => { if (analysisAbortRef.current) analysisAbortRef.current.abort() }
+  }, [])
+
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
     setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
+
+    const controller = new AbortController()
+    analysisAbortRef.current = controller
 
     // avanzar pasos ~45s cada uno (análisis tarda 5-10 min)
     const stepTimer = setInterval(() => {
@@ -999,7 +1009,7 @@ export default function AnalisisPerfil() {
       fd.append('perfil_texto', perfilTexto)
       if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
       if (files.length > 0) fd.append('pdf', files[0])
-      const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
+      const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd, signal: controller.signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
@@ -1013,11 +1023,12 @@ export default function AnalisisPerfil() {
       setLocalAnalisis(entry)
       fetchHistory()
     } catch (e) {
-      setError(e.message)
+      if (e.name !== 'AbortError') setError(e.message)
     } finally {
       clearInterval(stepTimer)
       setAnalizando(false)
       setLoadStep(0)
+      analysisAbortRef.current = null
     }
   }
 

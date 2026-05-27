@@ -340,7 +340,7 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
     temperature: 0.3,
   }
   if (maxTokens) params.max_tokens = maxTokens
-  const r = await deepseek.chat.completions.create(params)
+  const r = await deepseek.chat.completions.create(params, { signal: AbortSignal.timeout(180_000) })
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
 
@@ -647,7 +647,7 @@ Incluye: quién destacó y por qué, puntos de mejora, recomendaciones de estudi
     // Registrar uso (soft — no bloquear por tokens en salas)
     const compra = await getActivePurchase(userId).catch(() => null)
     if (compra?.id)
-      recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'sala', modelo }).catch(() => {})
+      recordTokenUsage({ userId, purchaseId: compra.id, tokensIn, tokensOut, endpoint: 'sala', modelo }).catch(e => console.error('[IA] recordTokenUsage sala:', e.message))
 
     return res.json({ analisis: texto })
   } catch (err) {
@@ -1102,8 +1102,8 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
 
     // Registro soft de tokens (no bloquea si falla)
     getActivePurchase(userId)
-      .then(c => { if (c?.id) recordTokenUsage({ userId, purchaseId: c.id, tokensIn, tokensOut, endpoint: 'analisis', modelo }).catch(()=>{}) })
-      .catch(()=>{})
+      .then(c => { if (c?.id) recordTokenUsage({ userId, purchaseId: c.id, tokensIn, tokensOut, endpoint: 'analisis', modelo }).catch(e => console.error('[IA] recordTokenUsage analisis:', e.message)) })
+      .catch(e => console.error('[IA] getActivePurchase analisis:', e.message))
 
     return res.json({ analisis })
 
@@ -2024,8 +2024,8 @@ export async function statsProcuraduriaOpecs(req, res) {
 // arrays de municipios/ciudades, experiencia en años o meses, etc.
 function normalizarRegistroOPEC(r, entidadConv, convocatoriaId) {
   // Auto-desempaquetar subobjetos comunes (ej: r.empleo, r.cargo)
-  if (r.empleo && typeof r.empleo === 'object' && !Array.isArray(r.empleo)) r = { ...r, ...r.empleo }
-  if (r.cargo  && typeof r.cargo  === 'object' && !Array.isArray(r.cargo))  r = { ...r, ...r.cargo  }
+  if (r.empleo !== null && r.empleo !== undefined && typeof r.empleo === 'object' && !Array.isArray(r.empleo)) r = { ...r, ...r.empleo }
+  if (r.cargo  !== null && r.cargo  !== undefined && typeof r.cargo  === 'object' && !Array.isArray(r.cargo))  r = { ...r, ...r.cargo  }
 
   const denominacion = (
     r.denominacion || r.nombreEmpleo || r.nombre_empleo || r.cargoNombre ||
