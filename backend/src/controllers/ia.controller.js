@@ -268,7 +268,7 @@ async function geminiTexto(prompt) {
 }
 
 async function geminiChat(systemCtx, historial, mensaje) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
   const chat  = model.startChat({
     history: historial.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -289,7 +289,7 @@ async function geminiChat(systemCtx, historial, mensaje) {
 
 async function deepseekGenerar(prompt, maxTokens = 8192) {
   const r = await deepseek.chat.completions.create({
-    model:      'deepseek-chat',
+    model:      'deepseek-v4-flash',
     messages:   [
       { role: 'system', content: 'Eres un experto generador de preguntas para el sector público colombiano. Devuelves ÚNICAMENTE JSON válido, sin texto adicional, sin markdown.' },
       { role: 'user',   content: prompt },
@@ -321,7 +321,7 @@ async function conFallback(modelo, deepFn, gemFn) {
 
 async function deepseekTexto(prompt) {
   const r = await deepseek.chat.completions.create({
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.6,
   })
@@ -332,7 +332,7 @@ async function deepseekTexto(prompt) {
 // temperatura baja para análisis preciso, system prompt separado desde DB.
 async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
   const params = {
-    model:       'deepseek-chat',
+    model:       'deepseek-v4-flash',
     messages:    [
       { role: 'system', content: systemPrompt },
       { role: 'user',   content: userPrompt },
@@ -346,7 +346,7 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
 
 async function deepseekChat(systemCtx, historial, mensaje) {
   const r = await deepseek.chat.completions.create({
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     messages: [
       { role: 'system', content: systemCtx },
       ...historial.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),
@@ -803,7 +803,7 @@ export async function testGenerador(req, res) {
         ? `${instrucciones}\n\nMATERIAL OPEC (PDF adjunto):\n${pdfText.slice(0, 10000)}`
         : instrucciones
       const r = await deepseek.chat.completions.create({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userMsg },
@@ -1075,7 +1075,7 @@ Devuelve ÚNICAMENTE este JSON sin markdown:
 
     const prompt = `${systemPrompt}\n\nDATOS DEL ASPIRANTE:\n${resumenDatos}`
 
-    // Usar gemini-2.0-flash (mejor modelo) para garantizar JSON estructurado
+    // Usar gemini-3.1-flash-lite para garantizar JSON estructurado
     const { texto, tokensIn, tokensOut } = modelo === 'deepseek'
       ? await deepseekTexto(prompt) : await geminiGenerar(prompt)
 

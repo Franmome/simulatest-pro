@@ -2,58 +2,55 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../utils/supabase'
 
 // ─── Catálogo de cerebros IA ──────────────────────────────────────────────────
+// Precios verificados mayo 2026 · USD por millón de tokens
 const CEREBROS = [
   {
-    id: 'deepseek-v3',
-    nombre: 'DeepSeek V3',
+    id: 'deepseek-v4-flash',
+    nombre: 'DeepSeek V4 Flash',
     proveedor: 'DeepSeek',
-    modelo: 'deepseek-chat',
+    modelo: 'deepseek-v4-flash',
     tier: 'económico',
-    precioInput: 0.27,
-    precioOutput: 1.10,
-    contexto: 64000,
-    maxOutput: 8192,
-    descripcion: 'Excelente relación calidad/precio. Ideal para generación masiva de preguntas y retroalimentación rápida.',
-    color: 'blue',
-  },
-  {
-    id: 'gemini-flash-2',
-    nombre: 'Gemini 2.0 Flash',
-    proveedor: 'Google',
-    modelo: 'gemini-2.0-flash',
-    tier: 'económico',
-    precioInput: 0.10,
-    precioOutput: 0.40,
+    precioInput: 0.14,
+    precioOutput: 0.28,
     contexto: 1000000,
-    maxOutput: 8192,
-    descripcion: 'El más rápido y barato. Contexto de 1M tokens. Perfecto para salas en tiempo real.',
-    color: 'green',
+    maxOutput: 384000,
+    descripcion: 'El más barato del mercado. 1M contexto, 384K salida. Ideal para Modo Examen y generación de preguntas. ★ Recomendado para Examen y Práctica.',
   },
   {
-    id: 'gemini-flash-15',
-    nombre: 'Gemini 1.5 Flash',
-    proveedor: 'Google',
-    modelo: 'gemini-1.5-flash',
-    tier: 'económico',
-    precioInput: 0.075,
-    precioOutput: 0.30,
-    contexto: 1000000,
-    maxOutput: 8192,
-    descripcion: 'Rápido y muy económico. Contexto 1M tokens. Bueno para Modo Práctica y análisis ligero.',
-    color: 'teal',
-  },
-  {
-    id: 'gemini-pro-15',
-    nombre: 'Gemini 1.5 Pro',
-    proveedor: 'Google',
-    modelo: 'gemini-1.5-pro',
+    id: 'deepseek-v4-pro',
+    nombre: 'DeepSeek V4 Pro',
+    proveedor: 'DeepSeek',
+    modelo: 'deepseek-v4-pro',
     tier: 'avanzado',
-    precioInput: 1.25,
-    precioOutput: 5.00,
-    contexto: 2000000,
+    precioInput: 1.74,
+    precioOutput: 3.48,
+    contexto: 1000000,
+    maxOutput: 384000,
+    descripcion: 'Modelo de razonamiento profundo. Para análisis complejos y paquetes de nivel directivo.',
+  },
+  {
+    id: 'gemini-31-flash-lite',
+    nombre: 'Gemini 3.1 Flash-Lite',
+    proveedor: 'Google',
+    modelo: 'gemini-3.1-flash-lite',
+    tier: 'económico',
+    precioInput: 0.25,
+    precioOutput: 1.50,
+    contexto: 1000000,
     maxOutput: 8192,
-    descripcion: 'Contexto de 2M tokens. Análisis profundo de documentos largos. Ideal para Cuaderno IA.',
-    color: 'yellow',
+    descripcion: 'Rápido y económico de Google. 1M contexto. ★ Recomendado para Salas Competitivas (tiempo real).',
+  },
+  {
+    id: 'gemini-35-flash',
+    nombre: 'Gemini 3.5 Flash',
+    proveedor: 'Google',
+    modelo: 'gemini-3.5-flash',
+    tier: 'avanzado',
+    precioInput: 1.50,
+    precioOutput: 9.00,
+    contexto: 1000000,
+    maxOutput: 65536,
+    descripcion: 'El más inteligente de Google actualmente. Excelente para análisis de perfil y respuestas complejas.',
   },
   {
     id: 'gpt-4o',
@@ -65,11 +62,10 @@ const CEREBROS = [
     precioOutput: 10.00,
     contexto: 128000,
     maxOutput: 16384,
-    descripcion: 'Multimodal: lee PDFs, imágenes, Word, Excel y YouTube. Motor principal del Cuaderno IA.',
-    color: 'emerald',
+    descripcion: 'Multimodal: lee PDFs, imágenes, Word, Excel y YouTube. ★ Motor fijo del Cuaderno IA (no cambiar).',
   },
   {
-    id: 'gpt-4o-mini',
+    id: 'gpt-41-mini',
     nombre: 'GPT-4.1 mini',
     proveedor: 'OpenAI',
     modelo: 'gpt-4.1-mini',
@@ -78,8 +74,7 @@ const CEREBROS = [
     precioOutput: 1.60,
     contexto: 1047576,
     maxOutput: 32768,
-    descripcion: 'Versión ligera de OpenAI. Ideal para chats rápidos del Cuaderno y respuestas de práctica.',
-    color: 'slate',
+    descripcion: 'Versión ligera de OpenAI. 1M contexto, 32K salida. Para chat rápido del Cuaderno.',
   },
 ]
 
@@ -90,8 +85,15 @@ const HERRAMIENTAS = [
   { id: 'cuaderno', nombre: 'Cuaderno IA', icon: 'auto_stories', desc: 'Asistente IA tipo NotebookLM para estudiar documentos' },
 ]
 
+const DEFAULTS_CEREBRO = {
+  modo_examen:    'deepseek-v4-flash',
+  modo_practica:  'deepseek-v4-flash',
+  salas:          'gemini-31-flash-lite',
+  cuaderno:       'gpt-4o',
+}
+
 const HERRAMIENTAS_DEFAULT = Object.fromEntries(
-  HERRAMIENTAS.map(h => [h.id, { activo: false, cerebro: 'deepseek-v3' }])
+  HERRAMIENTAS.map(h => [h.id, { activo: false, cerebro: DEFAULTS_CEREBRO[h.id] ?? 'deepseek-v4-flash' }])
 )
 
 const TIER_COLORS = {
