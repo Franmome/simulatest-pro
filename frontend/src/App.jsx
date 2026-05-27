@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationsProvider } from './context/NotificationsContext'
+import { AnalysisProvider } from './context/AnalysisContext'
 import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
@@ -58,6 +59,7 @@ export default function App() {
   return (
     <AuthProvider>
       <NotificationsProvider>
+      <AnalysisProvider>
       <BrowserRouter>
         <DeployWatcher />
         <Routes>
@@ -119,6 +121,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </AnalysisProvider>
       </NotificationsProvider>
     </AuthProvider>
   )

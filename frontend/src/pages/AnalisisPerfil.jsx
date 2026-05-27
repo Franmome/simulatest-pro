@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
+import { useAnalysis } from '../context/AnalysisContext'
 const generarAnalisisPDF = (...args) =>
   import('../utils/generarAnalisisPDF').then(m => m.generarAnalisisPDF(...args))
 
@@ -913,6 +914,32 @@ export default function AnalisisPerfil() {
   const [plataformaUrl, setPlataformaUrl] = useState(null)
   const [plataformaNombre, setPlataformaNombre] = useState(null)
 
+  const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
+
+  // Cuando el análisis termina (aunque el usuario haya navegado fuera y vuelto)
+  useEffect(() => {
+    if (jobStatus === 'done' && jobResult) {
+      const json = jobResult
+      setAnalisis({ ...json.analisis, _convNombre: json._convNombre || '' })
+      setOpecsPendientes(json.opecs_pendientes || [])
+      if (json.pocas_opec_local) setPocasOpecLocal(true)
+      if (json.plataforma_url) { setPlataformaUrl(json.plataforma_url); setPlataformaNombre(json.plataforma_nombre || null) }
+      const entry = { analisis: json.analisis, convNombre: json._convNombre || '', ts: Date.now() }
+      try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch {}
+      setLocalAnalisis(entry)
+      fetchHistory()
+      clearAnalysis()
+    } else if (jobStatus === 'error' && jobError) {
+      setError(jobError)
+      clearAnalysis()
+    }
+  }, [jobStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sincronizar spinner con el estado del job
+  useEffect(() => {
+    if (jobStatus === 'processing') setAnalizando(true)
+  }, [jobStatus])
+
   useEffect(() => {
     supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad, plataforma_nombre, plataforma_url').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
@@ -983,53 +1010,37 @@ export default function AnalisisPerfil() {
     { icon: 'task_alt',          text: 'Armando resultado...' },
   ]
 
-  const analysisAbortRef = useRef(null)
-
-  // Cancelar análisis en curso si el usuario navega fuera de la página
-  useEffect(() => {
-    return () => { if (analysisAbortRef.current) analysisAbortRef.current.abort() }
-  }, [])
-
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
-    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null)
+    setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
 
-    const controller = new AbortController()
-    analysisAbortRef.current = controller
+    const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
 
-    // avanzar pasos ~45s cada uno (análisis tarda 5-10 min)
+    // avanzar pasos ~45s cada uno mientras el servidor trabaja
     const stepTimer = setInterval(() => {
       setLoadStep(s => (s < LOAD_STEPS.length - 1 ? s + 1 : s))
     }, 45000)
-    try {
+
+    // runAnalysis vive en el Context global: si el usuario navega, el fetch
+    // sigue en segundo plano y el resultado se aplica cuando vuelva a esta página
+    await runAnalysis(async () => {
       const headers = await authHeaders()
       const fd = new FormData()
       fd.append('convocatoria_id', convId)
       fd.append('perfil_texto', perfilTexto)
       if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
       if (files.length > 0) fd.append('pdf', files[0])
-      const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd, signal: controller.signal })
+      const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
-      setAnalisis({ ...json.analisis, _convNombre: convNombre })
-      setOpecsPendientes(json.opecs_pendientes || [])
-      if (json.pocas_opec_local) setPocasOpecLocal(true)
-      if (json.plataforma_url) { setPlataformaUrl(json.plataforma_url); setPlataformaNombre(json.plataforma_nombre || null) }
-      // guardar localmente como respaldo
-      const entry = { analisis: json.analisis, convNombre, ts: Date.now() }
-      try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch { /* ignore */ }
-      setLocalAnalisis(entry)
-      fetchHistory()
-    } catch (e) {
-      if (e.name !== 'AbortError') setError(e.message)
-    } finally {
-      clearInterval(stepTimer)
-      setAnalizando(false)
-      setLoadStep(0)
-      analysisAbortRef.current = null
-    }
+      return { ...json, _convNombre: convNombre }
+    })
+
+    clearInterval(stepTimer)
+    setAnalizando(false)
+    setLoadStep(0)
   }
 
   function selectHistItem(item) {
