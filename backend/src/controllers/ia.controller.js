@@ -1204,6 +1204,116 @@ INSTRUCCIONES ESPECÍFICAS:
   }
 }
 
+// ── Motor de scoring determinista ─────────────────────────────────────────────
+// Evalúa TODAS las OPECs con reglas fijas antes de pasarlas a la IA.
+// La IA solo recibe el top-20 para explicar, no para decidir.
+
+function normStr(s) {
+  return (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+const JERARQUIA_NIVEL = { ASISTENCIAL: 1, TECNICO: 2, PROFESIONAL: 3, ASESOR: 4, DIRECTIVO: 5 }
+
+function nivelFromFormacion(nivelFormacion) {
+  const nf = normStr(nivelFormacion)
+  if (nf.includes('directiv') || nf.includes('gerenc')) return 'DIRECTIVO'
+  if (nf.includes('asesor')) return 'ASESOR'
+  if (nf.includes('univer') || nf.includes('profesional') || nf.includes('pregrado') ||
+      nf.includes('maestr') || nf.includes('especializ') || nf.includes('doctorado') ||
+      nf.includes('posgrado')) return 'PROFESIONAL'
+  if (nf.includes('tecno') || nf.includes('tecnol') || nf.includes('tecnico')) return 'TECNICO'
+  return 'ASISTENCIAL'
+}
+
+function candidatoTieneTarjeta(tarjetaObj) {
+  const estado = normStr(tarjetaObj?.estado || '')
+  return ['vigente', 'activa', 'si', 'sí', 'tiene', 'registrad', 'expedid'].some(k => estado.includes(k))
+}
+
+function scorearOPEC(perfil, opec, ciudadKey) {
+  const nvCand  = nivelFromFormacion(perfil.nivel_formacion)
+  const nvOpec  = (opec.nivel || 'PROFESIONAL').toUpperCase().trim()
+  const nvCandN = JERARQUIA_NIVEL[nvCand]  || 3
+  const nvOpecN = JERARQUIA_NIVEL[nvOpec] || 3
+
+  // ── Filtros duros — descarte automático ──────────────────────────────────
+  if (nvOpecN > nvCandN)
+    return { score: 0, pct: 0, descartada: true, motivo: 'Nivel educativo insuficiente' }
+
+  if (opec.requiere_tarjeta && !candidatoTieneTarjeta(perfil.tarjeta_profesional))
+    return { score: 0, pct: 0, descartada: true, motivo: 'Requiere tarjeta profesional' }
+
+  if (opec.requiere_posgrado && !(Array.isArray(perfil.posgrados_identificados) && perfil.posgrados_identificados.length > 0))
+    return { score: 0, pct: 0, descartada: true, motivo: 'Requiere posgrado' }
+
+  const expReq  = opec.exp_anios || 0
+  const expCand = perfil.experiencia_profesional_estimada_meses || perfil.experiencia_total_estimada_meses || 0
+  if (expReq > 0 && expCand < expReq * 0.75)
+    return { score: 0, pct: 0, descartada: true, motivo: `Experiencia insuficiente (tiene ${expCand}m, requiere ${expReq}m)` }
+
+  // ── Scoring 0-100 ─────────────────────────────────────────────────────────
+
+  // 1. Educación / área (25 pts)
+  let ptsEdu = nvOpec === nvCand ? 15 : 8
+  const areaOpec     = normStr(opec.area_estudio || '')
+  const palabrasArea = areaOpec.split(' ').filter(w => w.length > 4)
+  const refPerf      = [
+    ...(perfil.areas_experiencia || []),
+    ...(perfil.titulos_identificados || []),
+    ...(perfil.posibles_nucleos_basicos_conocimiento || []),
+  ].map(normStr)
+  const matchArea = palabrasArea.filter(p => refPerf.some(a => a.includes(p) || p.includes(a.split(' ')[0]))).length
+  ptsEdu += Math.min(10, Math.round((matchArea / Math.max(palabrasArea.length, 1)) * 10))
+
+  // 2. Experiencia (25 pts)
+  let ptsExp = expReq === 0 ? 20 : Math.min(20, Math.round((expCand / expReq) * 20))
+  ptsExp += 5 // bonus base por cumplir el filtro duro
+
+  // 3. Funciones (25 pts)
+  const funcOpecNorm = normStr([
+    Array.isArray(opec.funciones) ? opec.funciones.join(' ') : (opec.funciones || ''),
+    opec.denominacion || '',
+    opec.area_estudio || '',
+  ].join(' '))
+  const funcionesPerf = (perfil.funciones_principales_identificadas || []).slice(0, 10)
+  let ptsFun = 10 // neutro si no hay datos
+  if (funcionesPerf.length > 0) {
+    const hits = funcionesPerf.filter(f => {
+      const words = normStr(f).split(' ').filter(w => w.length > 4)
+      return words.some(w => funcOpecNorm.includes(w))
+    }).length
+    ptsFun = Math.round((hits / funcionesPerf.length) * 25)
+  }
+
+  // 4. Afinidad sectorial (10 pts)
+  const entidadNorm  = normStr(opec.entidad || '')
+  const sectoresPerf = (perfil.areas_experiencia || []).map(normStr)
+  const ptsSector = sectoresPerf.some(s =>
+    s.split(' ').filter(w => w.length > 4).some(w => entidadNorm.includes(w))
+  ) ? 10 : 5
+
+  // 5. Vacantes / competitividad (10 pts)
+  const vac    = opec.vacantes || 1
+  const ptsVac = vac >= 20 ? 10 : vac >= 10 ? 8 : vac >= 5 ? 6 : vac >= 2 ? 4 : 2
+
+  // 6. Conveniencia territorial (5 pts)
+  let ptsConv = 3
+  if (ciudadKey) {
+    const ciudades = (opec._ubNorm || []).map(u => normStr(u.ciudad))
+    if (ciudades.some(c => c.includes(ciudadKey) || ciudadKey.includes(c))) ptsConv = 5
+  }
+
+  const score = ptsEdu + ptsExp + ptsFun + ptsSector + ptsVac + ptsConv
+  return {
+    score,
+    pct: Math.min(99, score),
+    descartada: false,
+    detalle: { educacion: ptsEdu, experiencia: ptsExp, funciones: ptsFun, sector: ptsSector, vacantes: ptsVac, conveniencia: ptsConv },
+  }
+}
+
 // Construye texto descriptivo de OPECs para enviar a DeepSeek
 // ciudadKey: si hay filtro de ciudad, agrega vacantes locales por cargo
 function buildOpecTexto(lista, ciudadKey = '') {
@@ -1336,31 +1446,10 @@ export async function analizarPerfilCV(req, res) {
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
-    // Línea compacta por OPEC para el pre-screening (cabe en 64K tokens de entrada)
-    const compactLine = c => {
-      const ciudades = (c._ubNorm || []).map(u => u.ciudad).filter(Boolean).join('/')
-      return `${c.id}|${c.denominacion}|${c.nivel || ''} ${c.grado || ''}|${c.area_estudio || ''}|exp:${c.exp_anios || 0}m|pos:${c.requiere_posgrado ? 'S' : 'N'}|tar:${c.requiere_tarjeta ? 'S' : 'N'}|loc:${ciudades || 'Nacional'}`
-    }
-
     // Si hay PDF, es la fuente principal; el textarea es complemento opcional
     const perfil_base = cvText
       ? (perfil_texto?.trim() ? `INFO ADICIONAL DEL CANDIDATO:\n${perfil_texto.trim()}\n\nHOJA DE VIDA (PDF):\n${cvText}` : cvText)
       : (perfil_texto || '').trim()
-
-    const ciudadContexto = ciudadKey
-      ? `\nUBICACION DE INTERES DEL CANDIDATO: ${ciudad_filtro} (los cargos listados tienen vacantes en esta ciudad)\n`
-      : ''
-
-    // ── Prompts ───────────────────────────────────────────────────────────────────
-    const NIVEL_REGLA = `REGLA DE NIVEL (obligatoria):
-- ASISTENCIAL: bachillerato | TECNICO: tecnico/tecnologo | PROFESIONAL: universitario | ASESOR/DIRECTIVO: universitario + experiencia directiva
-Nunca selecciones un cargo de nivel superior al del candidato.`
-
-    const SP_PASS1 = `Eres un experto en seleccion de personal del sector publico colombiano. Lee TODOS los cargos OPEC y selecciona los 25 MAS COMPATIBLES con el perfil del candidato en area de conocimiento, funciones, nivel y experiencia requerida.
-${NIVEL_REGLA}
-Identifica ademas hasta 5 cargos que parecen afines pero tienen un requisito incumplible (descartados).
-La primera columna de cada linea es el ID unico del cargo.
-Devuelve UNICAMENTE este JSON sin texto adicional: {"top25": ["id1","id2",...], "descartados": ["id1",...]}`
 
     const SP_PERFIL = `Eres un experto en analisis de hojas de vida del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia), Ley 909 de 2004, clasificacion de empleos, tipos de experiencia y requisitos academicos.
 
@@ -1377,56 +1466,43 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       'Extrae el perfil estructurado del candidato. Devuelve UNICAMENTE el JSON.',
     ].filter(Boolean).join('\n')
 
-    // Mezclar para mitigar "lost in the middle" (ítems en el centro reciben menos atención)
-    const shuffled = [...todosOpec]
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-    }
-    console.log(`[IA] pass1: leyendo las ${shuffled.length} OPECs completas en un solo llamado`)
-
-    // ── Lanzar pass2a (perfil) y pass1 (todas las OPECs) en paralelo ──────────────
-    const [rPerfil, rPass1] = await Promise.all([
-      deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
-        .catch(e => { console.error('[IA] pass2a error:', e.message); return null }),
-      deepseekAnalisisPerfil(SP_PASS1,
-        `PERFIL DEL CANDIDATO:\n${perfil_base}\n${ciudadContexto}\nCARGOS (${shuffled.length}) — formato ID|cargo|nivel grado|area|exp|posgrado|tarjeta|ciudades:\n${shuffled.map(compactLine).join('\n')}`,
-        400
-      ).catch(e => { console.error('[IA] pass1 error:', e.message); return null }),
-    ])
-
-    // ── Parsear top 25 ────────────────────────────────────────────────────────────
-    let top10Ids = []
-    let descartadosIds = []
-    if (rPass1) {
-      try {
-        const m = rPass1.texto.match(/\{[\s\S]*\}/)
-        if (m) {
-          const parsed = JSON.parse(m[0])
-          top10Ids = (parsed.top25 || parsed.top15 || parsed.top10 || parsed.top || []).map(String)
-          descartadosIds = Array.isArray(parsed.descartados) ? parsed.descartados.map(String) : []
-        }
-        console.log(`[IA] pass1 seleccionó ${top10Ids.length} OPECs de ${shuffled.length} leídas`)
-      } catch (e) {
-        console.error('[IA] pass1 parse error:', e.message)
-      }
-    }
-
-    if (!top10Ids.length) {
-      top10Ids = shuffled.slice(0, 25).map(c => String(c.id))
-    }
+    // ── Paso 1: extraer perfil estructurado del candidato ─────────────────────────
+    console.log(`[IA] pass2a: extrayendo perfil del candidato`)
+    const rPerfil = await deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
+      .catch(e => { console.error('[IA] pass2a error:', e.message); return null })
 
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
     let perfilData = rPerfil ? rescueAnalisis(rPerfil.texto) : null
     if (!perfilData) return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
 
-    // ── PASO 2b: Análisis de OPECs usando el perfil ya estructurado ──────────────
-    const opecs9   = todosOpec.filter(c => top10Ids.includes(String(c.id))).slice(0, 9)
-    const opecsDes = todosOpec.filter(c => descartadosIds.includes(String(c.id))).slice(0, 3)
+    // ── Paso 2: motor de scoring determinista sobre TODAS las OPECs ──────────────
+    // La IA NO decide aquí. Solo matemáticas puras con reglas fijas.
+    const p = perfilData.perfil_candidato || {}
+    const resultadosScoring = todosOpec.map(opec => ({
+      opec,
+      ...scorearOPEC(p, opec, ciudadKey),
+    }))
+
+    const viables    = resultadosScoring.filter(r => !r.descartada).sort((a, b) => b.score - a.score)
+    const descartadas = resultadosScoring.filter(r => r.descartada)
+
+    const statMotivos = {}
+    for (const d of descartadas) statMotivos[d.motivo] = (statMotivos[d.motivo] || 0) + 1
+
+    console.log(`[IA] scoring: ${todosOpec.length} OPECs evaluadas → ${viables.length} viables, ${descartadas.length} descartadas`)
+    console.log(`[IA] motivos descarte:`, statMotivos)
+
+    const top20    = viables.slice(0, 20).map(r => r.opec)
+    const top10Ids = top20.map(c => String(c.id))
+    const descartadosParaIA = descartadas.slice(0, 5).map(r => r.opec)
+    const descartadosIds    = descartadosParaIA.map(c => String(c.id))
+
+    // ── PASO 2b: IA explica el top-3 elegido por el motor lógico ─────────────────
+    const opecs9   = top20.slice(0, 9)
+    const opecsDes = descartadosParaIA.slice(0, 3)
     const batch1          = opecs9.slice(0, 3)
     const opecsPendientes = opecs9.slice(3).map(c => c.id)
 
-    const p = perfilData.perfil_candidato || {}
     const perfilResumen = [
       `Nombre: ${p.nombre || ''}`,
       `Profesion: ${p.profesion_principal || ''}`,
@@ -1442,17 +1518,24 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       `Nucleos: ${(p.posibles_nucleos_basicos_conocimiento || []).join(', ')}`,
     ].join('\n')
 
+    // Resumen del scoring para que la IA sepa de dónde vienen los cargos
+    const scoringCtx = `CONTEXTO DEL MOTOR DE SELECCION:
+Se evaluaron ${todosOpec.length} OPECs con reglas deterministas.
+Descartadas: ${descartadas.length} (${Object.entries(statMotivos).map(([k,v]) => `${v} por ${k}`).join(', ')}).
+Viables: ${viables.length}. Los cargos abajo son el TOP por score matematico.
+Tu tarea: EXPLICAR y JUSTIFICAR estos cargos preseleccionados, no elegir nuevos.`
+
     const descartadosTxt = opecsDes.length ? '\n\nCARGOS DESCARTADOS (incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
 
-    const SP_OPECS = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Analiza los cargos OPEC contra el perfil estructurado del candidato.
-REGLAS: No infles porcentajes. Si no cumple formacion minima no recomiendes. Calcula afinidad 0-100: formacion 30%, experiencia 30%, funciones 25%, conocimientos 10%, coherencia 5%.
+    const SP_OPECS = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Los cargos que recibes ya fueron preseleccionados por un motor logico determinista que evaluo TODAS las OPECs. Tu rol es EXPLICAR y JUSTIFICAR cada cargo con lenguaje claro para el candidato.
+REGLAS: Usa el score del motor como base para afinidad_porcentaje (puede ajustar +/-5 pts con justificacion). Sé honesto sobre brechas. Da guia practica y accionable.
 Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
 {"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}],"opec_mas_recomendada":{"codigo_opec":"","denominacion":"","afinidad_porcentaje":0,"razon_principal":"","accion_prioritaria_antes_de_postularse":""},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
 
     const ciudadLine = ciudadKey
       ? `UBICACION DE INTERES: ${ciudad_filtro} — el candidato busca cargos con vacantes en esta ciudad. Menciona las vacantes locales en la guia al usuario cuando estén disponibles.\n\n`
       : ''
-    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR:\n${buildOpecTexto(batch1, ciudadKey)}${descartadosTxt}\n\nAnaliza estos ${batch1.length} cargos contra el perfil. Devuelve UNICAMENTE el JSON.`
+    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${scoringCtx}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR (preseleccionados por motor logico):\n${buildOpecTexto(batch1, ciudadKey)}${descartadosTxt}\n\nExplica estos ${batch1.length} cargos para el candidato. Devuelve UNICAMENTE el JSON.`
 
     let opecsData = null
     try {
