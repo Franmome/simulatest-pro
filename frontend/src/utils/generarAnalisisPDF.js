@@ -1,10 +1,10 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-const PRAXIA_PURPLE = [91, 46, 210]   // #5b2ed2
-const PRAXIA_LIGHT  = [237, 230, 255] // #ede6ff
-const GRAY_TEXT     = [60, 60, 70]
-const GRAY_LIGHT    = [240, 240, 245]
+const PRAXIA_PURPLE = [15, 40, 100]   // azul marino oscuro
+const PRAXIA_LIGHT  = [219, 230, 255] // azul muy claro
+const GRAY_TEXT     = [30, 41, 59]    // casi negro
+const GRAY_LIGHT    = [241, 245, 249] // gris muy claro
 
 function truncate(str, max = 120) {
   if (!str) return ''

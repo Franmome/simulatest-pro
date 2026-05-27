@@ -2,8 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAnalysis } from '../context/AnalysisContext'
-const generarAnalisisPDF = (...args) =>
-  import('../utils/generarAnalisisPDF').then(m => m.generarAnalisisPDF(...args))
+const generarAnalisisPDF = async (...args) => {
+  try {
+    const m = await import('../utils/generarAnalisisPDF')
+    m.generarAnalisisPDF(...args)
+  } catch {
+    // chunk puede tener hash viejo en caché — recargar resuelve
+    alert('Error al cargar el generador de PDF. Recarga la página (Ctrl+Shift+R) e intenta de nuevo.')
+  }
+}
 
 const BASE = import.meta.env.VITE_API_URL || ''
 
