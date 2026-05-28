@@ -533,17 +533,43 @@ const RUTAS_CFG = {
   ruta_ambiciosa:  { label: 'Ruta Ambiciosa',  subtitle: 'Tu techo competitivo',   icon: 'rocket_launch',     color: 'purple',   bgFrom: 'from-purple-500/10', bgTo: 'to-purple-500/5', border: 'border-purple-500/30', badge: 'bg-purple-600 text-white',        iconBg: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' },
 }
 
+const PIN_UI = {
+  comprar_con_verificacion: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', icon: 'check_circle', dot: 'bg-green-500' },
+  verificar:                { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', icon: 'warning',      dot: 'bg-amber-500' },
+  no_comprar:               { bg: 'bg-red-100 dark:bg-red-900/30',     text: 'text-red-700 dark:text-red-400',   icon: 'cancel',        dot: 'bg-red-500'   },
+}
+
+const VRM_PILL = {
+  'viable':                  { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' },
+  'viable con verificacion': { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400' },
+  'no viable':               { bg: 'bg-red-100 dark:bg-red-900/30',     text: 'text-red-700 dark:text-red-400'     },
+}
+const VA_PILL = {
+  'potencial bajo':  { bg: 'bg-surface-container', text: 'text-on-surface-variant' },
+  'potencial medio': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' },
+  'potencial alto':  { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' },
+}
+const HAB_PILL = {
+  'no aplica': { bg: 'bg-surface-container', text: 'text-on-surface-variant' },
+  'verificar': { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400' },
+  'cumple':    { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' },
+}
+
 function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
   const [open, setOpen] = useState(rutaKey === 'ruta_principal')
   const cfg = RUTAS_CFG[rutaKey] || RUTAS_CFG.ruta_principal
   const s = pctStyle(ruta.afinidad_porcentaje)
-  const cumpl = ruta.cumplimiento || {}
 
-  const riesgoCol = ruta.riesgo_nivel === 'bajo'
-    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    : ruta.riesgo_nivel === 'medio'
-    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+  // Soporte para ambos formatos (nuevo: decision_pin / viejo: riesgo_nivel)
+  const pinKey  = ruta.decision_pin || (ruta.riesgo_nivel === 'bajo' ? 'comprar_con_verificacion' : ruta.riesgo_nivel === 'alto' ? 'no_comprar' : 'verificar')
+  const pinUi   = PIN_UI[pinKey] || PIN_UI.verificar
+  const pinText = ruta.decision_pin_texto || (pinKey === 'comprar_con_verificacion' ? 'Comprar con verificación' : pinKey === 'no_comprar' ? 'No comprar ahora' : 'Verificar antes de comprar')
+
+  // Campos con fallback old → new
+  const porQueText    = ruta.por_que_conviene || ruta.por_que_esta_ruta || ''
+  const accionesItems = ruta.antes_de_pagar?.length > 0 ? ruta.antes_de_pagar : (ruta.acciones_clave || [])
+  const decSugerida   = ruta.decision_sugerida || ruta.justificacion || ''
+  const puntoCrit     = ruta.punto_critico || ruta.riesgo_explica || ''
 
   return (
     <div className={`card overflow-hidden border-2 ${cfg.border} bg-gradient-to-br ${cfg.bgFrom} ${cfg.bgTo}`}>
@@ -556,6 +582,12 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
           <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
           <span className="ml-1.5 text-[10px] text-on-surface-variant">{cfg.subtitle}</span>
         </div>
+        {/* Decisión PIN badge prominente */}
+        <span className={`flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full ${pinUi.bg} ${pinUi.text} flex-shrink-0`}>
+          <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>{pinUi.icon}</span>
+          <span className="hidden sm:inline">{pinText}</span>
+          <span className="sm:hidden">{pinKey === 'comprar_con_verificacion' ? 'Comprar' : pinKey === 'no_comprar' ? 'No comprar' : 'Verificar'}</span>
+        </span>
       </div>
 
       {/* Cargo header */}
@@ -569,8 +601,9 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
             {ruta.entidad && <span>{ruta.entidad} · </span>}
             {ruta.numero_opec ? `OPEC ${ruta.numero_opec}` : ruta.codigo_opec ? `Cod. ${ruta.codigo_opec}` : ''}
             {ruta.nivel ? ` · ${ruta.nivel}` : ''}
-            {ruta.grado ? ` grado ${ruta.grado}` : ''}
+            {ruta.grado ? ` G${ruta.grado}` : ''}
             {ruta.vacantes ? ` · ${ruta.vacantes} vac.` : ''}
+            {ruta.ciudad ? ` · ${ruta.ciudad}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -594,15 +627,18 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/20 pt-3">
 
-          {/* Por qué esta ruta */}
-          {ruta.por_que_esta_ruta && (
-            <div className={`p-3 rounded-xl text-xs leading-relaxed border ${cfg.border} bg-white/40 dark:bg-surface/20`}>
-              <p className="font-bold mb-0.5 text-[10px] uppercase tracking-wider opacity-70">Por qué esta ruta</p>
-              <p className="text-on-surface">{ruta.por_que_esta_ruta}</p>
-            </div>
-          )}
+          {/* Decisión PIN expandida */}
+          <div className={`p-3 rounded-xl border ${cfg.border} ${pinUi.bg}`}>
+            <p className={`text-xs font-extrabold mb-0.5 flex items-center gap-1 ${pinUi.text}`}>
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{pinUi.icon}</span>
+              Decisión PIN: {pinText}
+            </p>
+            {(ruta.motivo_claro || porQueText) && (
+              <p className="text-xs text-on-surface mt-1">{ruta.motivo_claro || porQueText}</p>
+            )}
+          </div>
 
-          {/* Meta info */}
+          {/* Meta: salario + datos clave */}
           <div className="flex flex-wrap gap-2">
             {ruta.salario && (
               <div className="flex items-center gap-1.5 bg-surface-container rounded-lg px-2.5 py-1.5">
@@ -610,37 +646,64 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
                 <span className="text-xs font-semibold">{ruta.salario}</span>
               </div>
             )}
-            {ruta.riesgo_nivel && (
-              <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${riesgoCol}`}>
-                Riesgo {ruta.riesgo_nivel}
-              </span>
+            {ruta.ciudad && (
+              <div className="flex items-center gap-1 bg-surface-container rounded-lg px-2 py-1.5">
+                <span className="material-symbols-outlined text-on-surface-variant text-sm">location_on</span>
+                <span className="text-xs text-on-surface">{ruta.ciudad}</span>
+              </div>
             )}
           </div>
 
-          {/* Cumplimiento pills */}
-          {Object.keys(cumpl).some(k => cumpl[k]) && (
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(cumpl).map(([k, v]) => {
-                if (!v) return null
+          {/* VRM / VA / Habilitación — status row */}
+          {(ruta.vrm || ruta.va || ruta.habilitacion || ruta.cumplimiento) && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {(() => {
+                const vrmE = ruta.vrm || (ruta.cumplimiento?.experiencia === 'cumple' ? 'viable' : 'viable con verificacion')
+                const vaE  = ruta.va  || 'potencial medio'
+                const habE = ruta.habilitacion || (ruta.cumplimiento?.tarjeta_profesional === 'no aplica' ? 'no aplica' : 'verificar')
+                const vp = VRM_PILL[vrmE] || VRM_PILL['viable con verificacion']
+                const ap = VA_PILL[vaE]   || VA_PILL['potencial medio']
+                const hp = HAB_PILL[habE] || HAB_PILL['no aplica']
                 return (
-                  <span key={k} className={`flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full bg-surface-container ${cumpleColor(v)}`}>
-                    <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>{cumpleIcon(v)}</span>
-                    {k === 'formacion' ? 'Formación' : k === 'experiencia' ? 'Experiencia' : 'Funciones'}
-                  </span>
+                  <>
+                    <div className={`rounded-lg p-2 ${vp.bg}`}>
+                      <p className={`text-[9px] font-extrabold uppercase tracking-wider ${vp.text}`}>VRM</p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${vp.text}`}>{vrmE}</p>
+                    </div>
+                    <div className={`rounded-lg p-2 ${ap.bg}`}>
+                      <p className={`text-[9px] font-extrabold uppercase tracking-wider ${ap.text}`}>VA</p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${ap.text}`}>{vaE}</p>
+                    </div>
+                    <div className={`rounded-lg p-2 ${hp.bg}`}>
+                      <p className={`text-[9px] font-extrabold uppercase tracking-wider ${hp.text}`}>Habilitación</p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${hp.text}`}>{habE}</p>
+                    </div>
+                  </>
                 )
-              })}
+              })()}
             </div>
           )}
 
-          {/* Acciones clave */}
-          {ruta.acciones_clave?.length > 0 && (
+          {/* Punto crítico */}
+          {puntoCrit && (
+            <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/40 rounded-xl p-3">
+              <span className="material-symbols-outlined text-amber-600 text-sm flex-shrink-0 mt-0.5">warning</span>
+              <div>
+                <p className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Punto crítico</p>
+                <p className="text-xs text-on-surface mt-0.5">{puntoCrit}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Antes de pagar / acciones clave */}
+          {accionesItems.length > 0 && (
             <div>
               <p className="text-xs font-bold text-primary mb-1.5 flex items-center gap-1">
                 <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
-                Acciones clave antes de postularte
+                Antes de pagar el PIN
               </p>
               <ol className="space-y-1">
-                {ruta.acciones_clave.map((a, j) => (
+                {accionesItems.map((a, j) => (
                   <li key={j} className="text-xs text-on-surface flex items-start gap-2 bg-surface-container rounded-lg p-2">
                     <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">{j + 1}</span>
                     {a}
@@ -650,55 +713,11 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
             </div>
           )}
 
-          {/* Coincidencias y brechas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {ruta.coincidencias_principales?.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-green-600 mb-1.5 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  Coincidencias
-                </p>
-                <ul className="space-y-1">
-                  {ruta.coincidencias_principales.map((c, j) => (
-                    <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
-                      <span className="material-symbols-outlined text-green-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {ruta.brechas_concretas?.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-amber-600 mb-1.5 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">priority_high</span>
-                  Brechas
-                </p>
-                <ul className="space-y-1">
-                  {ruta.brechas_concretas.map((b, j) => (
-                    <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
-                      <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0">arrow_forward</span>
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {/* Riesgo explica */}
-          {ruta.riesgo_explica && (
-            <div className="bg-surface-container rounded-xl p-3">
-              <p className="text-xs font-bold text-on-surface-variant mb-0.5">Riesgo documental</p>
-              <p className="text-xs text-on-surface leading-relaxed">{ruta.riesgo_explica}</p>
-            </div>
-          )}
-
-          {/* Justificación */}
-          {ruta.justificacion && (
-            <div className="bg-surface-container rounded-xl p-3">
-              <p className="text-xs font-bold text-on-surface-variant mb-0.5">Justificación del puntaje</p>
-              <p className="text-xs text-on-surface leading-relaxed">{ruta.justificacion}</p>
+          {/* Decisión sugerida */}
+          {decSugerida && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200/60 dark:border-green-700/40 rounded-xl p-3">
+              <p className="text-[10px] font-extrabold text-green-700 dark:text-green-400 uppercase tracking-wider mb-0.5">Decisión sugerida</p>
+              <p className="text-xs text-on-surface leading-relaxed">{decSugerida}</p>
             </div>
           )}
 

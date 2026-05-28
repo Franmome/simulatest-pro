@@ -1570,29 +1570,33 @@ Tu tarea: ASIGNAR cada cargo a una ruta estrategica — no elegir nuevos cargos.
       ? '\n\nCARGOS DESCARTADOS (para cargos_descartados_relevantes):\n' + buildOpecTexto(descartadosRutas)
       : ''
 
-    const SP_RUTAS = `Eres un estratega de carrera para concursos de meritos del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia). Los cargos que recibes fueron preseleccionados por un motor logico determinista. Tu rol es asignarlos a 4 RUTAS ESTRATEGICAS con justificacion clara y acciones concretas.
+    const SP_RUTAS = `Eres un estratega de carrera para concursos de meritos del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia). Tu rol es asignar los cargos preseleccionados a 4 RUTAS con decision clara de compra de PIN y analisis VRM/VA/Habilitacion.
 
 DEFINICION DE RUTAS:
-- ruta_principal: El cargo con MAYOR compatibilidad real con el perfil. La mejor apuesta segura del candidato.
-- ruta_segura: El cargo con MAS VACANTES o menor exigencia relativa. Maximiza la probabilidad de clasificar.
-- ruta_estrategica: El cargo con mejor RELACION ESFUERZO-RETORNO: salario competitivo, buena compatibilidad, proyeccion de carrera.
-- ruta_ambiciosa: El cargo de MAYOR NIVEL jerarquico o mejor salario al que el candidato puede aspirar con preparacion adicional.
+- ruta_principal: Mejor compatibilidad real. Apuesta principal del candidato.
+- ruta_segura: Mas vacantes o menor exigencia. Maximiza probabilidad de clasificar.
+- ruta_estrategica: Mejor relacion esfuerzo-retorno (salario, proyeccion, territorio).
+- ruta_ambiciosa: Mayor nivel o salario al que puede aspirar con preparacion adicional.
 
-REGLAS CRITICAS:
-- Asigna cargos DIFERENTES a cada ruta si es posible (al menos 2-3 distintos de 4 rutas).
-- Basa afinidad_porcentaje en el motor de scoring (ajuste maximo +/-5 pts con justificacion).
-- "por_que_esta_ruta": MAXIMO 120 caracteres. Una frase motivadora y honesta.
-- "justificacion": MAXIMO 100 caracteres. Solo el dato clave.
-- "acciones_clave": EXACTAMENTE 3 items. Cada item MAXIMO 90 caracteres.
-- "coincidencias_principales": MAXIMO 3 items. Cada item MAXIMO 60 caracteres.
-- "brechas_concretas": MAXIMO 3 items. Cada item MAXIMO 60 caracteres.
-- "riesgo_explica": MAXIMO 100 caracteres.
-- "cargos_descartados_relevantes": MAXIMO 2 items.
-- Se honesto sobre brechas. No infles porcentajes.
-- IMPORTANTE: El JSON completo debe caber en la respuesta. Prioriza completar las 4 rutas antes que los descartados.
+DECISION PIN (campo decision_pin de cada ruta):
+- "comprar_con_verificacion": VRM viable, riesgo bajo-medio. Pagar previa confirmacion de documentos.
+- "verificar": VRM viable con observaciones, riesgo medio. Validar soportes antes de pagar.
+- "no_comprar": experiencia=no cumple O funciones=no cumple O riesgo alto. No pagar todavia.
+REGLA CRITICA: Si experiencia o funciones NO CUMPLEN, decision_pin DEBE ser "no_comprar".
+
+LIMITES OBLIGATORIOS (para no truncar la respuesta):
+- objetivo_frase: max 150 chars | recomendacion_ejecutiva: max 200 chars | decision_final_resumida: max 150 chars
+- semaforo verde/amarillo/rojo: max 100 chars c/u
+- motivo_claro: max 100 chars | punto_critico: max 90 chars | por_que_conviene: max 100 chars
+- accion_antes_de_pagar: max 90 chars | antes_de_pagar: EXACTAMENTE 3 items max 80 chars c/u
+- decision_sugerida: max 120 chars | cargos_descartados_relevantes: max 2 items
+- PRIORIZA completar las 4 rutas. Los campos globales van al final.
+- vrm: "viable" | "viable con verificacion" | "no viable"
+- va: "potencial bajo" | "potencial medio" | "potencial alto"
+- habilitacion: "no aplica" | "verificar" | "cumple"
 
 Devuelve UNICAMENTE este JSON valido sin markdown:
-{"rutas":{"ruta_principal":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple"},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_segura":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_estrategica":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_ambiciosa":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"medio","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]}},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
+{"objetivo_frase":"","recomendacion_ejecutiva":"","decision_final_resumida":"","semaforo":{"verde":"","amarillo":"","rojo":""},"rutas":{"ruta_principal":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","ciudad":"","afinidad_porcentaje":0,"decision_pin":"comprar_con_verificacion","decision_pin_texto":"Comprar con verificacion","motivo_claro":"","punto_critico":"","por_que_conviene":"","riesgo_nivel":"bajo","vrm":"viable con verificacion","va":"potencial medio","habilitacion":"no aplica","accion_antes_de_pagar":"","antes_de_pagar":[],"decision_sugerida":""},"ruta_segura":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","ciudad":"","afinidad_porcentaje":0,"decision_pin":"comprar_con_verificacion","decision_pin_texto":"Comprar con verificacion","motivo_claro":"","punto_critico":"","por_que_conviene":"","riesgo_nivel":"bajo","vrm":"viable","va":"potencial bajo","habilitacion":"no aplica","accion_antes_de_pagar":"","antes_de_pagar":[],"decision_sugerida":""},"ruta_estrategica":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","ciudad":"","afinidad_porcentaje":0,"decision_pin":"verificar","decision_pin_texto":"Verificar antes de comprar","motivo_claro":"","punto_critico":"","por_que_conviene":"","riesgo_nivel":"medio","vrm":"viable con verificacion","va":"potencial medio","habilitacion":"verificar","accion_antes_de_pagar":"","antes_de_pagar":[],"decision_sugerida":""},"ruta_ambiciosa":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","ciudad":"","afinidad_porcentaje":0,"decision_pin":"verificar","decision_pin_texto":"Verificar antes de comprar","motivo_claro":"","punto_critico":"","por_que_conviene":"","riesgo_nivel":"medio","vrm":"viable con verificacion","va":"potencial medio","habilitacion":"verificar","accion_antes_de_pagar":"","antes_de_pagar":[],"decision_sugerida":""}},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","decision":"No comprar PIN actualmente"}]}`
 
     const promptRutas = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${scoringCtx}\n${prefCtx}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS PRESELECCIONADOS (orden: mayor a menor compatibilidad):\n${buildOpecTexto(candidatosRutas, ciudadKey)}${descartadosTxt}\n\nAsigna las 4 rutas estrategicas para este candidato. Devuelve UNICAMENTE el JSON.`
 
@@ -1644,7 +1648,7 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
         codigo_opec:         rutasData.rutas.ruta_principal.codigo_opec,
         denominacion:        rutasData.rutas.ruta_principal.denominacion,
         afinidad_porcentaje: rutasData.rutas.ruta_principal.afinidad_porcentaje,
-        razon_principal:     rutasData.rutas.ruta_principal.por_que_esta_ruta,
+        razon_principal:     rutasData.rutas.ruta_principal.por_que_conviene || rutasData.rutas.ruta_principal.por_que_esta_ruta,
       } : null,
     }
 
