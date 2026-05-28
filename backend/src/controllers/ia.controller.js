@@ -1571,17 +1571,46 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
       console.error('[IA] pass2b (rutas) error:', e.message)
     }
 
-    // Fusionar: perfil + rutas estratégicas
+    // Fallback determinista: si la IA falló o devolvió rutas vacías, construir ranking básico
+    const rutasValidas = rutasData?.rutas &&
+      Object.values(rutasData.rutas).some(r => r?.denominacion)
+    const rankingFallback = rutasValidas ? [] : viables.slice(0, 6).map(r => ({
+      denominacion:           r.opec.denominacion || '',
+      entidad:                r.opec.entidad      || '',
+      codigo_opec:            String(r.opec.numero_opec || r.opec.num_convocatoria || r.opec.id || ''),
+      nivel:                  r.opec.nivel    || '',
+      grado:                  r.opec.grado    || 0,
+      vacantes:               r.opec.vacantes || 1,
+      salario:                r.opec.salario  || '',
+      proceso:                r.opec.proceso  || '',
+      afinidad_porcentaje:    r.pct || 0,
+      clasificacion_afinidad: r.pct >= 75 ? 'alta' : r.pct >= 60 ? 'media-alta' : 'media',
+      numero_opec:            r.opec.numero_opec      || null,
+      num_convocatoria:       r.opec.num_convocatoria || null,
+      dependencia:            r.opec.dependencia      || null,
+      ubicaciones_norm:       r.opec._ubNorm          || [],
+      cumplimiento: {},
+      coincidencias_principales: [],
+      brechas_concretas: [],
+      riesgo_documental: { nivel: 'medio', causas: [] },
+      guia_para_el_usuario: {
+        mensaje_claro: 'Preseleccionado por el motor de compatibilidad. Revisa los requisitos en SIMO.',
+        acciones_antes_de_postularse: [],
+        documentos_prioritarios: [],
+      },
+    }))
+
+    // Fusionar: perfil + rutas estratégicas (o fallback si IA falló)
     const analisis = {
       ...perfilData,
-      rutas: rutasData?.rutas || null,
+      rutas: rutasValidas ? rutasData.rutas : null,
       cargos_descartados_relevantes: rutasData?.cargos_descartados_relevantes || [],
-      ranking_opec_recomendadas: [],
+      ranking_opec_recomendadas: rankingFallback,
       opec_mas_recomendada: rutasData?.rutas?.ruta_principal ? {
-        codigo_opec:        rutasData.rutas.ruta_principal.codigo_opec,
-        denominacion:       rutasData.rutas.ruta_principal.denominacion,
+        codigo_opec:         rutasData.rutas.ruta_principal.codigo_opec,
+        denominacion:        rutasData.rutas.ruta_principal.denominacion,
         afinidad_porcentaje: rutasData.rutas.ruta_principal.afinidad_porcentaje,
-        razon_principal:    rutasData.rutas.ruta_principal.por_que_esta_ruta,
+        razon_principal:     rutasData.rutas.ruta_principal.por_que_esta_ruta,
       } : null,
     }
 
@@ -1610,7 +1639,8 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
     const rutasCount = analisis.rutas
       ? Object.values(analisis.rutas).filter(r => r?.denominacion).length
       : 0
-    console.log('[IA] Rutas generadas:', rutasCount, '| pendientes:', opecsPendientes.length)
+    if (!rutasValidas) console.warn('[IA] Rutas IA fallaron — usando ranking determinista fallback:', rankingFallback.length, 'OPECs')
+    console.log('[IA] Rutas generadas:', rutasCount, '| fallback ranking:', rankingFallback.length, '| pendientes:', opecsPendientes.length)
 
     const now = new Date().toISOString()
     const { error: saveErr } = await supabase.from('user_profile_analysis').insert(
