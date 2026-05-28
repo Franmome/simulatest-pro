@@ -1345,6 +1345,19 @@ function buildOpecTexto(lista, ciudadKey = '') {
   }).join('\n---\n')
 }
 
+// Extrae el primer objeto JSON completo de un fragmento de texto
+function extractFirstObject(texto, fromIdx = 0) {
+  const start = texto.indexOf('{', fromIdx)
+  if (start === -1) return null
+  let depth = 0, i = start
+  for (; i < texto.length; i++) {
+    if (texto[i] === '{') depth++
+    else if (texto[i] === '}') { depth--; if (depth === 0) break }
+  }
+  if (depth !== 0) return null
+  try { return JSON.parse(texto.slice(start, i + 1)) } catch { return null }
+}
+
 // Extrae OPECs completas de texto aunque el JSON esté truncado
 function rescueAnalisis(texto) {
   // Intento 1: parse completo
@@ -1353,7 +1366,22 @@ function rescueAnalisis(texto) {
     if (m) return JSON.parse(m[0])
   } catch (_) {}
 
-  // Intento 2: extraer objetos individuales del array ranking_opec_recomendadas
+  // Intento 2 (rutas): extraer cada ruta individualmente si el JSON fue truncado
+  if (texto.includes('"rutas"')) {
+    const rutas = {}
+    for (const key of ['ruta_principal', 'ruta_segura', 'ruta_estrategica', 'ruta_ambiciosa']) {
+      const keyIdx = texto.indexOf(`"${key}"`)
+      if (keyIdx === -1) continue
+      const obj = extractFirstObject(texto, keyIdx)
+      if (obj?.denominacion) rutas[key] = obj
+    }
+    if (Object.keys(rutas).length > 0) {
+      console.log('[rescueAnalisis] rutas parciales rescatadas:', Object.keys(rutas))
+      return { rutas, _parcial: true }
+    }
+  }
+
+  // Intento 3 (ranking legacy): extraer objetos del array ranking_opec_recomendadas
   const keyIdx = texto.indexOf('"ranking_opec_recomendadas"')
   if (keyIdx === -1) return null
   const bracketIdx = texto.indexOf('[', keyIdx)
@@ -1553,9 +1581,15 @@ DEFINICION DE RUTAS:
 REGLAS CRITICAS:
 - Asigna cargos DIFERENTES a cada ruta si es posible (al menos 2-3 distintos de 4 rutas).
 - Basa afinidad_porcentaje en el motor de scoring (ajuste maximo +/-5 pts con justificacion).
-- "por_que_esta_ruta" debe ser una frase motivadora y honesta, maximo 2 oraciones.
-- "acciones_clave" debe tener 3-4 pasos concretos accionables antes de postularse.
+- "por_que_esta_ruta": MAXIMO 120 caracteres. Una frase motivadora y honesta.
+- "justificacion": MAXIMO 100 caracteres. Solo el dato clave.
+- "acciones_clave": EXACTAMENTE 3 items. Cada item MAXIMO 90 caracteres.
+- "coincidencias_principales": MAXIMO 3 items. Cada item MAXIMO 60 caracteres.
+- "brechas_concretas": MAXIMO 3 items. Cada item MAXIMO 60 caracteres.
+- "riesgo_explica": MAXIMO 100 caracteres.
+- "cargos_descartados_relevantes": MAXIMO 2 items.
 - Se honesto sobre brechas. No infles porcentajes.
+- IMPORTANTE: El JSON completo debe caber en la respuesta. Prioriza completar las 4 rutas antes que los descartados.
 
 Devuelve UNICAMENTE este JSON valido sin markdown:
 {"rutas":{"ruta_principal":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple"},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_segura":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_estrategica":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_ambiciosa":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"medio","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]}},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
