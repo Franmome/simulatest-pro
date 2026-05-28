@@ -108,6 +108,67 @@ export function generarAnalisisPDF(analisis, convNombre = '') {
   doc.text('Análisis rápido de opciones para compra de PIN', W / 2, y, { align: 'center' })
   y += 8
 
+  // ── Perfil del candidato ──────────────────────────────────────────
+  const pc = analisis.perfil_candidato
+  if (pc) {
+    doc.setTextColor(...PRIMARY)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Perfil del candidato', marginX, y)
+    y += 4
+
+    const fmtMeses = (m) => {
+      if (!m) return 'N/D'
+      const yrs = Math.floor(m / 12)
+      const mos = m % 12
+      return yrs > 0 ? `${yrs} año${yrs > 1 ? 's' : ''} ${mos > 0 ? `${mos} meses` : ''}`.trim() : `${mos} meses`
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      body: [
+        ['Nombre',                pc.nombre || 'N/D'],
+        ['Profesión',             pc.profesion_principal || 'N/D'],
+        ['Nivel de formación',    pc.nivel_formacion || 'N/D'],
+        ['Títulos identificados', (pc.titulos_identificados || []).join(', ') || 'N/D'],
+        ['Experiencia total',     fmtMeses(pc.experiencia_total_estimada_meses)],
+        ['Exp. sector público',   fmtMeses(pc.experiencia_sector_publico_meses)],
+        ['Áreas de experiencia',  (pc.areas_experiencia || []).join(', ') || 'N/D'],
+        ['Tarjeta profesional',   pc.tarjeta_profesional?.estado || 'N/D'],
+      ],
+      theme: 'plain',
+      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 48, fillColor: GRAY_LIGHT, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
+    })
+    y = doc.lastAutoTable.finalY + 4
+
+    const diag = analisis.diagnostico_general
+    if (diag) {
+      const rows = []
+      if (diag.nivel_competitividad) rows.push(['Competitividad', diag.nivel_competitividad])
+      if (diag.resumen_ejecutivo)    rows.push(['Resumen',        tr(diag.resumen_ejecutivo, 200)])
+      const fort = (diag.fortalezas || []).map(f => `• ${f}`).join('\n')
+      if (fort) rows.push(['Fortalezas', fort])
+      const mej = (diag.areas_de_mejora || []).map(m => `• ${m}`).join('\n')
+      if (mej) rows.push(['Áreas de mejora', mej])
+
+      if (rows.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [['Diagnóstico general', '']],
+          body: rows,
+          theme: 'plain',
+          headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+          styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
+          columnStyles: { 0: { cellWidth: 48, fillColor: GRAY_LIGHT, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
+        })
+        y = doc.lastAutoTable.finalY + 6
+      }
+    }
+  }
+
   // Objetivo en una frase
   const objetivo = analisis.objetivo_frase || analisis.diagnostico_general?.resumen_ejecutivo || ''
   if (objetivo) {
