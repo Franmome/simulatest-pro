@@ -374,11 +374,11 @@ export function generarAnalisisPDF(analisis, convNombre) {
     }
   }
 
-  // ── Fallback: ranking antiguo (análisis históricos) ───────────────────────────
+  // ── Ranking: fallback histórico O OPECs adicionales exploradas ───────────────
   const ranking = analisis.ranking_opec_recomendadas || []
-  if (!rutas && ranking.length > 0) {
+  if (ranking.length > 0) {
     y = checkPage(doc, y, 20)
-    y = sectionTitle(doc, 'CARGOS RECOMENDADOS', y, marginX)
+    y = sectionTitle(doc, rutas ? 'OPECS ADICIONALES EXPLORADAS' : 'CARGOS RECOMENDADOS', y, marginX)
 
     autoTable(doc, {
       startY: y,

@@ -850,7 +850,7 @@ function HistoryCard({ item, onSelect, onDelete, active }) {
 }
 
 // ── Results: new format ────────────────────────────────────────────────────────
-function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargandoMas = false, onVerMas, plataformaUrl, plataformaNombre }) {
+function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargandoMas = false, onVerMas, plataformaUrl, plataformaNombre, onGuardar, guardando = false, guardadoOk = false }) {
   const perfil = analisis.perfil_candidato || {}
   const diag = analisis.diagnostico_general || {}
   const top = analisis.opec_mas_recomendada || {}
@@ -1021,39 +1021,39 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
         </div>
       )}
 
-      {/* Ranking fallback (análisis anteriores sin rutas) */}
-      {!analisis.rutas && ranking.length > 0 && (
+      {/* OPECs: fallback (sin rutas) o adicionales exploradas (con rutas) */}
+      {ranking.length > 0 && (
         <div>
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
-            Cargos recomendados para ti
+            {analisis.rutas ? 'OPECs adicionales exploradas' : 'Cargos recomendados para ti'}
           </p>
           <div className="space-y-3">
             {ranking.map((opec, i) => <CargoCard key={opec.id ?? opec.numero_opec ?? i} opec={opec} index={i} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />)}
           </div>
-
-          {/* Botón Ver más OPECs */}
-          {(opecsPendientes.length > 0 || cargandoMas) && (
-            <button
-              onClick={onVerMas}
-              disabled={cargandoMas}
-              className="w-full mt-3 py-3 rounded-xl border-2 border-dashed border-primary/40 text-primary font-bold text-sm hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {cargandoMas ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  Buscando más OPECs compatibles...
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  <span className="sm:hidden">Ver más OPECs{opecsPendientes.length > 0 ? ` (${opecsPendientes.length})` : ''}</span>
-                  <span className="hidden sm:inline">Ver {Math.min(opecsPendientes.length, 3)} OPECs más ({opecsPendientes.length} pendientes)</span>
-                </>
-              )}
-            </button>
-          )}
         </div>
+      )}
+
+      {/* Botón Ver más OPECs */}
+      {(opecsPendientes.length > 0 || cargandoMas) && (
+        <button
+          onClick={onVerMas}
+          disabled={cargandoMas}
+          className="w-full py-3 rounded-xl border-2 border-dashed border-primary/40 text-primary font-bold text-sm hover:bg-primary/5 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {cargandoMas ? (
+            <>
+              <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              Buscando más OPECs compatibles...
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+              <span className="sm:hidden">Explorar más OPECs{opecsPendientes.length > 0 ? ` (${opecsPendientes.length})` : ''}</span>
+              <span className="hidden sm:inline">Explorar {Math.min(opecsPendientes.length, 3)} OPECs más ({opecsPendientes.length} pendientes)</span>
+            </>
+          )}
+        </button>
       )}
 
       {/* Acciones prioritarias */}
@@ -1101,6 +1101,40 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Guardar análisis completo */}
+      {onGuardar && (
+        <div className="card p-4 border-2 border-dashed border-primary/30 bg-primary/5 text-center space-y-3">
+          <div className="flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>cloud_done</span>
+            <p className="text-sm font-bold text-on-surface">
+              {guardadoOk ? 'Análisis guardado con todo el contenido' : 'Guarda tu análisis completo'}
+            </p>
+          </div>
+          {!guardadoOk && (
+            <p className="text-xs text-on-surface-variant">
+              Incluye las rutas estratégicas y todas las OPECs que hayas explorado en esta sesión.
+            </p>
+          )}
+          <button
+            onClick={onGuardar}
+            disabled={guardando || guardadoOk}
+            className={`w-full py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-sm
+              ${guardadoOk
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default'
+                : 'bg-primary text-on-primary hover:bg-primary/90 active:scale-95 disabled:opacity-60'
+              }`}
+          >
+            {guardando ? (
+              <><div className="w-4 h-4 border-2 border-on-primary/40 border-t-on-primary rounded-full animate-spin" />Guardando...</>
+            ) : guardadoOk ? (
+              <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Guardado</>
+            ) : (
+              <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>save</span>Guardar análisis completo</>
+            )}
+          </button>
         </div>
       )}
 
@@ -1171,6 +1205,9 @@ export default function AnalisisPerfil() {
   const [loadStep, setLoadStep] = useState(0)
   const [error, setError] = useState(null)
   const [analisis, setAnalisis] = useState(null)
+  const [analisisId, setAnalisisId] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+  const [guardadoOk, setGuardadoOk] = useState(false)
   const [opecsPendientes, setOpecsPendientes] = useState([])
   const [cargandoMas, setCargandoMas] = useState(false)
   const [historial, setHistorial] = useState([])
@@ -1197,6 +1234,8 @@ export default function AnalisisPerfil() {
       const json = jobResult
       setAnalisis({ ...json.analisis, _convNombre: json._convNombre || '' })
       setOpecsPendientes(json.opecs_pendientes || [])
+      if (json.analisis_id) { setAnalisisId(json.analisis_id); setActiveHistId(json.analisis_id) }
+      setGuardadoOk(false)
       if (json.pocas_opec_local) setPocasOpecLocal(true)
       if (json.plataforma_url) { setPlataformaUrl(json.plataforma_url); setPlataformaNombre(json.plataforma_nombre || null) }
       const entry = { analisis: json.analisis, convNombre: json._convNombre || '', ts: Date.now() }
@@ -1288,8 +1327,8 @@ export default function AnalisisPerfil() {
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
-    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null)
-    setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
+    setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setAnalisisId(null)
+    setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null); setGuardadoOk(false)
 
     const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
 
@@ -1321,11 +1360,38 @@ export default function AnalisisPerfil() {
 
   function selectHistItem(item) {
     setAnalisis({ ...item.analisis, _convNombre: item.convocatoria_nombre || '' })
-    setActiveHistId(item.id); setOpecsPendientes([]); setShowHistory(false)
+    setActiveHistId(item.id); setAnalisisId(item.id); setOpecsPendientes([]); setGuardadoOk(false); setShowHistory(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function resetForm() { setAnalisis(null); setActiveHistId(null); setOpecsPendientes([]) }
+  function resetForm() { setAnalisis(null); setActiveHistId(null); setAnalisisId(null); setOpecsPendientes([]) }
+
+  async function persistirAnalisis(analisisActualizado) {
+    if (!analisisId) return
+    try {
+      const headers = await authHeaders()
+      await fetch(`${BASE}/api/ia/mis-analisis/${analisisId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analisis: analisisActualizado }),
+      })
+    } catch { /* no crítico */ }
+  }
+
+  async function guardarAnalisis() {
+    if (!analisis || !analisisId || guardando) return
+    setGuardando(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/mis-analisis/${analisisId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analisis }),
+      })
+      if (res.ok) { setGuardadoOk(true); fetchHistory() }
+    } catch { /* silencioso */ }
+    finally { setGuardando(false) }
+  }
 
   async function verMasOpecs() {
     if (!opecsPendientes.length || cargandoMas) return
@@ -1346,13 +1412,17 @@ export default function AnalisisPerfil() {
       if (!res.ok) throw new Error(json.error)
       const nuevas = (json.nuevas_opecs || []).filter(o => (o.afinidad_porcentaje || 0) > 0)
       if (nuevas.length > 0) {
-        setAnalisis(prev => ({
-          ...prev,
-          ranking_opec_recomendadas: [
-            ...(prev.ranking_opec_recomendadas || []),
-            ...nuevas,
-          ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0)),
-        }))
+        setAnalisis(prev => {
+          const actualizado = {
+            ...prev,
+            ranking_opec_recomendadas: [
+              ...(prev.ranking_opec_recomendadas || []),
+              ...nuevas,
+            ].sort((a, b) => (b.afinidad_porcentaje || 0) - (a.afinidad_porcentaje || 0)),
+          }
+          persistirAnalisis(actualizado)
+          return actualizado
+        })
       }
       setOpecsPendientes(json.opecs_pendientes || [])
     } catch (e) {
@@ -1706,7 +1776,7 @@ export default function AnalisisPerfil() {
             {/* Results */}
             {analisis && (
               isNewFormat(analisis)
-                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />
+                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} onGuardar={guardarAnalisis} guardando={guardando} guardadoOk={guardadoOk} />
                 : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />
             )}
           </div>

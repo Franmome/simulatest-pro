@@ -1677,16 +1677,18 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
     console.log('[IA] Rutas generadas:', rutasCount, '| fallback ranking:', rankingFallback.length, '| pendientes:', opecsPendientes.length)
 
     const now = new Date().toISOString()
-    const { error: saveErr } = await supabase.from('user_profile_analysis').insert(
-      { user_id: userId, convocatoria_id: parseInt(convocatoria_id), convocatoria_nombre: convNombre, analisis, updated_at: now, created_at: now }
-    )
+    const { data: savedRow, error: saveErr } = await supabase.from('user_profile_analysis')
+      .insert({ user_id: userId, convocatoria_id: parseInt(convocatoria_id), convocatoria_nombre: convNombre, analisis, updated_at: now, created_at: now })
+      .select('id')
+      .single()
     if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
 
     return res.json({
       analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,
-      ciudad_filtro:     ciudad_filtro     || null,
-      plataforma_url:    conv?.plataforma_url    || null,
-      plataforma_nombre: conv?.plataforma_nombre || null,
+      analisis_id:       savedRow?.id            || null,
+      ciudad_filtro:     ciudad_filtro            || null,
+      plataforma_url:    conv?.plataforma_url     || null,
+      plataforma_nombre: conv?.plataforma_nombre  || null,
       motor: 'rutas_v1',
     })
   } catch (err) {
@@ -2400,6 +2402,20 @@ export async function getMisAnalisis(req, res) {
     return res.json({ analisis: [] })
   }
   return res.json({ analisis: data || [] })
+}
+
+export async function updateMiAnalisis(req, res) {
+  const userId = req.user.id
+  const { id } = req.params
+  const { analisis } = req.body
+  if (!analisis || typeof analisis !== 'object') return res.status(400).json({ error: 'Datos inválidos.' })
+  const { error } = await supabase
+    .from('user_profile_analysis')
+    .update({ analisis, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json({ ok: true })
 }
 
 export async function deleteMiAnalisis(req, res) {
