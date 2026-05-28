@@ -1409,7 +1409,8 @@ Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown, s
 export async function analizarPerfilCV(req, res) {
   try {
     const userId = req.user.id
-    const { convocatoria_id, perfil_texto, ciudad_filtro } = req.body
+    const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw } = req.body
+    const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
     const file = req.file
     const cvText = await extractCvText(file)
     console.log('[IA] cvText extraido:', cvText.length, 'chars')
@@ -1497,11 +1498,10 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     const descartadosParaIA = descartadas.slice(0, 5).map(r => r.opec)
     const descartadosIds    = descartadosParaIA.map(c => String(c.id))
 
-    // ── PASO 2b: IA explica el top-3 elegido por el motor lógico ─────────────────
-    const opecs9   = top20.slice(0, 9)
-    const opecsDes = descartadosParaIA.slice(0, 3)
-    const batch1          = opecs9.slice(0, 3)
-    const opecsPendientes = opecs9.slice(3).map(c => c.id)
+    // ── PASO 2b: motor de 4 rutas estratégicas ───────────────────────────────────
+    const candidatosRutas = top20.slice(0, 9)
+    const descartadosRutas = descartadosParaIA.slice(0, 3)
+    const opecsPendientes = top20.slice(9).map(c => c.id)
 
     const perfilResumen = [
       `Nombre: ${p.nombre || ''}`,
@@ -1518,60 +1518,99 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
       `Nucleos: ${(p.posibles_nucleos_basicos_conocimiento || []).join(', ')}`,
     ].join('\n')
 
-    // Resumen del scoring para que la IA sepa de dónde vienen los cargos
     const scoringCtx = `CONTEXTO DEL MOTOR DE SELECCION:
 Se evaluaron ${todosOpec.length} OPECs con reglas deterministas.
 Descartadas: ${descartadas.length} (${Object.entries(statMotivos).map(([k,v]) => `${v} por ${k}`).join(', ')}).
 Viables: ${viables.length}. Los cargos abajo son el TOP por score matematico.
-Tu tarea: EXPLICAR y JUSTIFICAR estos cargos preseleccionados, no elegir nuevos.`
+Tu tarea: ASIGNAR cada cargo a una ruta estrategica — no elegir nuevos cargos.`
 
-    const descartadosTxt = opecsDes.length ? '\n\nCARGOS DESCARTADOS (incluir en cargos_descartados_relevantes):\n' + buildOpecTexto(opecsDes) : ''
-
-    const SP_OPECS = `Eres un experto en seleccion de personal del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN). Los cargos que recibes ya fueron preseleccionados por un motor logico determinista que evaluo TODAS las OPECs. Tu rol es EXPLICAR y JUSTIFICAR cada cargo con lenguaje claro para el candidato.
-REGLAS: Usa el score del motor como base para afinidad_porcentaje (puede ajustar +/-5 pts con justificacion). Sé honesto sobre brechas. Da guia practica y accionable.
-Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
-{"ranking_opec_recomendadas":[{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","proceso":"","afinidad_porcentaje":0,"clasificacion_afinidad":"alta|media-alta|media|baja","justificacion":"","coincidencias_principales":[],"brechas_concretas":[],"cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple","tarjeta_profesional":"no aplica|cumple|no cumple","posgrado":"no aplica|cumple|no cumple"},"riesgo_documental":{"nivel":"bajo|medio|alto","causas":[]},"riesgo_no_cumplimiento":"","guia_para_el_usuario":{"decision_recomendada":"","mensaje_claro":"","acciones_antes_de_postularse":[],"documentos_prioritarios":[],"funciones_que_debe_evidenciar":[],"palabras_clave_sugeridas":[],"que_debe_corregir_en_hoja_de_vida":[]}}],"opec_mas_recomendada":{"codigo_opec":"","denominacion":"","afinidad_porcentaje":0,"razon_principal":"","accion_prioritaria_antes_de_postularse":""},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
+    const prefCtx = Object.keys(preferencias).length ? `\nPREFERENCIAS DEL CANDIDATO:\n${
+      [
+        preferencias.objetivo_principal       ? `- Objetivo: ${preferencias.objetivo_principal}` : '',
+        preferencias.disponibilidad_geografica ? `- Disponibilidad geografica: ${preferencias.disponibilidad_geografica}` : '',
+        preferencias.nivel_riesgo_aceptado    ? `- Tolerancia al riesgo: ${preferencias.nivel_riesgo_aceptado}` : '',
+        preferencias.acepta_nivel_inferior !== undefined
+          ? `- Acepta cargo de nivel inferior al actual: ${preferencias.acepta_nivel_inferior === 'true' || preferencias.acepta_nivel_inferior === true ? 'Si' : 'No'}` : '',
+      ].filter(Boolean).join('\n')
+    }` : ''
 
     const ciudadLine = ciudadKey
-      ? `UBICACION DE INTERES: ${ciudad_filtro} — el candidato busca cargos con vacantes en esta ciudad. Menciona las vacantes locales en la guia al usuario cuando estén disponibles.\n\n`
+      ? `UBICACION DE INTERES: ${ciudad_filtro} — el candidato busca cargos con vacantes en esta ciudad.\n\n`
       : ''
-    const promptOpecs = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${scoringCtx}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS A ANALIZAR (preseleccionados por motor logico):\n${buildOpecTexto(batch1, ciudadKey)}${descartadosTxt}\n\nExplica estos ${batch1.length} cargos para el candidato. Devuelve UNICAMENTE el JSON.`
 
-    let opecsData = null
+    const descartadosTxt = descartadosRutas.length
+      ? '\n\nCARGOS DESCARTADOS (para cargos_descartados_relevantes):\n' + buildOpecTexto(descartadosRutas)
+      : ''
+
+    const SP_RUTAS = `Eres un estratega de carrera para concursos de meritos del sector publico colombiano (CNSC, Procuraduria, Contraloria, DIAN, Fiscalia). Los cargos que recibes fueron preseleccionados por un motor logico determinista. Tu rol es asignarlos a 4 RUTAS ESTRATEGICAS con justificacion clara y acciones concretas.
+
+DEFINICION DE RUTAS:
+- ruta_principal: El cargo con MAYOR compatibilidad real con el perfil. La mejor apuesta segura del candidato.
+- ruta_segura: El cargo con MAS VACANTES o menor exigencia relativa. Maximiza la probabilidad de clasificar.
+- ruta_estrategica: El cargo con mejor RELACION ESFUERZO-RETORNO: salario competitivo, buena compatibilidad, proyeccion de carrera.
+- ruta_ambiciosa: El cargo de MAYOR NIVEL jerarquico o mejor salario al que el candidato puede aspirar con preparacion adicional.
+
+REGLAS CRITICAS:
+- Asigna cargos DIFERENTES a cada ruta si es posible (al menos 2-3 distintos de 4 rutas).
+- Basa afinidad_porcentaje en el motor de scoring (ajuste maximo +/-5 pts con justificacion).
+- "por_que_esta_ruta" debe ser una frase motivadora y honesta, maximo 2 oraciones.
+- "acciones_clave" debe tener 3-4 pasos concretos accionables antes de postularse.
+- Se honesto sobre brechas. No infles porcentajes.
+
+Devuelve UNICAMENTE este JSON valido sin markdown:
+{"rutas":{"ruta_principal":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"cumple|cumple parcialmente|no cumple","experiencia":"cumple|cumple parcialmente|no cumple","funciones":"cumple|cumple parcialmente|no cumple"},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_segura":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_estrategica":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"bajo","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]},"ruta_ambiciosa":{"denominacion":"","entidad":"","codigo_opec":"","nivel":"","grado":0,"vacantes":1,"salario":"","afinidad_porcentaje":0,"justificacion":"","por_que_esta_ruta":"","acciones_clave":[],"riesgo_nivel":"medio","riesgo_explica":"","cumplimiento":{"formacion":"","experiencia":"","funciones":""},"coincidencias_principales":[],"brechas_concretas":[]}},"cargos_descartados_relevantes":[{"codigo_opec":"","denominacion":"","entidad":"","motivo_descarte":"","brecha_principal":""}]}`
+
+    const promptRutas = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${scoringCtx}\n${prefCtx}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS PRESELECCIONADOS (orden: mayor a menor compatibilidad):\n${buildOpecTexto(candidatosRutas, ciudadKey)}${descartadosTxt}\n\nAsigna las 4 rutas estrategicas para este candidato. Devuelve UNICAMENTE el JSON.`
+
+    let rutasData = null
     try {
-      const rOpecs = await deepseekAnalisisPerfil(SP_OPECS, promptOpecs, 8192)
-      console.log('[IA] pass2b (opecs) tokensOut:', rOpecs.tokensOut)
-      opecsData = rescueAnalisis(rOpecs.texto)
+      const rRutas = await deepseekAnalisisPerfil(SP_RUTAS, promptRutas, 8192)
+      console.log('[IA] pass2b (rutas) tokensOut:', rRutas.tokensOut)
+      rutasData = rescueAnalisis(rRutas.texto)
     } catch (e) {
-      console.error('[IA] pass2b error:', e.message)
+      console.error('[IA] pass2b (rutas) error:', e.message)
     }
 
-    // Fusionar: perfil + opecs en un solo objeto
+    // Fusionar: perfil + rutas estratégicas
     const analisis = {
       ...perfilData,
-      ranking_opec_recomendadas: (opecsData?.ranking_opec_recomendadas || []).filter(o => (o.afinidad_porcentaje || 0) > 0),
-      opec_mas_recomendada:      opecsData?.opec_mas_recomendada || null,
-      cargos_descartados_relevantes: opecsData?.cargos_descartados_relevantes || [],
+      rutas: rutasData?.rutas || null,
+      cargos_descartados_relevantes: rutasData?.cargos_descartados_relevantes || [],
+      ranking_opec_recomendadas: [],
+      opec_mas_recomendada: rutasData?.rutas?.ruta_principal ? {
+        codigo_opec:        rutasData.rutas.ruta_principal.codigo_opec,
+        denominacion:       rutasData.rutas.ruta_principal.denominacion,
+        afinidad_porcentaje: rutasData.rutas.ruta_principal.afinidad_porcentaje,
+        razon_principal:    rutasData.rutas.ruta_principal.por_que_esta_ruta,
+      } : null,
     }
 
-    // Enriquecer con datos originales de opec_maestro (num OPEC, convocatoria, dependencia, ciudades)
+    // Enriquecer rutas con datos originales de opec_maestro
     const opecLookup = new Map()
-    for (const op of [...batch1, ...opecsDes]) {
+    for (const op of [...candidatosRutas, ...descartadosRutas]) {
       opecLookup.set(String(op.numero_opec || op.num_convocatoria || op.id), op)
     }
-    analisis.ranking_opec_recomendadas = analisis.ranking_opec_recomendadas.map(item => {
-      const orig = opecLookup.get(String(item.codigo_opec))
-      if (!orig) return item
-      return {
-        ...item,
-        numero_opec:      orig.numero_opec      || null,
-        num_convocatoria: orig.num_convocatoria  || null,
-        dependencia:      orig.dependencia       || item.proceso || null,
-        ubicaciones_norm: orig._ubNorm           || [],
+    if (analisis.rutas) {
+      for (const rKey of ['ruta_principal', 'ruta_segura', 'ruta_estrategica', 'ruta_ambiciosa']) {
+        const ruta = analisis.rutas[rKey]
+        if (!ruta) continue
+        const orig = opecLookup.get(String(ruta.codigo_opec))
+        if (orig) {
+          analisis.rutas[rKey] = {
+            ...ruta,
+            numero_opec:      orig.numero_opec      || null,
+            num_convocatoria: orig.num_convocatoria  || null,
+            dependencia:      orig.dependencia       || null,
+            ubicaciones_norm: orig._ubNorm           || [],
+          }
+        }
       }
-    })
+    }
 
-    console.log('[IA] OPECs en resultado:', analisis.ranking_opec_recomendadas.length, '| pendientes:', opecsPendientes.length)
+    const rutasCount = analisis.rutas
+      ? Object.values(analisis.rutas).filter(r => r?.denominacion).length
+      : 0
+    console.log('[IA] Rutas generadas:', rutasCount, '| pendientes:', opecsPendientes.length)
 
     const now = new Date().toISOString()
     const { error: saveErr } = await supabase.from('user_profile_analysis').insert(
@@ -1581,9 +1620,10 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
 
     return res.json({
       analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,
-      ciudad_filtro: ciudad_filtro || null,
+      ciudad_filtro:     ciudad_filtro     || null,
       plataforma_url:    conv?.plataforma_url    || null,
       plataforma_nombre: conv?.plataforma_nombre || null,
+      motor: 'rutas_v1',
     })
   } catch (err) {
     console.error('[IA] analizarPerfilCV:', err)

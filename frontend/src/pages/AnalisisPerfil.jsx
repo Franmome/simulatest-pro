@@ -525,6 +525,248 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
   )
 }
 
+// ── Tarjeta de ruta estratégica ────────────────────────────────────────────────
+const RUTAS_CFG = {
+  ruta_principal:  { label: 'Ruta Principal',  subtitle: 'Tu mejor apuesta',       icon: 'workspace_premium', color: 'primary',  bgFrom: 'from-primary/10',    bgTo: 'to-primary/5',    border: 'border-primary/30',    badge: 'bg-primary text-on-primary',      iconBg: 'bg-primary/15 text-primary' },
+  ruta_segura:     { label: 'Ruta Segura',     subtitle: 'Menor competencia',      icon: 'shield',            color: 'green',    bgFrom: 'from-green-500/10',  bgTo: 'to-green-500/5',  border: 'border-green-500/30',  badge: 'bg-green-600 text-white',         iconBg: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' },
+  ruta_estrategica:{ label: 'Ruta Estratégica',subtitle: 'Mejor retorno',          icon: 'trending_up',       color: 'blue',     bgFrom: 'from-blue-500/10',   bgTo: 'to-blue-500/5',   border: 'border-blue-500/30',   badge: 'bg-blue-600 text-white',          iconBg: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+  ruta_ambiciosa:  { label: 'Ruta Ambiciosa',  subtitle: 'Tu techo competitivo',   icon: 'rocket_launch',     color: 'purple',   bgFrom: 'from-purple-500/10', bgTo: 'to-purple-500/5', border: 'border-purple-500/30', badge: 'bg-purple-600 text-white',        iconBg: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' },
+}
+
+function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
+  const [open, setOpen] = useState(rutaKey === 'ruta_principal')
+  const cfg = RUTAS_CFG[rutaKey] || RUTAS_CFG.ruta_principal
+  const s = pctStyle(ruta.afinidad_porcentaje)
+  const cumpl = ruta.cumplimiento || {}
+
+  const riesgoCol = ruta.riesgo_nivel === 'bajo'
+    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    : ruta.riesgo_nivel === 'medio'
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+
+  return (
+    <div className={`card overflow-hidden border-2 ${cfg.border} bg-gradient-to-br ${cfg.bgFrom} ${cfg.bgTo}`}>
+      {/* Header ruta */}
+      <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+        <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.iconBg}`}>
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{cfg.icon}</span>
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
+          <span className="ml-1.5 text-[10px] text-on-surface-variant">{cfg.subtitle}</span>
+        </div>
+      </div>
+
+      {/* Cargo header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+      >
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm leading-snug">{ruta.denominacion}</p>
+          <p className="text-xs text-on-surface-variant mt-0.5 truncate">
+            {ruta.entidad && <span>{ruta.entidad} · </span>}
+            {ruta.numero_opec ? `OPEC ${ruta.numero_opec}` : ruta.codigo_opec ? `Cod. ${ruta.codigo_opec}` : ''}
+            {ruta.nivel ? ` · ${ruta.nivel}` : ''}
+            {ruta.grado ? ` grado ${ruta.grado}` : ''}
+            {ruta.vacantes ? ` · ${ruta.vacantes} vac.` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${s.badge}`}>
+            {ruta.afinidad_porcentaje}%
+          </span>
+          <span className="material-symbols-outlined text-on-surface-variant text-sm">
+            {open ? 'expand_less' : 'expand_more'}
+          </span>
+        </div>
+      </button>
+
+      {/* Bar */}
+      <div className="px-4 pb-2">
+        <div className="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${s.bar}`} style={{ width: `${ruta.afinidad_porcentaje}%` }} />
+        </div>
+      </div>
+
+      {/* Expanded */}
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/20 pt-3">
+
+          {/* Por qué esta ruta */}
+          {ruta.por_que_esta_ruta && (
+            <div className={`p-3 rounded-xl text-xs leading-relaxed border ${cfg.border} bg-white/40 dark:bg-surface/20`}>
+              <p className="font-bold mb-0.5 text-[10px] uppercase tracking-wider opacity-70">Por qué esta ruta</p>
+              <p className="text-on-surface">{ruta.por_que_esta_ruta}</p>
+            </div>
+          )}
+
+          {/* Meta info */}
+          <div className="flex flex-wrap gap-2">
+            {ruta.salario && (
+              <div className="flex items-center gap-1.5 bg-surface-container rounded-lg px-2.5 py-1.5">
+                <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+                <span className="text-xs font-semibold">{ruta.salario}</span>
+              </div>
+            )}
+            {ruta.riesgo_nivel && (
+              <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${riesgoCol}`}>
+                Riesgo {ruta.riesgo_nivel}
+              </span>
+            )}
+          </div>
+
+          {/* Cumplimiento pills */}
+          {Object.keys(cumpl).some(k => cumpl[k]) && (
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(cumpl).map(([k, v]) => {
+                if (!v) return null
+                return (
+                  <span key={k} className={`flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full bg-surface-container ${cumpleColor(v)}`}>
+                    <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>{cumpleIcon(v)}</span>
+                    {k === 'formacion' ? 'Formación' : k === 'experiencia' ? 'Experiencia' : 'Funciones'}
+                  </span>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Acciones clave */}
+          {ruta.acciones_clave?.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-primary mb-1.5 flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
+                Acciones clave antes de postularte
+              </p>
+              <ol className="space-y-1">
+                {ruta.acciones_clave.map((a, j) => (
+                  <li key={j} className="text-xs text-on-surface flex items-start gap-2 bg-surface-container rounded-lg p-2">
+                    <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">{j + 1}</span>
+                    {a}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Coincidencias y brechas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {ruta.coincidencias_principales?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-green-600 mb-1.5 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  Coincidencias
+                </p>
+                <ul className="space-y-1">
+                  {ruta.coincidencias_principales.map((c, j) => (
+                    <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                      <span className="material-symbols-outlined text-green-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                      {c}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {ruta.brechas_concretas?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-amber-600 mb-1.5 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">priority_high</span>
+                  Brechas
+                </p>
+                <ul className="space-y-1">
+                  {ruta.brechas_concretas.map((b, j) => (
+                    <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
+                      <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0">arrow_forward</span>
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Riesgo explica */}
+          {ruta.riesgo_explica && (
+            <div className="bg-surface-container rounded-xl p-3">
+              <p className="text-xs font-bold text-on-surface-variant mb-0.5">Riesgo documental</p>
+              <p className="text-xs text-on-surface leading-relaxed">{ruta.riesgo_explica}</p>
+            </div>
+          )}
+
+          {/* Justificación */}
+          {ruta.justificacion && (
+            <div className="bg-surface-container rounded-xl p-3">
+              <p className="text-xs font-bold text-on-surface-variant mb-0.5">Justificación del puntaje</p>
+              <p className="text-xs text-on-surface leading-relaxed">{ruta.justificacion}</p>
+            </div>
+          )}
+
+          {/* Identificación + dónde aplicar */}
+          {(ruta.numero_opec || ruta.num_convocatoria || ruta.ubicaciones_norm?.length > 0) && (
+            <div className="bg-surface-container rounded-xl p-3 space-y-2">
+              <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>badge</span>
+                Cómo identificar y aplicar
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {ruta.numero_opec && (
+                  <div className="bg-primary/8 rounded-lg p-2">
+                    <p className="text-[10px] text-on-surface-variant">N° OPEC</p>
+                    <p className="text-xs font-extrabold text-primary">{ruta.numero_opec}</p>
+                  </div>
+                )}
+                {(ruta.num_convocatoria || ruta.codigo_opec) && (
+                  <div className="bg-surface-container-low rounded-lg p-2">
+                    <p className="text-[10px] text-on-surface-variant">N° Convocatoria</p>
+                    <p className="text-xs font-bold">{ruta.num_convocatoria || ruta.codigo_opec}</p>
+                  </div>
+                )}
+              </div>
+              {ruta.dependencia && (
+                <div>
+                  <p className="text-[10px] text-on-surface-variant">Dependencia</p>
+                  <p className="text-xs text-on-surface">{ruta.dependencia}</p>
+                </div>
+              )}
+              {ruta.ubicaciones_norm?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {ruta.ubicaciones_norm.slice(0, 12).map((u, i) => (
+                    <span key={i} className="text-[10px] bg-surface-container-low text-on-surface px-2 py-0.5 rounded-full border border-outline-variant/30">
+                      {u.ciudad}{u.vacantes ? ` · ${u.vacantes}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 pt-1 border-t border-outline-variant/20">
+                <a
+                  href="https://simo-opec.cnsc.gov.co/"
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary/90 transition-all"
+                >
+                  <span className="material-symbols-outlined text-sm">search</span>
+                  Buscar en SIMO
+                </a>
+                {plataformaUrl && (
+                  <a
+                    href={plataformaUrl}
+                    target="_blank" rel="noopener noreferrer"
+                    title={plataformaNombre || 'Plataforma de inscripción'}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-sm">how_to_reg</span>
+                    Inscribirse
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Recomendaciones HV accordion ──────────────────────────────────────────────
 function RecomendacionesHV({ recomendaciones }) {
   const [open, setOpen] = useState(false)
@@ -574,7 +816,8 @@ function RecomendacionesHV({ recomendaciones }) {
 
 // ── History sidebar card ───────────────────────────────────────────────────────
 function HistoryCard({ item, onSelect, onDelete, active }) {
-  const top = item.analisis?.ranking_opec_recomendadas?.[0] ?? item.analisis?.cargos_recomendados?.[0]
+  const rutaPrincipal = item.analisis?.rutas?.ruta_principal
+  const top = rutaPrincipal ?? item.analisis?.ranking_opec_recomendadas?.[0] ?? item.analisis?.cargos_recomendados?.[0]
   const pct = top?.afinidad_porcentaje ?? top?.compatibilidad ?? 0
   const nombre = top?.denominacion ?? top?.nombre_cargo ?? ''
   const date = new Date(item.updated_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -761,8 +1004,25 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
         </div>
       )}
 
-      {/* Ranking */}
-      {ranking.length > 0 && (
+      {/* 4 Rutas estratégicas (nuevo motor) */}
+      {analisis.rutas && Object.keys(analisis.rutas).length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>route</span>
+            Tus 4 rutas estratégicas
+          </p>
+          <div className="space-y-3">
+            {['ruta_principal', 'ruta_segura', 'ruta_estrategica', 'ruta_ambiciosa'].map(key => {
+              const ruta = analisis.rutas[key]
+              if (!ruta?.denominacion) return null
+              return <RutaCard key={key} rutaKey={key} ruta={ruta} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} />
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Ranking fallback (análisis anteriores sin rutas) */}
+      {!analisis.rutas && ranking.length > 0 && (
         <div>
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
@@ -900,8 +1160,8 @@ export default function AnalisisPerfil() {
 
   const [convocatorias, setConvocatorias] = useState([])
   const [convId, setConvId] = useState(searchParams.get('conv') || '')
-  const [ciudadesDisp, setCiudadesDisp] = useState([])     // [{ciudad, vacantes, opecs}]
-  const [ciudadFiltro, setCiudadFiltro] = useState('')     // ciudad seleccionada
+  const [ciudadesDisp, setCiudadesDisp] = useState([])
+  const [ciudadFiltro, setCiudadFiltro] = useState('')
   const [ciudadesLoading, setCiudadesLoading] = useState(false)
   const [pocasOpecLocal, setPocasOpecLocal] = useState(false)
   const [perfilTexto, setPerfilTexto] = useState('')
@@ -917,9 +1177,17 @@ export default function AnalisisPerfil() {
   const [activeHistId, setActiveHistId] = useState(null)
   const [showHistory, setShowHistory] = useState(false)
   const [localAnalisis, setLocalAnalisis] = useState(null)
-  const [opecCount,     setOpecCount]     = useState(null)
+  const [opecCount, setOpecCount] = useState(null)
   const [plataformaUrl, setPlataformaUrl] = useState(null)
   const [plataformaNombre, setPlataformaNombre] = useState(null)
+  const [simoConfirmado, setSimoConfirmado] = useState(false)
+  const [showPrefs, setShowPrefs] = useState(false)
+  const [preferencias, setPreferencias] = useState({
+    objetivo_principal: 'estabilidad',
+    acepta_nivel_inferior: 'true',
+    disponibilidad_geografica: 'cualquier_ciudad',
+    nivel_riesgo_aceptado: 'medio',
+  })
 
   const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
 
@@ -1038,6 +1306,7 @@ export default function AnalisisPerfil() {
       fd.append('convocatoria_id', convId)
       fd.append('perfil_texto', perfilTexto)
       if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
+      fd.append('preferencias', JSON.stringify(preferencias))
       if (files.length > 0) fd.append('pdf', files[0])
       const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
@@ -1184,6 +1453,81 @@ export default function AnalisisPerfil() {
                   </div>
                 )}
 
+                {/* SIMO */}
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-outline-variant/30 hover:border-primary/30 hover:bg-primary/5 cursor-pointer transition-all">
+                  <input
+                    type="checkbox"
+                    checked={simoConfirmado}
+                    onChange={e => setSimoConfirmado(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-on-surface">Confirmé mi hoja de vida en SIMO</p>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5 leading-relaxed">
+                      He verificado que mis datos (títulos, experiencia, entidades) están registrados correctamente en SIMO-OPEC antes del análisis.{' '}
+                      <a href="https://simo-opec.cnsc.gov.co/" target="_blank" rel="noopener noreferrer" className="text-primary underline font-semibold">Ir a SIMO</a>
+                    </p>
+                  </div>
+                  <span className={`material-symbols-outlined text-sm flex-shrink-0 ${simoConfirmado ? 'text-green-500' : 'text-on-surface-variant/40'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {simoConfirmado ? 'check_circle' : 'radio_button_unchecked'}
+                  </span>
+                </label>
+
+                {/* Preferencias estratégicas */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPrefs(s => !s)}
+                    className="w-full flex items-center gap-2 text-xs font-bold text-on-surface-variant uppercase tracking-wider hover:text-primary transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">{showPrefs ? 'expand_less' : 'tune'}</span>
+                    Preferencias estratégicas
+                    <span className="ml-auto text-[10px] normal-case font-normal text-on-surface-variant/60">{showPrefs ? 'Ocultar' : 'Personalizar rutas'}</span>
+                  </button>
+                  {showPrefs && (
+                    <div className="bg-surface-container-low rounded-xl p-3 space-y-3 border border-outline-variant/20">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Objetivo principal</label>
+                          <select value={preferencias.objetivo_principal} onChange={e => setPreferencias(p => ({ ...p, objetivo_principal: e.target.value }))}
+                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="estabilidad">Estabilidad laboral</option>
+                            <option value="crecimiento">Crecimiento de carrera</option>
+                            <option value="salario_maximo">Maximizar salario</option>
+                            <option value="primer_empleo_publico">Primer empleo público</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Disponibilidad geográfica</label>
+                          <select value={preferencias.disponibilidad_geografica} onChange={e => setPreferencias(p => ({ ...p, disponibilidad_geografica: e.target.value }))}
+                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="cualquier_ciudad">Cualquier ciudad de Colombia</option>
+                            <option value="solo_ciudad_seleccionada">Solo la ciudad seleccionada</option>
+                            <option value="mismo_departamento">Mi departamento</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Tolerancia al riesgo</label>
+                          <select value={preferencias.nivel_riesgo_aceptado} onChange={e => setPreferencias(p => ({ ...p, nivel_riesgo_aceptado: e.target.value }))}
+                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="bajo">Baja — solo lo que cumple todo</option>
+                            <option value="medio">Media — acepto algunas brechas</option>
+                            <option value="alto">Alta — quiero la ruta ambiciosa fuerte</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">¿Acepta nivel inferior?</label>
+                          <select value={preferencias.acepta_nivel_inferior} onChange={e => setPreferencias(p => ({ ...p, acepta_nivel_inferior: e.target.value }))}
+                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="true">Sí, incluir todos los niveles</option>
+                            <option value="false">No, solo mi nivel o superior</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Cuéntanos tu perfil</label>
                   <textarea
@@ -1289,6 +1633,14 @@ export default function AnalisisPerfil() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    {!simoConfirmado && (
+                      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+                        <span className="material-symbols-outlined text-amber-500 text-sm flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                          Confirma que verificaste tu hoja de vida en SIMO para obtener un análisis más preciso. Puedes analizar sin confirmar, pero el resultado puede no reflejar tu estado real en el sistema.
+                        </p>
+                      </div>
+                    )}
                     <button
                       onClick={analizar}
                       className="btn-primary w-full py-3.5 rounded-full font-bold flex items-center justify-center gap-2"
