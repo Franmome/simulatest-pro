@@ -22,7 +22,7 @@ export const T = {
       active: 'Activo', inactive: 'Inactivo', yes: 'Sí', no: 'No',
     },
     nav: {
-      dashboard: 'Panel', catalog: 'Catálogo', simulacros: 'Simulacros',
+      dashboard: 'Panel', catalog: 'Catálogo', simulacros: 'Paquetes',
       results: 'Resultados', study: 'Estudio', rooms: 'Salas', plans: 'Planes',
       config: 'Configuración', profile: 'Perfil', logout: 'Cerrar sesión',
     },

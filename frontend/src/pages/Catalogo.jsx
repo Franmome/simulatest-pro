@@ -31,6 +31,11 @@ const BADGE_CATEGORIA = {
   'Defensoría':   'bg-slate-100 text-slate-600',
 }
 
+function fmtFecha(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 function SkeletonCard() {
   return (
     <div className="card overflow-hidden animate-pulse">
@@ -117,7 +122,7 @@ export default function Catalogo() {
     }))
 
     // ── Resolver qué evaluaciones compró el usuario ────────────────────────
-    const evalIdsComprados = new Set()
+    const evalIdsComprados = new Map() // evalId → end_date
     let esAdmin = false
 
     if (user?.id) {
@@ -128,29 +133,44 @@ export default function Catalogo() {
       if (!esAdmin) {
         const { data: compras } = await supabase
           .from('purchases')
-          .select('package_id, package_version_id')
+          .select('package_id, package_version_id, end_date')
           .eq('user_id', user.id)
           .eq('status', 'active')
           .gte('end_date', new Date().toISOString())
 
         if (compras?.length) {
+          const pkgEndDate = {}
+          const verEndDate = {}
+          compras.forEach(c => {
+            if (c.package_id)         pkgEndDate[c.package_id]         = c.end_date
+            if (c.package_version_id) verEndDate[c.package_version_id] = c.end_date
+          })
+
           const pkgIds = [...new Set(compras.map(c => c.package_id).filter(Boolean))]
           const verIds = compras.map(c => c.package_version_id).filter(Boolean)
 
-          // Via evaluation_versions → package_version_id
           if (verIds.length) {
             const { data: evVers } = await supabase
               .from('evaluation_versions')
-              .select('evaluation_id')
+              .select('evaluation_id, package_version_id')
               .in('package_version_id', verIds)
-            evVers?.forEach(r => evalIdsComprados.add(r.evaluation_id))
+            evVers?.forEach(r => {
+              const ed = verEndDate[r.package_version_id]
+              if (!evalIdsComprados.has(r.evaluation_id) || ed > evalIdsComprados.get(r.evaluation_id))
+                evalIdsComprados.set(r.evaluation_id, ed)
+            })
           }
 
-          // Via packages.evaluations_ids
           if (pkgIds.length) {
             const { data: pkgs } = await supabase
-              .from('packages').select('evaluations_ids').in('id', pkgIds)
-            pkgs?.forEach(p => p.evaluations_ids?.forEach(eid => evalIdsComprados.add(eid)))
+              .from('packages').select('id, evaluations_ids').in('id', pkgIds)
+            pkgs?.forEach(p => {
+              const ed = pkgEndDate[p.id]
+              p.evaluations_ids?.forEach(eid => {
+                if (!evalIdsComprados.has(eid) || ed > evalIdsComprados.get(eid))
+                  evalIdsComprados.set(eid, ed)
+              })
+            })
           }
         }
       }
@@ -161,7 +181,7 @@ export default function Catalogo() {
 
   const categorias      = data?.categorias      ?? []
   const evaluaciones    = data?.evaluaciones    ?? []
-  const evalIdsComprados = data?.evalIdsComprados ?? new Set()
+  const evalIdsComprados = data?.evalIdsComprados ?? new Map()
   const esAdmin         = data?.esAdmin         ?? false
 
   // ── Filtrado + búsqueda ─────────────────────────────────────────────────
@@ -192,10 +212,10 @@ export default function Catalogo() {
       {/* ── Encabezado ── */}
       <div className="mb-8">
         <h1 className="text-3xl font-extrabold text-on-background tracking-tight mb-1">
-          Catálogo de Simulacros
+          Paquetes
         </h1>
         <p className="text-on-surface-variant">
-          Prepárate con los mejores simulacros para convocatorias nacionales
+          Accede a los mejores paquetes de simulacros para convocatorias nacionales
         </p>
       </div>
 
@@ -209,7 +229,7 @@ export default function Catalogo() {
                        pl-10 pr-4 py-2.5 text-sm outline-none
                        focus:ring-2 focus:ring-primary/20
                        placeholder:text-on-surface-variant"
-            placeholder="Buscar simulacro..."
+            placeholder="Buscar paquete..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
           />
@@ -244,7 +264,7 @@ export default function Catalogo() {
         <p className="text-xs text-on-surface-variant mb-6 font-medium">
           {lista.length === 0
             ? 'Sin resultados'
-            : `${lista.length} simulacro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`
+            : `${lista.length} paquete${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`
           }
           {busqueda && <span className="text-primary font-bold"> para "{busqueda}"</span>}
         </p>
@@ -286,29 +306,28 @@ export default function Catalogo() {
         )}
 
         {!loading && lista.map(ev => {
-          const catNombre = ev.categories?.name ?? 'General'
-          const niveles   = ev.levels?.length ?? 0
-          const dur       = duracionMax(ev)
+          const catNombre  = ev.categories?.name ?? 'General'
+          const niveles    = ev.levels?.length ?? 0
+          const dur        = duracionMax(ev)
+          const adquirido  = esAdmin || evalIdsComprados.has(ev.id)
+          const endDate    = evalIdsComprados.get(ev.id)
 
           return (
             <div
               key={ev.id}
-              onClick={() => navigate(`/prueba/${ev.id}`)}
-              className="card overflow-hidden cursor-pointer group
-                         hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
+              className="card overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
 
               <div className={`h-1.5 bg-gradient-to-r ${colorCat(catNombre)}`} />
 
-              <div className="p-6">
+              <div className="p-6 flex flex-col h-full">
+                {/* Header */}
                 <div className="flex items-start justify-between mb-4 gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full
-                                      ${badgeCat(catNombre)}`}>
+                    <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${badgeCat(catNombre)}`}>
                       {catNombre}
                     </span>
                     {niveles > 0 && (
-                      <span className="text-[10px] font-bold text-on-surface-variant
-                                       bg-surface-container px-2 py-1 rounded-full">
+                      <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container px-2 py-1 rounded-full">
                         {niveles} nivel{niveles !== 1 ? 'es' : ''}
                       </span>
                     )}
@@ -319,8 +338,8 @@ export default function Catalogo() {
                   </span>
                 </div>
 
-                <h3 className="font-bold text-base text-on-surface mb-2 leading-snug
-                               group-hover:text-primary transition-colors">
+                {/* Título */}
+                <h3 className="font-bold text-base text-on-surface mb-2 leading-snug group-hover:text-primary transition-colors">
                   {ev.title}
                 </h3>
 
@@ -330,6 +349,7 @@ export default function Catalogo() {
                   </p>
                 )}
 
+                {/* Meta */}
                 <div className="flex items-center gap-3 text-[10px] text-on-surface-variant mb-4">
                   {ev.totalPreguntas > 0 && (
                     <span className="flex items-center gap-1">
@@ -345,47 +365,56 @@ export default function Catalogo() {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between pt-4
-                                border-t border-outline-variant/15">
-                  <span className="text-[10px] text-on-surface-variant font-medium">
-                    {user
-                      ? ((esAdmin || evalIdsComprados.has(ev.id)) ? '✓ Incluido en tu plan' : 'Requiere plan activo')
-                      : 'Inicia sesión para practicar'}
-                  </span>
-                  <button
-                    onClick={e => { e.stopPropagation(); navigate(`/prueba/${ev.id}`) }}
-                    className="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold
-                               group-hover:shadow-md group-hover:shadow-primary/20 transition-all
-                               active:scale-95">
-                    Ver detalle →
-                  </button>
+                {/* Footer botones */}
+                <div className="pt-4 border-t border-outline-variant/15 mt-auto">
+                  {adquirido ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
+                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                          Adquirido
+                        </span>
+                        {endDate && (
+                          <p className="text-[9px] text-on-surface-variant mt-1 pl-1">
+                            Vence: {fmtFecha(endDate)}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => navigate(`/prueba/${ev.id}`)}
+                        className="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold
+                                   hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95">
+                        Ver detalle →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      {user ? (
+                        <button
+                          onClick={() => navigate('/planes')}
+                          className="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold
+                                     hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95">
+                          Comprar
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-on-surface-variant font-medium">
+                          Inicia sesión para comprar
+                        </span>
+                      )}
+                      <button
+                        onClick={() => navigate(`/prueba/${ev.id}`)}
+                        className="border border-outline-variant/40 text-on-surface-variant px-4 py-2 rounded-full
+                                   text-xs font-semibold hover:bg-surface-container hover:text-on-surface
+                                   transition-all active:scale-95">
+                        Ver detalle →
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )
         })}
-
-        {/* CTA premium */}
-        {!loading && (
-          <div
-            onClick={() => navigate('/planes')}
-            className="bg-gradient-to-br from-primary to-primary-container rounded-2xl
-                       cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all
-                       flex items-center justify-center p-8 min-h-[200px]">
-            <div className="text-center text-white">
-              <span className="material-symbols-outlined text-4xl mb-3 block"
-                    style={{ fontVariationSettings: "'FILL' 1" }}>
-                workspace_premium
-              </span>
-              <h3 className="font-bold text-lg">Más simulacros</h3>
-              <p className="text-primary-fixed-dim text-sm mt-1 mb-4">Con plan Premium</p>
-              <span className="inline-block bg-white text-primary font-bold
-                               px-6 py-2 rounded-full text-sm hover:shadow-md transition-shadow">
-                Ver planes →
-              </span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
