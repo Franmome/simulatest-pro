@@ -1287,7 +1287,7 @@ export default function AnalisisPerfil() {
 
   async function analizar() {
     if (!convId) { setError('Selecciona una convocatoria'); return }
-    if (!perfilTexto.trim() && files.length === 0) { setError('Escribe tu perfil o adjunta tu hoja de vida'); return }
+    if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
     setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null)
     setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null)
 
@@ -1454,95 +1454,103 @@ export default function AnalisisPerfil() {
                 )}
 
                 {/* SIMO */}
-                <label className="flex items-start gap-3 p-3 rounded-xl border border-outline-variant/30 hover:border-primary/30 hover:bg-primary/5 cursor-pointer transition-all">
-                  <input
-                    type="checkbox"
-                    checked={simoConfirmado}
-                    onChange={e => setSimoConfirmado(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-primary flex-shrink-0"
-                  />
+                <label className={`flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all select-none
+                  ${simoConfirmado
+                    ? 'border-green-500/50 bg-green-50 dark:bg-green-900/20'
+                    : 'border-outline-variant/40 hover:border-primary/40 hover:bg-primary/5'}`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all
+                    ${simoConfirmado ? 'bg-green-500' : 'bg-surface-container'}`}>
+                    <span className="material-symbols-outlined text-lg text-white" style={{ fontVariationSettings: simoConfirmado ? "'FILL' 1" : "'FILL' 0" }}>
+                      {simoConfirmado ? 'verified' : 'fact_check'}
+                    </span>
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-on-surface">Confirmé mi hoja de vida en SIMO</p>
-                    <p className="text-[10px] text-on-surface-variant mt-0.5 leading-relaxed">
-                      He verificado que mis datos (títulos, experiencia, entidades) están registrados correctamente en SIMO-OPEC antes del análisis.{' '}
-                      <a href="https://simo-opec.cnsc.gov.co/" target="_blank" rel="noopener noreferrer" className="text-primary underline font-semibold">Ir a SIMO</a>
+                    <p className={`text-sm font-bold leading-tight ${simoConfirmado ? 'text-green-700 dark:text-green-400' : 'text-on-surface'}`}>
+                      {simoConfirmado ? 'HV verificada en SIMO ✓' : 'Verificar HV en SIMO'}
+                    </p>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5">
+                      Confirma que tus datos están registrados en SIMO-OPEC ·{' '}
+                      <a href="https://simo-opec.cnsc.gov.co/" target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-primary font-semibold hover:underline">Abrir SIMO</a>
                     </p>
                   </div>
-                  <span className={`material-symbols-outlined text-sm flex-shrink-0 ${simoConfirmado ? 'text-green-500' : 'text-on-surface-variant/40'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
-                    {simoConfirmado ? 'check_circle' : 'radio_button_unchecked'}
-                  </span>
+                  <input type="checkbox" checked={simoConfirmado} onChange={e => setSimoConfirmado(e.target.checked)} className="hidden" />
                 </label>
 
-                {/* Preferencias estratégicas */}
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowPrefs(s => !s)}
-                    className="w-full flex items-center gap-2 text-xs font-bold text-on-surface-variant uppercase tracking-wider hover:text-primary transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-sm">{showPrefs ? 'expand_less' : 'tune'}</span>
-                    Preferencias estratégicas
-                    <span className="ml-auto text-[10px] normal-case font-normal text-on-surface-variant/60">{showPrefs ? 'Ocultar' : 'Personalizar rutas'}</span>
-                  </button>
-                  {showPrefs && (
-                    <div className="bg-surface-container-low rounded-xl p-3 space-y-3 border border-outline-variant/20">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Objetivo principal</label>
-                          <select value={preferencias.objetivo_principal} onChange={e => setPreferencias(p => ({ ...p, objetivo_principal: e.target.value }))}
-                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
-                            <option value="estabilidad">Estabilidad laboral</option>
-                            <option value="crecimiento">Crecimiento de carrera</option>
-                            <option value="salario_maximo">Maximizar salario</option>
-                            <option value="primer_empleo_publico">Primer empleo público</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Disponibilidad geográfica</label>
-                          <select value={preferencias.disponibilidad_geografica} onChange={e => setPreferencias(p => ({ ...p, disponibilidad_geografica: e.target.value }))}
-                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
-                            <option value="cualquier_ciudad">Cualquier ciudad de Colombia</option>
-                            <option value="solo_ciudad_seleccionada">Solo la ciudad seleccionada</option>
-                            <option value="mismo_departamento">Mi departamento</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Tolerancia al riesgo</label>
-                          <select value={preferencias.nivel_riesgo_aceptado} onChange={e => setPreferencias(p => ({ ...p, nivel_riesgo_aceptado: e.target.value }))}
-                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
-                            <option value="bajo">Baja — solo lo que cumple todo</option>
-                            <option value="medio">Media — acepto algunas brechas</option>
-                            <option value="alto">Alta — quiero la ruta ambiciosa fuerte</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">¿Acepta nivel inferior?</label>
-                          <select value={preferencias.acepta_nivel_inferior} onChange={e => setPreferencias(p => ({ ...p, acepta_nivel_inferior: e.target.value }))}
-                            className="w-full bg-surface rounded-lg py-2 px-3 text-xs border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20">
-                            <option value="true">Sí, incluir todos los niveles</option>
-                            <option value="false">No, solo mi nivel o superior</option>
-                          </select>
-                        </div>
+                {/* Preferencias estratégicas — siempre visible */}
+                <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/10">
+                    <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>tune</span>
+                    <p className="text-xs font-extrabold text-primary uppercase tracking-wider">Preferencias estratégicas</p>
+                    <span className="ml-auto text-[10px] text-on-surface-variant/60">Personaliza tus 4 rutas</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+                        <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Objetivo principal</label>
                       </div>
+                      <select value={preferencias.objetivo_principal}
+                        onChange={e => setPreferencias(p => ({ ...p, objetivo_principal: e.target.value }))}
+                        className="w-full bg-surface rounded-xl py-2.5 px-3 text-sm font-medium border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                        <option value="estabilidad">🏛️ Estabilidad laboral</option>
+                        <option value="crecimiento">📈 Crecimiento de carrera</option>
+                        <option value="salario_maximo">💰 Maximizar salario</option>
+                        <option value="primer_empleo_publico">🎯 Primer empleo público</option>
+                      </select>
                     </div>
-                  )}
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>location_on</span>
+                        <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Disponibilidad</label>
+                      </div>
+                      <select value={preferencias.disponibilidad_geografica}
+                        onChange={e => setPreferencias(p => ({ ...p, disponibilidad_geografica: e.target.value }))}
+                        className="w-full bg-surface rounded-xl py-2.5 px-3 text-sm font-medium border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                        <option value="cualquier_ciudad">🇨🇴 Todo Colombia</option>
+                        <option value="solo_ciudad_seleccionada">📍 Solo mi ciudad</option>
+                        <option value="mismo_departamento">🗺️ Mi departamento</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>shield</span>
+                        <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Tolerancia al riesgo</label>
+                      </div>
+                      <select value={preferencias.nivel_riesgo_aceptado}
+                        onChange={e => setPreferencias(p => ({ ...p, nivel_riesgo_aceptado: e.target.value }))}
+                        className="w-full bg-surface rounded-xl py-2.5 px-3 text-sm font-medium border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                        <option value="bajo">🟢 Baja — solo lo que cumple todo</option>
+                        <option value="medio">🟡 Media — acepto algunas brechas</option>
+                        <option value="alto">🔴 Alta — ruta ambiciosa al máximo</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>stairs</span>
+                        <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Nivel de cargo</label>
+                      </div>
+                      <select value={preferencias.acepta_nivel_inferior}
+                        onChange={e => setPreferencias(p => ({ ...p, acepta_nivel_inferior: e.target.value }))}
+                        className="w-full bg-surface rounded-xl py-2.5 px-3 text-sm font-medium border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                        <option value="true">✅ Incluir todos los niveles</option>
+                        <option value="false">⬆️ Solo mi nivel o superior</option>
+                      </select>
+                    </div>
+
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Cuéntanos tu perfil</label>
-                  <textarea
-                    value={perfilTexto}
-                    onChange={e => setPerfilTexto(e.target.value)}
-                    rows={5}
-                    placeholder="Ejemplo: Soy abogado con 4 años de experiencia en contratación estatal. Tengo especialización en derecho administrativo y he trabajado en alcaldías en el área jurídica..."
-                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                    Documentos de hoja de vida{' '}
-                    <span className="text-on-surface-variant/60 normal-case font-normal">(opcional · PDF, imágenes, Word, TXT)</span>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
+                    Hoja de vida
+                    <span className="text-on-surface-variant/60 normal-case font-normal">— PDF, imagen, Word o TXT</span>
                   </label>
                   <div
                     onDragOver={e => { e.preventDefault(); setDragging(true) }}
@@ -1634,19 +1642,26 @@ export default function AnalisisPerfil() {
                 ) : (
                   <div className="space-y-3">
                     {!simoConfirmado && (
-                      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-                        <span className="material-symbols-outlined text-amber-500 text-sm flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                        <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-                          Confirma que verificaste tu hoja de vida en SIMO para obtener un análisis más preciso. Puedes analizar sin confirmar, pero el resultado puede no reflejar tu estado real en el sistema.
+                      <button
+                        type="button"
+                        onClick={() => setSimoConfirmado(true)}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all text-left"
+                      >
+                        <span className="material-symbols-outlined text-amber-500 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-snug flex-1">
+                          Verifica tu HV en SIMO antes de analizar para mayor precisión — toca aquí para confirmar
                         </p>
-                      </div>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-200 dark:bg-amber-800 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">Confirmar</span>
+                      </button>
                     )}
                     <button
                       onClick={analizar}
-                      className="btn-primary w-full py-3.5 rounded-full font-bold flex items-center justify-center gap-2"
+                      className="w-full py-4 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-primary/20
+                        bg-gradient-to-r from-primary to-primary/80 text-on-primary hover:from-primary/90 hover:to-primary active:scale-[0.98]"
                     >
-                      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
+                      <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
                       Analizar mi perfil
+                      <span className="material-symbols-outlined text-lg opacity-70">arrow_forward</span>
                     </button>
 
                     {/* Wompi — placeholder de pago */}
