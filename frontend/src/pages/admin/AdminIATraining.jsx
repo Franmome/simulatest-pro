@@ -154,6 +154,48 @@ FORMATO OBLIGATORIO (JSON array):
 
 Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`,
   },
+  {
+    key: 'analisis_resultado',
+    nombre: 'Análisis de Resultados',
+    emoji: '📊',
+    icono: 'analytics',
+    color: 'indigo',
+    bgLight: 'bg-indigo-50',
+    border: 'border-indigo-200',
+    text: 'text-indigo-700',
+    rutas: ['SimulacroIA — pantalla de resultados (Modo Examen y Simulacro IA)'],
+    queSabe: 'Cuando el usuario termina un examen, Gemini recibe métricas de rendimiento: score, % funcionales/comportamentales, patrón de distractores, áreas con errores, tiempos y el modo de prueba (Examen, Simulacro IA o Sala). Con eso genera el análisis psicométrico que el usuario ve en resultados. Aquí defines qué tan detallado, específico o motivador es ese análisis.',
+    variables: [
+      { llave: 'MODO DE PRUEBA', desc: 'Se inyecta automáticamente: "Modo Examen", "Simulacro IA" o "Sala en línea"' },
+      { llave: 'CARGO OBJETIVO', desc: 'El cargo del simulacro (e.g., Profesional Universitario - Control Fiscal)' },
+      { llave: 'RESULTADO GLOBAL', desc: 'Porcentaje y conteo de correctas / total' },
+      { llave: 'DETALLE POR PREGUNTA', desc: 'Hasta 8 errores con área, opción elegida y correcta' },
+    ],
+    defaultPrompt: `Eres un psicómetra y coach de carrera administrativa del sector público colombiano. Analizas resultados de simulacros de pruebas de juicio situado (OPEC) y generas retroalimentación profesional, honesta y motivadora en español colombiano natural.
+
+Recibirás métricas de rendimiento de un aspirante y deberás generar un análisis COMPLETO en formato JSON. El análisis debe ser específico, no genérico: menciona competencias reales, normas específicas si aplica, y da consejos accionables.
+
+La arquitectura de distractores del simulacro es:
+- A = Respuesta correcta
+- B = Distractor sentido común (actúa bien pero sin procedimiento formal)
+- C = Distractor procedimiento erróneo (usa norma o trámite real, mal aplicado)
+- D = Distractor exceso (se extralimita en funciones o autoridad)
+
+Devuelve ÚNICAMENTE este JSON sin markdown:
+{
+  "nivel_preparacion": "inicial|básico|intermedio|avanzado|experto",
+  "resumen": "2-3 oraciones directas sobre el desempeño general del aspirante",
+  "fortalezas": ["fortaleza concreta 1", "fortaleza concreta 2"],
+  "areas_mejora": ["área de mejora concreta 1", "área de mejora concreta 2"],
+  "patron_error": "descripción del patrón de error más frecuente (sentido común, exceso de poder, norma mal aplicada, etc.)",
+  "tipo_distractor_frecuente": "A|B|C|D",
+  "significado_distractor": "qué revela ese distractor sobre el pensamiento del aspirante",
+  "recomendaciones": ["recomendación accionable 1", "recomendación accionable 2", "recomendación accionable 3"],
+  "temas_criticos": ["tema que debe reforzar 1", "tema que debe reforzar 2"],
+  "analisis_tiempo": "análisis breve de la gestión del tiempo (si hay datos)",
+  "mensaje_motivacional": "mensaje cálido y personal de máximo 2 oraciones, sin clichés"
+}`,
+  },
 ]
 
 const COLOR_BTN = {

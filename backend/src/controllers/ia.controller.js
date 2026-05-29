@@ -999,10 +999,41 @@ Genera EXACTAMENTE ${cantidadSafe} preguntas. Devuelve ÚNICAMENTE el array JSON
 
 // ── Endpoint: Análisis post-simulacro ────────────────────────────────────────
 
+const DEFAULT_ANALISIS_SYSTEM = `Eres un psicómetra y coach de carrera administrativa del sector público colombiano. Analizas resultados de simulacros de pruebas de juicio situado (OPEC) y generas retroalimentación profesional, honesta y motivadora en español colombiano natural.
+
+Recibirás métricas de rendimiento de un aspirante y deberás generar un análisis COMPLETO en formato JSON. El análisis debe ser específico, no genérico: menciona competencias reales, normas específicas si aplica, y da consejos accionables.
+
+La arquitectura de distractores del simulacro es:
+- A = Respuesta correcta
+- B = Distractor sentido común (actúa bien pero sin procedimiento formal)
+- C = Distractor procedimiento erróneo (usa norma o trámite real, mal aplicado)
+- D = Distractor exceso (se extralimita en funciones o autoridad)
+
+Devuelve ÚNICAMENTE este JSON sin markdown:
+{
+  "nivel_preparacion": "inicial|básico|intermedio|avanzado|experto",
+  "resumen": "2-3 oraciones directas sobre el desempeño general del aspirante",
+  "fortalezas": ["fortaleza concreta 1", "fortaleza concreta 2"],
+  "areas_mejora": ["área de mejora concreta 1", "área de mejora concreta 2"],
+  "patron_error": "descripción del patrón de error más frecuente (sentido común, exceso de poder, norma mal aplicada, etc.)",
+  "tipo_distractor_frecuente": "A|B|C|D",
+  "significado_distractor": "qué revela ese distractor sobre el pensamiento del aspirante",
+  "recomendaciones": ["recomendación accionable 1", "recomendación accionable 2", "recomendación accionable 3"],
+  "temas_criticos": ["tema que debe reforzar 1", "tema que debe reforzar 2"],
+  "analisis_tiempo": "análisis breve de la gestión del tiempo (si hay datos)",
+  "mensaje_motivacional": "mensaje cálido y personal de máximo 2 oraciones, sin clichés"
+}`
+
+const MODO_ANALISIS_LABELS = {
+  examen:       'Modo Examen — simulación oficial sin retroalimentación inmediata',
+  simulacro_ia: 'Simulacro IA / Prueba personalizada Praxia',
+  sala:         'Sala en línea — modo competitivo multijugador',
+}
+
 export async function analizarResultadosSimulacro(req, res) {
   try {
     const userId = req.user.id
-    const { cargo, preguntas: preg, modelo = 'gemini', simulacro_id } = req.body
+    const { cargo, preguntas: preg, modelo = 'gemini', simulacro_id, modo } = req.body
 
     if (!Array.isArray(preg) || !preg.length)
       return res.status(400).json({ error: 'Faltan datos de preguntas.' })
@@ -1035,7 +1066,10 @@ export async function analizarResultadosSimulacro(req, res) {
       .filter(p => p.tiempo_segundos && tiempoPromedio && p.tiempo_segundos > tiempoPromedio * 1.8)
       .map(p => p.area || 'General')
 
+    const modoLabel = MODO_ANALISIS_LABELS[modo] || MODO_ANALISIS_LABELS.simulacro_ia
+
     const resumenDatos = `
+MODO DE PRUEBA: ${modoLabel}
 CARGO OBJETIVO: ${cargo || 'No especificado'}
 RESULTADO GLOBAL: ${score}% (${correctas}/${total} correctas)
 FUNCIONALES: ${corrFunc}/${funcionales.length} correctas (${funcionales.length ? Math.round(corrFunc/funcionales.length*100) : 0}%)
@@ -1048,30 +1082,7 @@ TIEMPO PROMEDIO POR PREGUNTA: ${tiempoPromedio ? `${tiempoPromedio}s` : 'No medi
 DETALLE POR PREGUNTA (solo errores):
 ${preg.filter(p=>!p.es_correcta).slice(0,8).map((p,i)=>`- ${p.area||'General'} | Eligió ${p.opcion_elegida||'sin resp'} | Correcta ${p.opcion_correcta} | ${p.dificultad||'medio'}`).join('\n')}`
 
-    const systemPrompt = `Eres un psicómetra y coach de carrera administrativa del sector público colombiano. Analizas resultados de simulacros de pruebas de juicio situado (OPEC) y generas retroalimentación profesional, honesta y motivadora en español colombiano natural.
-
-Recibirás métricas de rendimiento de un aspirante y deberás generar un análisis COMPLETO en formato JSON. El análisis debe ser específico, no genérico: menciona competencias reales, normas específicas si aplica, y da consejos accionables.
-
-La arquitectura de distractores del simulacro es:
-- A = Respuesta correcta
-- B = Distractor sentido común (actúa bien pero sin procedimiento formal)
-- C = Distractor procedimiento erróneo (usa norma o trámite real, mal aplicado)
-- D = Distractor exceso (se extralimita en funciones o autoridad)
-
-Devuelve ÚNICAMENTE este JSON sin markdown:
-{
-  "nivel_preparacion": "inicial|básico|intermedio|avanzado|experto",
-  "resumen": "2-3 oraciones directas sobre el desempeño general del aspirante",
-  "fortalezas": ["fortaleza concreta 1", "fortaleza concreta 2"],
-  "areas_mejora": ["área de mejora concreta 1", "área de mejora concreta 2"],
-  "patron_error": "descripción del patrón de error más frecuente (sentido común, exceso de poder, norma mal aplicada, etc.)",
-  "tipo_distractor_frecuente": "A|B|C|D",
-  "significado_distractor": "qué revela ese distractor sobre el pensamiento del aspirante",
-  "recomendaciones": ["recomendación accionable 1", "recomendación accionable 2", "recomendación accionable 3"],
-  "temas_criticos": ["tema que debe reforzar 1", "tema que debe reforzar 2"],
-  "analisis_tiempo": "análisis breve de la gestión del tiempo (si hay datos)",
-  "mensaje_motivacional": "mensaje cálido y personal de máximo 2 oraciones, sin clichés"
-}`
+    const systemPrompt = await getPrompt('analisis_resultado', DEFAULT_ANALISIS_SYSTEM, modelo)
 
     const prompt = `${systemPrompt}\n\nDATOS DEL ASPIRANTE:\n${resumenDatos}`
 

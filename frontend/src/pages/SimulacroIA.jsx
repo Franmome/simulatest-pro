@@ -283,7 +283,8 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
       tiempo_segundos:tiempos?.[i] || null,
     }))
 
-    analizarResultadoSimulacro({ cargo, preguntas: pregParaAnalisis, modelo: modelo || 'gemini', simulacro_id: simulacroId })
+    const modo = modoExamen ? 'examen' : 'simulacro_ia'
+    analizarResultadoSimulacro({ cargo, preguntas: pregParaAnalisis, modelo: modelo || 'gemini', simulacro_id: simulacroId, modo })
       .then(a => setAnalisis(a))
       .catch(e => setErrorIA(e.message))
       .finally(() => setCargandoIA(false))
