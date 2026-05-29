@@ -2088,7 +2088,7 @@ export async function generarModoPractica(req, res) {
   const totalTarget = Math.min(60, Math.max(20, srcCount))
 
   // 6. Prompt configurable del admin panel
-  const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'gemini')
+  const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
 
   // 7. Agrupar preguntas originales por área (para referencia de estilo por lote)
   const pregsPorArea = {}
@@ -2144,7 +2144,13 @@ ${ctxAnalisis}${bloqueRef}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
-    const r = await geminiGenerar(prompt)
+    let r
+    try {
+      r = await deepseekGenerar(prompt, Math.min(8192, lote.n * 1500 + 512))
+    } catch (dsErr) {
+      console.warn(`[Práctica] DeepSeek falló (${dsErr.message}), usando Gemini como fallback`)
+      r = await geminiGenerar(prompt)
+    }
     const cleaned = (r.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
     let parsed = null
     try { parsed = JSON.parse(cleaned) } catch { /* continúa con fallbacks */ }
@@ -2249,7 +2255,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   if (insErr) return res.status(500).json({ error: insErr.message })
 
   // 12. Registrar tokens
-  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
+  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'deepseek' })
 
   return res.status(201).json({ simulacro_id: nuevo.id, total: normalized.length, areas_cubiertas: areasDebiles })
 
