@@ -344,6 +344,13 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
 
+async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemPrompt })
+  const result = await model.generateContent(userPrompt)
+  const usage  = result.response.usageMetadata
+  return { texto: result.response.text(), tokensIn: usage?.promptTokenCount || 0, tokensOut: usage?.candidatesTokenCount || 0 }
+}
+
 async function deepseekChat(systemCtx, historial, mensaje) {
   const r = await deepseek.chat.completions.create({
     model: 'deepseek-v4-flash',
@@ -1448,7 +1455,10 @@ Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown, s
 export async function analizarPerfilCV(req, res) {
   try {
     const userId = req.user.id
-    const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw } = req.body
+    const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw, modelo = 'deepseek' } = req.body
+    const analizarConIA = (sp, up) => modelo === 'gemini'
+      ? geminiAnalisisPerfil(sp, up)
+      : deepseekAnalisisPerfil(sp, up, 8192)
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
     const file = req.file
     const cvText = await extractCvText(file)
@@ -1507,8 +1517,8 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     ].filter(Boolean).join('\n')
 
     // ── Paso 1: extraer perfil estructurado del candidato ─────────────────────────
-    console.log(`[IA] pass2a: extrayendo perfil del candidato`)
-    const rPerfil = await deepseekAnalisisPerfil(SP_PERFIL, promptPerfil, 8192)
+    console.log(`[IA] pass2a: extrayendo perfil del candidato (modelo: ${modelo})`)
+    const rPerfil = await analizarConIA(SP_PERFIL, promptPerfil)
       .catch(e => { console.error('[IA] pass2a error:', e.message); return null })
 
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
@@ -1613,7 +1623,7 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
 
     let rutasData = null
     try {
-      const rRutas = await deepseekAnalisisPerfil(SP_RUTAS, promptRutas, 8192)
+      const rRutas = await analizarConIA(SP_RUTAS, promptRutas)
       console.log('[IA] pass2b (rutas) tokensOut:', rRutas.tokensOut)
       rutasData = rescueAnalisis(rRutas.texto)
     } catch (e) {

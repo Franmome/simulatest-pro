@@ -1238,6 +1238,7 @@ export default function AnalisisPerfil() {
   const [plataformaNombre, setPlataformaNombre] = useState(null)
   const [simoConfirmado, setSimoConfirmado] = useState(false)
   const [showPrefs, setShowPrefs] = useState(false)
+  const [modeloAnalisis, setModeloAnalisis] = useState('deepseek')
   const [preferencias, setPreferencias] = useState({
     objetivo_principal: 'estabilidad',
     acepta_nivel_inferior: 'true',
@@ -1365,6 +1366,7 @@ export default function AnalisisPerfil() {
       fd.append('perfil_texto', perfilTexto)
       if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
       fd.append('preferencias', JSON.stringify(preferencias))
+      fd.append('modelo', modeloAnalisis)
       if (files.length > 0) fd.append('pdf', files[0])
       const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
@@ -1743,6 +1745,25 @@ export default function AnalisisPerfil() {
                         <span className="text-[10px] font-bold text-amber-700 bg-amber-200 dark:bg-amber-800 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">Confirmar</span>
                       </button>
                     )}
+                    {/* Toggle cerebro de análisis */}
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
+                      {[
+                        { val: 'deepseek', label: 'DeepSeek', icon: 'psychology' },
+                        { val: 'gemini',   label: 'Gemini',   icon: 'auto_awesome' },
+                      ].map(op => (
+                        <button key={op.val} type="button"
+                          onClick={() => setModeloAnalisis(op.val)}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                            modeloAnalisis === op.val
+                              ? 'bg-white shadow text-primary'
+                              : 'text-on-surface-variant hover:text-on-surface'
+                          }`}>
+                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{op.icon}</span>
+                          {op.label}
+                        </button>
+                      ))}
+                    </div>
+
                     <button
                       onClick={analizar}
                       className="w-full py-4 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-primary/20
