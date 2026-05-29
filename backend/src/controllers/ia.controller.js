@@ -2251,7 +2251,10 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   // 12. Registrar tokens
   await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
 
-  return res.status(201).json({ simulacro_id: nuevo.id, total: normalized.length, areas_cubiertas: areasDebiles })
+  // Áreas reales de las preguntas generadas (no las débiles pre-calculadas)
+  const areasCubiertas = [...new Set(normalized.map(p => p.area).filter(Boolean))]
+
+  return res.status(201).json({ simulacro_id: nuevo.id, total: normalized.length, areas_cubiertas: areasCubiertas })
 
   } catch (err) {
     console.error('[Práctica] error no capturado:', err.message, err.stack?.split('\n')[1])

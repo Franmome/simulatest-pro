@@ -137,8 +137,15 @@ IMPORTANTE:
     border: 'border-teal-200',
     text: 'text-teal-700',
     rutas: ['Modo Práctica (botón en DetallePrueba)'],
-    queSabe: 'Cuando el usuario termina un Examen IA y hace click en "Modo Práctica", DeepSeek recibe el examen completo + las respuestas del usuario y genera preguntas personalizadas enfocadas en sus áreas débiles. Este prompt define cómo DeepSeek construye esas preguntas. El cargo, análisis de respuestas y preguntas originales de áreas con errores se inyectan automáticamente.',
-    variables: [],
+    queSabe: 'Cuando el usuario termina un Examen IA y hace click en "Modo Práctica", Gemini recibe el examen completo + las respuestas del usuario y genera preguntas personalizadas enfocadas en sus áreas débiles. Este prompt define cómo Gemini construye esas preguntas — tiene control total sobre el estilo, dificultad, estructura y criterios de selección. El cargo, área, cantidad y contexto de análisis se inyectan automáticamente como variables.',
+    variables: [
+      { llave: 'CARGO', desc: 'Cargo del OPEC para el que se prepara el usuario (ej: "Profesional Universitario")' },
+      { llave: 'ÁREA A REFORZAR EN ESTE LOTE', desc: 'Área débil detectada en las respuestas del usuario (ej: "Competencias Funcionales")' },
+      { llave: 'PREGUNTAS A GENERAR', desc: 'Número de preguntas que debe retornar en este lote (entre 1 y 5)' },
+      { llave: 'RESULTADO ORIGINAL', desc: 'Porcentaje de error del usuario en el examen original (ej: "40% de error")' },
+      { llave: 'ANÁLISIS IA', desc: 'Diagnóstico previo: nivel de preparación, patrón de error, temas críticos y tipo de distractor frecuente' },
+      { llave: 'REFERENCIA DE ESTILO', desc: '1-2 preguntas del área original para que replique el nivel y formato exacto del examen' },
+    ],
     defaultPrompt: `Eres un psicómetra experto en preparación de aspirantes para concursos de selección del sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría y entidades territoriales).
 
 Tu tarea: generar un MODO PRÁCTICA personalizado basado en el análisis de errores del aspirante.
