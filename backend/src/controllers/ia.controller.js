@@ -2272,6 +2272,21 @@ export async function cerebrosHealth(req, res) {
     results.gemini = { ok: false, error: e.message }
   }
 
+  // OpenAI: verificar key activa via /v1/models (sin generar tokens)
+  try {
+    const resp = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+    })
+    if (resp.ok) {
+      results.openai = { ok: true, nota: 'pago por uso — sin saldo prepago', modelo: 'gpt-4o (Cuaderno Praxia)' }
+    } else {
+      const errData = await resp.json().catch(() => ({}))
+      results.openai = { ok: false, error: errData.error?.message || `HTTP ${resp.status}` }
+    }
+  } catch (e) {
+    results.openai = { ok: false, error: e.message }
+  }
+
   return res.json(results)
 }
 

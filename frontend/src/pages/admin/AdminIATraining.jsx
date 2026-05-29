@@ -1388,7 +1388,7 @@ export default function AdminIATraining() {
           )}
 
           {cerebrosStatus && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {/* DeepSeek */}
               {(() => {
                 const ds = cerebrosStatus.deepseek
@@ -1441,6 +1441,27 @@ export default function AdminIATraining() {
                     <p className="text-[10px] text-on-surface-variant leading-relaxed">
                       {gm?.ok ? 'Pago por uso — sin saldo prepago' : gm?.error}
                     </p>
+                    <p className="text-[9px] text-on-surface-variant mt-1 opacity-70">Simulacros · Análisis · Chat</p>
+                  </div>
+                )
+              })()}
+
+              {/* OpenAI */}
+              {(() => {
+                const oa = cerebrosStatus.openai
+                return (
+                  <div className={`rounded-xl p-3 border col-span-2 lg:col-span-1 ${oa?.ok ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-2 h-2 rounded-full ${oa?.ok ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <p className="text-xs font-bold text-on-surface flex-1">OpenAI</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${oa?.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {oa?.ok ? 'Activo' : 'Error'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      {oa?.ok ? 'Pago por uso — sin saldo prepago' : oa?.error}
+                    </p>
+                    <p className="text-[9px] text-on-surface-variant mt-1 opacity-70">{oa?.modelo || 'gpt-4o · Cuaderno Praxia'}</p>
                   </div>
                 )
               })()}
