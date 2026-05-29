@@ -2091,8 +2091,8 @@ export async function generarModoPractica(req, res) {
     : ''
 
   // 8. Construir lotes — distribuir totalTarget entre áreas débiles
-  // BATCH=8 para que el output quepa en el límite real de 8192 tokens de DeepSeek-chat
-  const BATCH    = 8
+  // BATCH=5: cada pregunta con contexto+justificacion+analisis×4 ≈ 1200-1400 tokens → 5×1400=7000, margen seguro
+  const BATCH    = 5
   const PARALLEL = 3
   const lotes    = []
 
@@ -2131,14 +2131,40 @@ ${ctxAnalisis}${bloqueRef}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
-    const r = await deepseekGenerar(prompt, 8192)
+    const r = await deepseekGenerar(prompt, Math.min(8192, lote.n * 1500 + 512))
     const cleaned = r.texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-    let parsed
-    try { parsed = JSON.parse(cleaned) } catch {
+    let parsed = null
+    try { parsed = JSON.parse(cleaned) } catch { /* continúa con fallbacks */ }
+
+    if (!parsed) {
+      // Intento 1: extraer array completo con regex
       const match = cleaned.match(/\[[\s\S]*\]/)
-      if (!match) throw new Error('sin JSON array')
-      parsed = JSON.parse(match[0])
+      if (match) {
+        try { parsed = JSON.parse(match[0]) } catch { /* continúa */ }
+      }
     }
+
+    if (!parsed) {
+      // Intento 2: rescatar objetos individuales completos aunque el array esté truncado
+      const rescued = []
+      let depth = 0, start = -1
+      for (let i = 0; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
+        else if (cleaned[i] === '}') {
+          depth--
+          if (depth === 0 && start !== -1) {
+            try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
+            start = -1
+          }
+        }
+      }
+      if (rescued.length) {
+        console.warn(`[Práctica] JSON truncado — rescatadas ${rescued.length}/${lote.n} preguntas`)
+        return { preguntas: rescued, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
+      }
+      throw new Error('sin JSON array ni objetos rescatables')
+    }
+
     const arr = Array.isArray(parsed) ? parsed : (parsed.preguntas || parsed.questions || [])
     return { preguntas: arr, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
   }
