@@ -1227,7 +1227,9 @@ INSTRUCCIONES ESPECÍFICAS:
 // La IA solo recibe el top-20 para explicar, no para decidir.
 
 function normStr(s) {
-  return (s || '').toLowerCase()
+  if (!s) return ''
+  const str = typeof s === 'string' ? s : Array.isArray(s) ? s.join(' ') : String(s)
+  return str.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 }
