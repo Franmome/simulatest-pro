@@ -345,8 +345,8 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
 }
 
 async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemPrompt })
-  const result = await model.generateContent(userPrompt)
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
   const usage  = result.response.usageMetadata
   return { texto: result.response.text(), tokensIn: usage?.promptTokenCount || 0, tokensOut: usage?.candidatesTokenCount || 0 }
 }
