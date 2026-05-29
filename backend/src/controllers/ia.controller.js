@@ -2040,6 +2040,7 @@ FORMATO OBLIGATORIO (JSON array):
 Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`
 
 export async function generarModoPractica(req, res) {
+  try {
   const userId = req.user.id
   const { simulacro_id, evaluacion_id } = req.body
   if (!simulacro_id) return res.status(400).json({ error: 'simulacro_id es requerido.' })
@@ -2142,8 +2143,14 @@ ${ctxAnalisis}${bloqueRef}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
-    const r = await deepseekGenerar(prompt, Math.min(8192, lote.n * 1500 + 512))
-    const cleaned = r.texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+    let r
+    try {
+      r = await deepseekGenerar(prompt, Math.min(8192, lote.n * 1500 + 512))
+    } catch (dsErr) {
+      console.warn(`[Práctica] DeepSeek falló (${dsErr.message}), usando Gemini como fallback`)
+      r = await geminiGenerar(prompt)
+    }
+    const cleaned = (r.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
     let parsed = null
     try { parsed = JSON.parse(cleaned) } catch { /* continúa con fallbacks */ }
 
@@ -2192,7 +2199,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
         totalTIn  += r.value.tokensIn
         totalTOut += r.value.tokensOut
       } else {
-        console.error('[Práctica] lote error:', r.reason?.message)
+        console.error('[Práctica] lote error:', r.reason?.message, r.reason?.stack?.split('\n')[1])
       }
     }
   }
@@ -2222,6 +2229,11 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'deepseek' })
 
   return res.status(201).json({ simulacro_id: nuevo.id, total: allPreguntas.length, areas_cubiertas: areasDebiles })
+
+  } catch (err) {
+    console.error('[Práctica] error no capturado:', err.message, err.stack?.split('\n')[1])
+    return res.status(500).json({ error: 'Error interno generando práctica: ' + err.message })
+  }
 }
 
 export async function deleteOpecsMasivo(req, res) {
