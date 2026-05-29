@@ -2083,8 +2083,9 @@ export async function generarModoPractica(req, res) {
     pctError = respuestas?.length ? Math.round((errores.length / respuestas.length) * 100) : 0
   }
 
-  // 5. Total a generar — máx 30 para que quepa en tiempo de request (~45s con BATCH=5/PARALLEL=3)
-  const totalTarget = Math.min(30, (sim.preguntas || []).length || sim.cantidad_preguntas || 20)
+  // 5. Total a generar — al menos 20, máx 60 para caber en ~90s (BATCH=5/PARALLEL=3)
+  const srcCount    = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
+  const totalTarget = Math.min(60, Math.max(20, srcCount))
 
   // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
@@ -2207,6 +2208,34 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   if (!allPreguntas.length)
     return res.status(500).json({ error: 'Praxia no pudo generar las preguntas. Intenta de nuevo.' })
 
+  // 10b. Normalizar campos — DeepSeek y Gemini pueden usar nombres distintos
+  const normalized = allPreguntas.map(p => {
+    const getOpt = k => p[k] || p[k.toLowerCase()] || ''
+    const correcta = (p.correcta || p.respuesta_correcta || 'A').toUpperCase()
+    return {
+      area:        p.area        || 'General',
+      tipo:        p.tipo        || 'funcional',
+      dificultad:  p.dificultad  || 'medio',
+      bloom:       p.bloom       || null,
+      estado:      p.estado      || null,
+      contexto:    p.contexto    || null,
+      enunciado:   p.enunciado   || p.pregunta || p.question || '',
+      A:           getOpt('A'),
+      B:           getOpt('B'),
+      C:           getOpt('C'),
+      D:           getOpt('D'),
+      correcta,
+      justificacion:   p.justificacion   || p.justification || p.explicacion || '',
+      analisis_A:      p.analisis_A      || p.analisis_a    || null,
+      analisis_B:      p.analisis_B      || p.analisis_b    || null,
+      analisis_C:      p.analisis_C      || p.analisis_c    || null,
+      analisis_D:      p.analisis_D      || p.analisis_d    || null,
+    }
+  }).filter(p => p.enunciado && p.A && p.B)  // descartar objetos incompletos
+
+  if (!normalized.length)
+    return res.status(500).json({ error: 'Las preguntas generadas tienen formato inválido. Intenta de nuevo.' })
+
   // 11. Guardar como nuevo simulacro de práctica
   const evalId = evaluacion_id || sim.evaluacion_id
   const { data: nuevo, error: insErr } = await supabase
@@ -2215,8 +2244,8 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
       user_id:             userId,
       evaluacion_id:       evalId ? parseInt(evalId) : null,
       cargo:               sim.cargo,
-      preguntas:           allPreguntas,
-      cantidad_preguntas:  allPreguntas.length,
+      preguntas:           normalized,
+      cantidad_preguntas:  normalized.length,
       tiempo_por_pregunta: 90,
       dificultad_config:   'practica',
       simulacro_origen_id: parseInt(simulacro_id),
@@ -2228,7 +2257,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   // 12. Registrar tokens
   await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'deepseek' })
 
-  return res.status(201).json({ simulacro_id: nuevo.id, total: allPreguntas.length, areas_cubiertas: areasDebiles })
+  return res.status(201).json({ simulacro_id: nuevo.id, total: normalized.length, areas_cubiertas: areasDebiles })
 
   } catch (err) {
     console.error('[Práctica] error no capturado:', err.message, err.stack?.split('\n')[1])

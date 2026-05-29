@@ -29,22 +29,23 @@ function formatTimer(s) {
 // Convierte el formato JSON de IA al formato de opciones del renderer
 // Soporta preguntas legacy (3 opciones / sin datos técnicos) y Prompt Maestro V5.8+
 function parsearPregunta(p, idx) {
-  const correcta = p.correcta?.toUpperCase()
-  const opciones = ['A', 'B', 'C', 'D'].filter(l => p[l]?.trim()).map(l => ({
+  const correcta = (p.correcta || p.respuesta_correcta || '').toUpperCase()
+  const getOpt   = l => p[l] || p[l.toLowerCase()] || ''
+  const opciones  = ['A', 'B', 'C', 'D'].filter(l => getOpt(l).trim()).map(l => ({
     letter: l,
-    text: p[l].trim(),
+    text: getOpt(l).trim(),
     is_correct: l === correcta,
   }))
   return {
     idx,
     contexto:              p.contexto || null,
-    enunciado:             p.enunciado,
+    enunciado:             p.enunciado || p.pregunta || p.question || '',
     area:                  p.area || '',
     tipo:                  p.tipo || 'funcional',
     dificultad:            p.dificultad || 'medio',
     bloom:                 p.bloom || null,
     estado:                p.estado || null,
-    justificacion:         p.justificacion || p.explicacion || '',
+    justificacion:         p.justificacion || p.justification || p.explicacion || '',
     analisis_distractores: p.analisis_distractores || null,
     filtro_autonomia:      p.filtro_autonomia || null,
     correcta,
