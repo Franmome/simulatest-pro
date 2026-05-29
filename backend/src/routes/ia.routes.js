@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { authMiddleware } from '../middleware/auth.middleware.js'
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -42,5 +42,6 @@ router.delete('/procuraduria-opecs/:id', authMiddleware, deleteProcuraduriaOpec)
 router.delete('/procuraduria-opecs',     authMiddleware, deleteOpecsMasivo)
 router.post('/opec-maestro/import',      authMiddleware, importOpecMaestro)
 router.post('/modo-practica',            authMiddleware, generarModoPractica)
+router.get('/cerebros-health',           authMiddleware, cerebrosHealth)
 
 export default router

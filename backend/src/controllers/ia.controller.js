@@ -2236,6 +2236,45 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   }
 }
 
+// ── Endpoint: Salud y saldo de cerebros IA ───────────────────────────────────
+
+export async function cerebrosHealth(req, res) {
+  const results = {}
+
+  // DeepSeek: API de balance oficial
+  try {
+    const resp = await fetch('https://api.deepseek.com/user/balance', {
+      headers: { Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` }
+    })
+    if (resp.ok) {
+      const data = await resp.json()
+      const info = data.balance_infos?.[0]
+      results.deepseek = {
+        ok:               data.is_available ?? true,
+        total_balance:    info?.total_balance    ?? null,
+        topped_balance:   info?.topped_up_balance ?? null,
+        granted_balance:  info?.granted_balance  ?? null,
+        currency:         info?.currency ?? 'USD',
+      }
+    } else {
+      results.deepseek = { ok: false, error: `HTTP ${resp.status}` }
+    }
+  } catch (e) {
+    results.deepseek = { ok: false, error: e.message }
+  }
+
+  // Gemini: sin API de billing pública — ping con llamada mínima
+  try {
+    const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+    const result = await model.generateContent('ping')
+    results.gemini = { ok: !!result.response.text(), nota: 'pago por uso — sin saldo prepago' }
+  } catch (e) {
+    results.gemini = { ok: false, error: e.message }
+  }
+
+  return res.json(results)
+}
+
 export async function deleteOpecsMasivo(req, res) {
   const { ids } = req.body
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Se requiere un array de ids.' })

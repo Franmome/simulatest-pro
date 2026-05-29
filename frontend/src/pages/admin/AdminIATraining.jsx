@@ -1199,6 +1199,18 @@ export default function AdminIATraining() {
   const [resetting,      setResetting]      = useState(false)
   const [historialOpen,  setHistorialOpen]  = useState(false)
   const [historialCount, setHistorialCount] = useState(0)
+  const [cerebrosStatus, setCerebrosStatus] = useState(null)
+  const [loadingCerebros, setLoadingCerebros] = useState(false)
+
+  const fetchCerebrosHealth = async () => {
+    setLoadingCerebros(true)
+    try {
+      const h = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/cerebros-health`, { headers: h })
+      if (res.ok) setCerebrosStatus(await res.json())
+    } catch {}
+    setLoadingCerebros(false)
+  }
 
   const fetchAll = async () => {
     setLoading(true)
@@ -1222,7 +1234,7 @@ export default function AdminIATraining() {
     }
   }, [])
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchAll(); fetchCerebrosHealth() }, [])
 
   useEffect(() => {
     const r = records[moduloActivo.key]
@@ -1355,6 +1367,85 @@ export default function AdminIATraining() {
             Los cambios aplican en máximo 5 minutos. Cada versión guardada queda en el historial
             por si necesitas revertir.
           </p>
+        </div>
+
+        {/* ── Salud de cerebros ── */}
+        <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>monitor_heart</span>
+              Saldo y estado de cerebros
+            </p>
+            <button onClick={fetchCerebrosHealth} disabled={loadingCerebros}
+              className="text-[10px] text-primary font-bold flex items-center gap-1 hover:underline disabled:opacity-50">
+              <span className={`material-symbols-outlined text-sm ${loadingCerebros ? 'animate-spin' : ''}`}>refresh</span>
+              {loadingCerebros ? 'Consultando…' : 'Actualizar'}
+            </button>
+          </div>
+
+          {loadingCerebros && !cerebrosStatus && (
+            <p className="text-xs text-on-surface-variant animate-pulse">Consultando APIs…</p>
+          )}
+
+          {cerebrosStatus && (
+            <div className="grid grid-cols-2 gap-3">
+              {/* DeepSeek */}
+              {(() => {
+                const ds = cerebrosStatus.deepseek
+                const saldo = parseFloat(ds?.topped_balance ?? ds?.total_balance ?? 0)
+                const color = !ds?.ok ? 'red' : saldo < 2 ? 'amber' : 'green'
+                const colorMap = {
+                  green: { wrap: 'bg-green-50 border-green-200', dot: 'bg-green-500', badge: 'bg-green-100 text-green-700', label: 'Activo' },
+                  amber: { wrap: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: 'Saldo bajo' },
+                  red:   { wrap: 'bg-red-50 border-red-200',     dot: 'bg-red-500',   badge: 'bg-red-100 text-red-700',     label: 'Sin saldo / Error' },
+                }
+                const c = colorMap[color]
+                return (
+                  <div className={`rounded-xl p-3 border ${c.wrap}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                      <p className="text-xs font-bold text-on-surface flex-1">DeepSeek</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${c.badge}`}>{c.label}</span>
+                    </div>
+                    {ds?.topped_balance != null ? (
+                      <>
+                        <p className="text-xl font-extrabold text-on-surface">
+                          ${saldo.toFixed(2)}
+                          <span className="text-[10px] font-normal text-on-surface-variant ml-1">recargado</span>
+                        </p>
+                        {parseFloat(ds.granted_balance ?? 0) > 0 && (
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">
+                            + ${parseFloat(ds.granted_balance).toFixed(2)} bonificado
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[10px] text-red-600">{ds?.error || 'Sin datos'}</p>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Gemini */}
+              {(() => {
+                const gm = cerebrosStatus.gemini
+                return (
+                  <div className={`rounded-xl p-3 border ${gm?.ok ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-2 h-2 rounded-full ${gm?.ok ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <p className="text-xs font-bold text-on-surface flex-1">Gemini</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${gm?.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {gm?.ok ? 'Activo' : 'Error'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      {gm?.ok ? 'Pago por uso — sin saldo prepago' : gm?.error}
+                    </p>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
         </div>
       </div>
 
