@@ -2082,8 +2082,8 @@ export async function generarModoPractica(req, res) {
     pctError = respuestas?.length ? Math.round((errores.length / respuestas.length) * 100) : 0
   }
 
-  // 5. Total a generar = mismo que el examen original
-  const totalTarget = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
+  // 5. Total a generar — máx 30 para que quepa en tiempo de request (~45s con BATCH=5/PARALLEL=3)
+  const totalTarget = Math.min(30, (sim.preguntas || []).length || sim.cantidad_preguntas || 20)
 
   // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'deepseek')
