@@ -5,8 +5,6 @@ import { useAuth } from '../context/AuthContext'
 const NAV_DEFS = [
   { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard' },
   { icon: 'assignment',        label: 'Paquetes',          path: '/catalogo',  adminOnly: true },
-  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',   adminOnly: true },
-  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',    adminOnly: true },
   { icon: 'manage_accounts',   label: 'Análisis',          path: '/analisis-perfil' },
 ]
 

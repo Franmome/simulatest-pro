@@ -4,31 +4,17 @@ import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useFetch } from '../hooks/useFetch'
 
-const ICONOS_CATEGORIA = {
-  'CNSC':          'gavel',
-  'ICFES':         'school',
-  'Saber Pro':     'history_edu',
-  'Procuraduría':  'balance',
-  'Contraloría':   'account_balance',
-  'Defensoría':    'shield',
-}
+const BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
 
-const COLORES_CATEGORIA = {
-  'CNSC':          'from-primary to-primary-container',
-  'ICFES':         'from-tertiary to-tertiary-container',
-  'Saber Pro':     'from-secondary to-[#217128]',
-  'Procuraduría':  'from-[#003d9b] to-[#1b6d24]',
-  'Contraloría':   'from-primary to-[#0052cc]',
-  'Defensoría':    'from-slate-400 to-slate-500',
-}
+const HERRAMIENTAS = [
+  { id: 'simulacros', nombre: 'Simulacros + Práctica', icon: 'quiz' },
+  { id: 'cuaderno',   nombre: 'Cuaderno IA',           icon: 'auto_stories' },
+  { id: 'salas',      nombre: 'Salas Competitivas',    icon: 'groups' },
+]
 
-const BADGE_CATEGORIA = {
-  'CNSC':         'bg-primary/10 text-primary',
-  'ICFES':        'bg-tertiary/10 text-tertiary',
-  'Saber Pro':    'bg-secondary/10 text-secondary',
-  'Procuraduría': 'bg-primary/10 text-primary',
-  'Contraloría':  'bg-primary/10 text-primary',
-  'Defensoría':   'bg-slate-100 text-slate-600',
+function fmt(n) {
+  if (n === null || n === undefined) return '—'
+  return `$${Number(n).toLocaleString('es-CO')}`
 }
 
 function fmtFecha(iso) {
@@ -36,386 +22,460 @@ function fmtFecha(iso) {
   return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function precioDesde(pkg) {
+  const h = pkg.herramientas || {}
+  let min = Infinity
+  HERRAMIENTAS.forEach(({ id }) => {
+    const cfg = h[id]
+    if (cfg?.activo) (cfg.planes || []).forEach(p => { if (Number(p.precio) < min) min = Number(p.precio) })
+  })
+  const pcCfg = h.paquete_completo
+  if (pcCfg?.activo) (pcCfg.planes || []).forEach(p => { if (Number(p.precio) < min) min = Number(p.precio) })
+  return min === Infinity ? null : min
+}
+
+function herramientasActivasDe(pkg) {
+  const h = pkg.herramientas || {}
+  return HERRAMIENTAS.filter(({ id }) => h[id]?.activo)
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div className="card overflow-hidden animate-pulse">
-      <div className="h-3 bg-surface-container-high" />
-      <div className="p-6 space-y-3">
-        <div className="h-4 bg-surface-container-high rounded w-1/3" />
-        <div className="h-5 bg-surface-container-high rounded w-3/4" />
+      <div className="h-1.5 bg-surface-container-high" />
+      <div className="p-6 space-y-4">
+        <div className="h-5 bg-surface-container-high rounded w-2/3" />
         <div className="h-4 bg-surface-container-high rounded w-full" />
-        <div className="h-4 bg-surface-container-high rounded w-2/3" />
-        <div className="flex justify-between mt-6">
-          <div className="h-4 bg-surface-container-high rounded w-1/3" />
-          <div className="h-8 bg-surface-container-high rounded-full w-24" />
+        <div className="flex gap-2 mt-2">
+          <div className="h-6 bg-surface-container-high rounded-full w-20" />
+          <div className="h-6 bg-surface-container-high rounded-full w-24" />
+        </div>
+        <div className="flex justify-between items-end mt-4">
+          <div className="h-6 bg-surface-container-high rounded w-24" />
+          <div className="h-8 bg-surface-container-high rounded-full w-28" />
         </div>
       </div>
     </div>
   )
 }
 
+// ── Modal de planes ──────────────────────────────────────────────────────────
+function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar, comprando, user, navigate }) {
+  const h      = pkg.herramientas || {}
+  const activas = HERRAMIENTAS.filter(({ id }) => h[id]?.activo)
+  const pcCfg   = h.paquete_completo
+
+  function BtnComprar({ pkgId, herramientaId, planId }) {
+    const enCurso = comprando?.pkgId === pkgId && comprando?.herramientaId === herramientaId && comprando?.planId === planId
+    if (!user) return (
+      <button onClick={() => navigate('/login')}
+        className="px-4 py-2 rounded-full border border-primary text-primary text-xs font-bold hover:bg-primary/5 transition-colors">
+        Iniciar sesión
+      </button>
+    )
+    return (
+      <button
+        onClick={() => onComprar(pkgId, herramientaId, planId)}
+        disabled={!!comprando}
+        className="px-4 py-2 rounded-full bg-primary text-on-primary text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+      >
+        {enCurso ? '…' : 'Comprar'}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-surface-container-lowest w-full md:max-w-lg md:rounded-3xl max-h-[95vh] overflow-y-auto shadow-2xl rounded-t-3xl flex flex-col">
+
+        {/* Header */}
+        <div className="sticky top-0 bg-surface-container-lowest border-b border-outline-variant/15 px-5 py-4 flex items-center justify-between rounded-t-3xl z-10">
+          <div>
+            <h2 className="font-extrabold text-lg text-on-surface">{pkg.name}</h2>
+            {convNombre && <p className="text-xs text-on-surface-variant mt-0.5">{convNombre}</p>}
+          </div>
+          <button onClick={onClose}
+            className="w-9 h-9 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center transition-colors">
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+
+          {/* Paquete completo */}
+          {pcCfg?.activo && (pcCfg.planes || []).length > 0 && (
+            <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
+              <div className="px-4 py-3 bg-primary/10 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+                <p className="font-extrabold text-primary text-sm">Paquete Completo</p>
+                <span className="ml-auto text-[9px] font-black bg-primary text-on-primary px-2 py-0.5 rounded-full uppercase tracking-wide">Mejor valor</span>
+              </div>
+              <div className="p-4 space-y-0">
+                <p className="text-xs text-on-surface-variant mb-3">Acceso a todas las herramientas incluidas</p>
+                {pcCfg.planes.map(plan => (
+                  <div key={plan.id} className="flex items-center justify-between gap-3 py-3 border-b border-primary/10 last:border-0">
+                    <div>
+                      <p className="font-bold text-sm text-on-surface">{plan.label}</p>
+                      <p className="text-xs text-on-surface-variant">{plan.dias} días de acceso</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-extrabold text-primary">{fmt(plan.precio)} <span className="text-[10px] font-normal text-on-surface-variant">COP</span></span>
+                      <BtnComprar pkgId={pkg.id} herramientaId="paquete_completo" planId={plan.id} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Herramientas individuales */}
+          {activas.map(hDef => {
+            const cfg      = h[hDef.id]
+            const accessKey = `${pkg.id}:${hDef.id}`
+            const endDate  = toolAccess.get(accessKey)
+            const tieneAcceso = esAdmin || !!endDate
+            const planes   = cfg.planes || []
+
+            return (
+              <div key={hDef.id} className="rounded-2xl border border-outline-variant/20 overflow-hidden">
+                <div className="px-4 py-3 bg-surface-container flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>{hDef.icon}</span>
+                  <p className="font-bold text-sm text-on-surface">{hDef.nombre}</p>
+                  {tieneAcceso && (
+                    <span className="ml-auto text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      {esAdmin ? 'Admin' : `Activo · vence ${fmtFecha(endDate)}`}
+                    </span>
+                  )}
+                </div>
+
+                {tieneAcceso ? (
+                  <div className="px-4 py-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    <p className="text-xs text-on-surface-variant">Ya tienes acceso a esta herramienta.</p>
+                  </div>
+                ) : planes.length === 0 ? (
+                  <div className="px-4 py-3">
+                    <p className="text-xs text-on-surface-variant italic">Sin planes disponibles aún.</p>
+                  </div>
+                ) : (
+                  <div className="p-4 space-y-0">
+                    {planes.map(plan => (
+                      <div key={plan.id} className="flex items-center justify-between gap-3 py-3 border-b border-outline-variant/10 last:border-0">
+                        <div>
+                          <p className="font-bold text-sm text-on-surface">{plan.label}</p>
+                          <p className="text-xs text-on-surface-variant">{plan.dias} días de acceso</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-extrabold text-on-surface">{fmt(plan.precio)} <span className="text-[10px] font-normal text-on-surface-variant">COP</span></span>
+                          <BtnComprar pkgId={pkg.id} herramientaId={hDef.id} planId={plan.id} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Trust pills */}
+          <div className="flex flex-wrap gap-2 justify-center pt-2">
+            {[
+              { icon: 'lock', label: 'Pago cifrado SSL' },
+              { icon: 'verified_user', label: 'Wompi certificado' },
+              { icon: 'support_agent', label: 'Soporte 24h' },
+            ].map(b => (
+              <span key={b.label} className="flex items-center gap-1 text-[10px] text-on-surface-variant font-semibold">
+                <span className="material-symbols-outlined text-sm">{b.icon}</span>
+                {b.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Componente principal ─────────────────────────────────────────────────────
 export default function Catalogo() {
-  const navigate   = useNavigate()
-  const { user }   = useAuth()
-  const [filtro,   setFiltro]   = useState('Todos')
-  const [busqueda, setBusqueda] = useState('')
+  const navigate  = useNavigate()
+  const { user }  = useAuth()
+  const [busqueda,  setBusqueda]  = useState('')
+  const [modalPkg,  setModalPkg]  = useState(null)
+  const [comprando, setComprando] = useState(null) // { pkgId, herramientaId, planId }
 
-  // ── Carga principal con useFetch ────────────────────────────────────────
+  // Cargar widget Wompi
+  useEffect(() => {
+    if (document.querySelector('script[src="https://checkout.wompi.co/widget.js"]')) return
+    const s   = document.createElement('script')
+    s.src     = 'https://checkout.wompi.co/widget.js'
+    s.async   = true
+    document.body.appendChild(s)
+    return () => { try { document.body.removeChild(s) } catch {} }
+  }, [])
+
   const { data, loading, error, retry } = useFetch(async () => {
-    const [{ data: cats, error: errCats }, { data: evals, error: errEvals }] =
-      await Promise.all([
-        supabase.from('categories').select('*').order('name'),
-        supabase
-          .from('evaluations')
-          .select(`
-            id, title, description, is_active,
-            categories(id, name),
-            levels(id, time_limit, passing_score)
-          `)
-          .eq('is_active', true)
-          .order('title'),
-      ])
+    const [{ data: pkgs }, { data: convs }] = await Promise.all([
+      supabase.from('packages').select('*').eq('is_active', true).order('created_at'),
+      supabase.from('convocatorias').select('id, nombre'),
+    ])
 
-    if (errCats)  throw new Error(errCats.message)
-    if (errEvals) throw new Error(errEvals.message)
-
-    // Evalucaciones que pertenecen a al menos un paquete publicado
-    const { data: pubPkgs } = await supabase
-      .from('packages')
-      .select('id, evaluations_ids')
-      .eq('is_active', true)
-
-    const evalIdsPublicados = new Set()
-    ;(pubPkgs || []).forEach(p => p.evaluations_ids?.forEach(eid => evalIdsPublicados.add(eid)))
-
-    // También via package_versions → evaluation_versions
-    const pkgIds = (pubPkgs || []).map(p => p.id)
-    if (pkgIds.length) {
-      const { data: pvs } = await supabase
-        .from('package_versions').select('id').in('package_id', pkgIds).eq('is_active', true)
-      const pvIds = (pvs || []).map(v => v.id)
-      if (pvIds.length) {
-        const { data: evVers } = await supabase
-          .from('evaluation_versions').select('evaluation_id').in('package_version_id', pvIds)
-        ;(evVers || []).forEach(r => evalIdsPublicados.add(r.evaluation_id))
-      }
-    }
-
-    // Una sola query para contar todas las preguntas
-    const evalsPublicadas = (evals || []).filter(ev => evalIdsPublicados.has(ev.id))
-    const todosLevelIds = evalsPublicadas.flatMap(ev => ev.levels?.map(l => l.id) || [])
-    let pregsPorLevel = {}
-
-    if (todosLevelIds.length) {
-      const { data: qCounts } = await supabase
-        .from('questions')
-        .select('level_id')
-        .in('level_id', todosLevelIds)
-      ;(qCounts || []).forEach(q => {
-        pregsPorLevel[q.level_id] = (pregsPorLevel[q.level_id] || 0) + 1
-      })
-    }
-
-    const conPreguntas = evalsPublicadas.map(ev => ({
-      ...ev,
-      totalPreguntas: ev.levels?.reduce((sum, l) => sum + (pregsPorLevel[l.id] || 0), 0) || 0,
-    }))
-
-    // ── Resolver qué evaluaciones compró el usuario ────────────────────────
-    const evalIdsComprados = new Map() // evalId → end_date
-    let esAdmin = false
+    let toolAccess = new Map()
+    let esAdmin    = false
 
     if (user?.id) {
-      const { data: userRow } = await supabase
-        .from('users').select('role').eq('id', user.id).maybeSingle()
+      const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
       esAdmin = userRow?.role === 'admin'
 
       if (!esAdmin) {
-        const { data: compras } = await supabase
-          .from('purchases')
-          .select('package_id, package_version_id, end_date')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .gte('end_date', new Date().toISOString())
+        const [{ data: toolPurchases }, { data: legacyPurchases }] = await Promise.all([
+          supabase.from('user_tool_purchases')
+            .select('package_id, herramienta_id, end_date')
+            .eq('user_id', user.id)
+            .gte('end_date', new Date().toISOString()),
+          supabase.from('purchases')
+            .select('package_id, end_date')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .gte('end_date', new Date().toISOString()),
+        ])
 
-        if (compras?.length) {
-          const pkgEndDate = {}
-          const verEndDate = {}
-          compras.forEach(c => {
-            if (c.package_id)         pkgEndDate[c.package_id]         = c.end_date
-            if (c.package_version_id) verEndDate[c.package_version_id] = c.end_date
+        ;(toolPurchases || []).forEach(tp => {
+          toolAccess.set(`${tp.package_id}:${tp.herramienta_id}`, tp.end_date)
+        })
+
+        // Legado: purchase del paquete completo → acceso a todas las herramientas
+        ;(legacyPurchases || []).forEach(lp => {
+          HERRAMIENTAS.forEach(({ id }) => {
+            const key = `${lp.package_id}:${id}`
+            if (!toolAccess.has(key)) toolAccess.set(key, lp.end_date)
           })
-
-          const pkgIds = [...new Set(compras.map(c => c.package_id).filter(Boolean))]
-          const verIds = compras.map(c => c.package_version_id).filter(Boolean)
-
-          if (verIds.length) {
-            const { data: evVers } = await supabase
-              .from('evaluation_versions')
-              .select('evaluation_id, package_version_id')
-              .in('package_version_id', verIds)
-            evVers?.forEach(r => {
-              const ed = verEndDate[r.package_version_id]
-              if (!evalIdsComprados.has(r.evaluation_id) || ed > evalIdsComprados.get(r.evaluation_id))
-                evalIdsComprados.set(r.evaluation_id, ed)
-            })
-          }
-
-          if (pkgIds.length) {
-            const { data: pkgs } = await supabase
-              .from('packages').select('id, evaluations_ids').in('id', pkgIds)
-            pkgs?.forEach(p => {
-              const ed = pkgEndDate[p.id]
-              p.evaluations_ids?.forEach(eid => {
-                if (!evalIdsComprados.has(eid) || ed > evalIdsComprados.get(eid))
-                  evalIdsComprados.set(eid, ed)
-              })
-            })
-          }
-        }
+        })
       }
     }
 
-    return { categorias: cats || [], evaluaciones: conPreguntas, evalIdsComprados, esAdmin }
-  }, ['catalogo', user?.id])
+    return { paquetes: pkgs || [], convocatorias: convs || [], toolAccess, esAdmin }
+  }, ['catalogo-v2', user?.id])
 
-  const categorias      = data?.categorias      ?? []
-  const evaluaciones    = data?.evaluaciones    ?? []
-  const evalIdsComprados = data?.evalIdsComprados ?? new Map()
-  const esAdmin         = data?.esAdmin         ?? false
+  const paquetes      = data?.paquetes      ?? []
+  const convocatorias = data?.convocatorias ?? []
+  const toolAccess    = data?.toolAccess    ?? new Map()
+  const esAdmin       = data?.esAdmin       ?? false
 
-  // ── Filtrado + búsqueda ─────────────────────────────────────────────────
-  const lista = evaluaciones
-    .filter(e => filtro === 'Todos' || e.categories?.name === filtro)
-    .filter(e => !busqueda.trim() ||
-      e.title.toLowerCase().includes(busqueda.toLowerCase()) ||
-      e.description?.toLowerCase().includes(busqueda.toLowerCase())
-    )
+  const lista = paquetes.filter(p =>
+    !busqueda.trim() ||
+    p.name?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    p.description?.toLowerCase().includes(busqueda.toLowerCase())
+  )
 
-  const categoriasBtns = ['Todos', ...categorias.map(c => c.name)]
-  const iconoCat = n => ICONOS_CATEGORIA[n]  || 'quiz'
-  const colorCat = n => COLORES_CATEGORIA[n] || 'from-slate-400 to-slate-500'
-  const badgeCat = n => BADGE_CATEGORIA[n]   || 'bg-primary/10 text-primary'
+  async function comprar(packageId, herramientaId, planId) {
+    if (!user) { navigate('/login'); return }
+    if (comprando) return
+    setComprando({ pkgId: packageId, herramientaId, planId })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sesión expirada. Inicia sesión de nuevo.')
 
-  function duracionMax(ev) {
-    if (!ev.levels?.length) return null
-    const max = Math.max(...ev.levels.map(l => l.time_limit ?? 0))
-    if (!max) return null
-    return max >= 60
-      ? `${Math.floor(max / 60)}h ${max % 60 > 0 ? `${max % 60}m` : ''}`.trim()
-      : `${max}m`
+      const res  = await fetch(`${BASE_URL}/api/paquetes/comprar`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body:    JSON.stringify({ package_id: packageId, herramienta_id: herramientaId, plan_id: planId }),
+      })
+      const datos = await res.json()
+      if (!res.ok) throw new Error(datos?.error || 'Error al iniciar el pago.')
+      if (!window.WidgetCheckout) throw new Error('Widget de pago no cargado. Recarga la página.')
+
+      const checkout = new window.WidgetCheckout({
+        currency:       'COP',
+        amountInCents:  datos.amount_in_cents,
+        reference:      datos.reference,
+        publicKey:      datos.public_key,
+        signature:      { integrity: datos.signature },
+        customerData:   { email: user.email },
+        redirectUrl:    datos.redirect_url,
+      })
+
+      setModalPkg(null)
+      checkout.open(result => {
+        if (result?.transaction?.status === 'APPROVED') retry()
+      })
+    } catch (e) {
+      alert(e.message || 'Error al iniciar el pago.')
+    } finally {
+      setComprando(null)
+    }
   }
+
+  const modalConv = modalPkg ? convocatorias.find(c => c.id === modalPkg.convocatoria_id)?.nombre : null
 
   return (
     <div className="p-8 pb-20 animate-fade-in">
 
-      {/* ── Encabezado ── */}
+      {/* Encabezado */}
       <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-on-background tracking-tight mb-1">
-          Paquetes
-        </h1>
+        <h1 className="text-3xl font-extrabold text-on-background tracking-tight mb-1">Paquetes</h1>
         <p className="text-on-surface-variant">
-          Accede a los mejores paquetes de simulacros para convocatorias nacionales
+          Accede a las herramientas IA para prepararte en convocatorias nacionales.
         </p>
       </div>
 
-      {/* ── Búsqueda + filtros ── */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <div className="relative flex-1 max-w-sm">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2
-                           text-on-surface-variant text-lg">search</span>
-          <input
-            className="w-full bg-surface-container-low border-none rounded-full
-                       pl-10 pr-4 py-2.5 text-sm outline-none
-                       focus:ring-2 focus:ring-primary/20
-                       placeholder:text-on-surface-variant"
-            placeholder="Buscar paquete..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-          />
-          {busqueda && (
-            <button
-              onClick={() => setBusqueda('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2
-                         text-on-surface-variant hover:text-on-surface">
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
-          )}
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          {categoriasBtns.map(c => (
-            <button
-              key={c}
-              onClick={() => setFiltro(c)}
-              className={`px-4 py-2 font-semibold text-sm rounded-full transition-all
-                ${filtro === c
-                  ? 'bg-primary text-white shadow-md shadow-primary/20'
-                  : 'bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary'
-                }`}>
-              {c}
-            </button>
-          ))}
-        </div>
+      {/* Buscador */}
+      <div className="relative max-w-sm mb-8">
+        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
+        <input
+          className="w-full bg-surface-container-low border-none rounded-full pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant"
+          placeholder="Buscar paquete..."
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+        />
+        {busqueda && (
+          <button onClick={() => setBusqueda('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        )}
       </div>
 
-      {/* Contador */}
-      {!loading && !error && (
-        <p className="text-xs text-on-surface-variant mb-6 font-medium">
-          {lista.length === 0
-            ? 'Sin resultados'
-            : `${lista.length} paquete${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`
-          }
-          {busqueda && <span className="text-primary font-bold"> para "{busqueda}"</span>}
-        </p>
-      )}
-
-      {/* ── Error ── */}
+      {/* Error */}
       {error && (
         <div className="mb-6 p-4 bg-error-container text-error rounded-xl flex items-center gap-3">
           <span className="material-symbols-outlined">error</span>
           <p className="text-sm font-semibold flex-1">{error}</p>
-          <button
-            onClick={retry}
-            className="text-xs font-bold underline hover:opacity-70 transition-opacity">
-            Reintentar
-          </button>
+          <button onClick={retry} className="text-xs font-bold underline hover:opacity-70">Reintentar</button>
         </div>
       )}
 
-      {/* ── Grid ── */}
+      {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 
         {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
 
         {!loading && lista.length === 0 && !error && (
-          <div className="col-span-full flex flex-col items-center justify-center py-20
-                          text-on-surface-variant">
+          <div className="col-span-full flex flex-col items-center justify-center py-20 text-on-surface-variant">
             <span className="material-symbols-outlined text-5xl mb-3 opacity-40">search_off</span>
-            <p className="font-semibold">
-              {busqueda
-                ? `Sin resultados para "${busqueda}"`
-                : 'No hay evaluaciones en esta categoría'}
-            </p>
-            <button
-              onClick={() => { setFiltro('Todos'); setBusqueda('') }}
-              className="mt-3 text-primary text-sm font-bold hover:underline">
-              Ver todas
-            </button>
+            <p className="font-semibold">{busqueda ? `Sin resultados para "${busqueda}"` : 'No hay paquetes disponibles'}</p>
+            {busqueda && (
+              <button onClick={() => setBusqueda('')} className="mt-3 text-primary text-sm font-bold hover:underline">
+                Ver todos
+              </button>
+            )}
           </div>
         )}
 
-        {!loading && lista.map(ev => {
-          const catNombre  = ev.categories?.name ?? 'General'
-          const niveles    = ev.levels?.length ?? 0
-          const dur        = duracionMax(ev)
-          const adquirido  = esAdmin || evalIdsComprados.has(ev.id)
-          const endDate    = evalIdsComprados.get(ev.id)
+        {!loading && lista.map(pkg => {
+          const activas     = herramientasActivasDe(pkg)
+          const desde       = precioDesde(pkg)
+          const convNombre  = convocatorias.find(c => c.id === pkg.convocatoria_id)?.nombre
+          const pcActivo    = pkg.herramientas?.paquete_completo?.activo
+
+          // Calcular acceso del usuario a este paquete
+          const herramientasConAcceso = esAdmin
+            ? activas
+            : activas.filter(({ id }) => toolAccess.has(`${pkg.id}:${id}`))
+          const tieneAlguno = herramientasConAcceso.length > 0
 
           return (
-            <div
-              key={ev.id}
-              className="card overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
+            <div key={pkg.id}
+              className="card overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col">
 
-              <div className={`h-1.5 bg-gradient-to-r ${colorCat(catNombre)}`} />
+              <div className="h-1.5 bg-gradient-to-r from-primary to-primary-container" />
 
-              <div className="p-6 flex flex-col h-full">
+              <div className="p-6 flex flex-col flex-1">
+
                 {/* Header */}
-                <div className="flex items-start justify-between mb-4 gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${badgeCat(catNombre)}`}>
-                      {catNombre}
-                    </span>
-                    {niveles > 0 && (
-                      <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container px-2 py-1 rounded-full">
-                        {niveles} nivel{niveles !== 1 ? 'es' : ''}
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-base text-on-surface leading-snug group-hover:text-primary transition-colors">
+                      {pkg.name}
+                    </h3>
+                    {convNombre && (
+                      <span className="inline-block mt-1 text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full">
+                        {convNombre}
                       </span>
                     )}
                   </div>
-                  <span className="material-symbols-outlined text-on-surface-variant/40 text-xl flex-shrink-0"
-                        style={{ fontVariationSettings: "'FILL' 1" }}>
-                    {iconoCat(catNombre)}
-                  </span>
+                  {tieneAlguno && (
+                    <span className="text-[9px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-wide shrink-0">
+                      Activo
+                    </span>
+                  )}
                 </div>
 
-                {/* Título */}
-                <h3 className="font-bold text-base text-on-surface mb-2 leading-snug group-hover:text-primary transition-colors">
-                  {ev.title}
-                </h3>
-
-                {ev.description && (
-                  <p className="text-xs text-on-surface-variant line-clamp-2 mb-4 leading-relaxed">
-                    {ev.description}
-                  </p>
+                {pkg.description && (
+                  <p className="text-xs text-on-surface-variant line-clamp-2 mb-4 leading-relaxed">{pkg.description}</p>
                 )}
 
-                {/* Meta */}
-                <div className="flex items-center gap-3 text-[10px] text-on-surface-variant mb-4">
-                  {ev.totalPreguntas > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-sm">quiz</span>
-                      {ev.totalPreguntas} preguntas
-                    </span>
-                  )}
-                  {dur && (
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-sm">schedule</span>
-                      {dur}
+                {/* Herramientas */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {activas.length === 0 ? (
+                    <span className="text-[10px] text-on-surface-variant italic">Sin herramientas configuradas</span>
+                  ) : activas.map(({ id, nombre, icon }) => {
+                    const hasAccess = esAdmin || toolAccess.has(`${pkg.id}:${id}`)
+                    return (
+                      <span key={id}
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full ${
+                          hasAccess
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-surface-container text-on-surface-variant'
+                        }`}>
+                        <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
+                        {nombre.split(' ')[0]}
+                        {hasAccess && <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>}
+                      </span>
+                    )
+                  })}
+                  {pcActivo && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary/10 text-primary px-2 py-1 rounded-full">
+                      <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+                      Paquete completo
                     </span>
                   )}
                 </div>
 
-                {/* Footer botones */}
-                <div className="pt-4 border-t border-outline-variant/15 mt-auto">
-                  {adquirido ? (
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
-                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                          Adquirido
-                        </span>
-                        {endDate && (
-                          <p className="text-[9px] text-on-surface-variant mt-1 pl-1">
-                            Vence: {fmtFecha(endDate)}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => navigate(`/prueba/${ev.id}`)}
-                        className="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold
-                                   hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95">
-                        Ver detalle →
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      {user ? (
-                        <button
-                          onClick={() => navigate('/planes')}
-                          className="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold
-                                     hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95">
-                          Comprar
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-on-surface-variant font-medium">
-                          Inicia sesión para comprar
-                        </span>
-                      )}
-                      <button
-                        onClick={() => navigate(`/prueba/${ev.id}`)}
-                        className="border border-outline-variant/40 text-on-surface-variant px-4 py-2 rounded-full
-                                   text-xs font-semibold hover:bg-surface-container hover:text-on-surface
-                                   transition-all active:scale-95">
-                        Ver detalle →
-                      </button>
-                    </div>
-                  )}
+                {/* Footer precio + CTA */}
+                <div className="mt-auto pt-4 border-t border-outline-variant/15 flex items-center justify-between gap-2">
+                  <div>
+                    {desde !== null ? (
+                      <>
+                        <p className="text-[9px] text-on-surface-variant font-semibold uppercase tracking-wide">Desde</p>
+                        <p className="text-lg font-extrabold text-primary leading-tight">{fmt(desde)}</p>
+                        <p className="text-[9px] text-on-surface-variant">COP</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-on-surface-variant italic">Consultar precio</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setModalPkg(pkg)}
+                    className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+                  >
+                    Ver planes →
+                  </button>
                 </div>
               </div>
             </div>
           )
         })}
       </div>
+
+      {/* Modal planes */}
+      {modalPkg && (
+        <ModalPlanes
+          pkg={modalPkg}
+          convNombre={modalConv}
+          toolAccess={toolAccess}
+          esAdmin={esAdmin}
+          onClose={() => setModalPkg(null)}
+          onComprar={comprar}
+          comprando={comprando}
+          user={user}
+          navigate={navigate}
+        />
+      )}
     </div>
   )
 }

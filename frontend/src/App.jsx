@@ -88,6 +88,8 @@ export default function App() {
             <Route path="/salas"            element={<Salas />} />
             <Route path="/sala/:roomId/lobby" element={<SalaLobby />} />
             <Route path="/sala/:roomId/juego" element={<SalaSimulacro />} />
+            <Route path="/planes"           element={<Suscripciones />} />
+            <Route path="/cuaderno/:packageId" element={<CuadernoIA />} />
           </Route>
 
           {/* 👑 Rutas privadas solo para administradores */}
@@ -96,10 +98,8 @@ export default function App() {
             <Route path="/simulacro-ia/:id"   element={<SimulacroIA />} />
             <Route path="/resultados"         element={<Resultados />} />
             <Route path="/resultado-final"    element={<ResultadoFinal />} />
-            <Route path="/planes"             element={<Suscripciones />} />
             <Route path="/perfil"             element={<Perfil />} />
             <Route path="/estudio"            element={<Estudio />} />
-            <Route path="/cuaderno/:packageId" element={<CuadernoIA />} />
           </Route>
 
           {/* 👑 Panel de administración */}

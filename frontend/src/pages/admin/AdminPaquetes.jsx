@@ -86,22 +86,23 @@ const CEREBROS = [
 ]
 
 const HERRAMIENTAS = [
-  { id: 'modo_examen', nombre: 'Modo Examen', icon: 'quiz', desc: 'Simulacros cronometrados con retroalimentación IA' },
-  { id: 'modo_practica', nombre: 'Modo Práctica', icon: 'school', desc: 'Práctica libre sin presión de tiempo' },
-  { id: 'salas', nombre: 'Salas Competitivas', icon: 'groups', desc: 'Competencias multijugador en tiempo real' },
-  { id: 'cuaderno', nombre: 'Cuaderno IA', icon: 'auto_stories', desc: 'Asistente IA tipo NotebookLM para estudiar documentos' },
+  { id: 'simulacros', nombre: 'Simulacros + Práctica', icon: 'quiz',        desc: 'Exámenes IA cronometrados y práctica personalizada por áreas débiles' },
+  { id: 'cuaderno',   nombre: 'Cuaderno IA',           icon: 'auto_stories', desc: 'Asistente IA tipo NotebookLM para estudiar documentos de la convocatoria' },
+  { id: 'salas',      nombre: 'Salas Competitivas',    icon: 'groups',       desc: 'Competencias multijugador en tiempo real' },
 ]
 
 const DEFAULTS_CEREBRO = {
-  modo_examen:    'deepseek-v4-flash',
-  modo_practica:  'deepseek-v4-flash',
-  salas:          'gemini-31-flash-lite',
-  cuaderno:       'gpt-4o',
+  simulacros: 'deepseek-v4-flash',
+  cuaderno:   'gpt-4o',
+  salas:      'gemini-31-flash-lite',
 }
 
-const HERRAMIENTAS_DEFAULT = Object.fromEntries(
-  HERRAMIENTAS.map(h => [h.id, { activo: false, cerebro: DEFAULTS_CEREBRO[h.id] ?? 'deepseek-v4-flash' }])
-)
+const HERRAMIENTAS_DEFAULT = {
+  ...Object.fromEntries(
+    HERRAMIENTAS.map(h => [h.id, { activo: false, cerebro: DEFAULTS_CEREBRO[h.id] ?? 'deepseek-v4-flash', planes: [] }])
+  ),
+  paquete_completo: { activo: false, planes: [] },
+}
 
 const TIER_COLORS = {
   económico: 'bg-green-100 text-green-700',
@@ -231,6 +232,67 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
         [herramientaId]: { ...f.herramientas[herramientaId], cerebro: cerebroId },
       },
     }))
+  }
+
+  function addPlan(herramientaId) {
+    setForm(f => {
+      const cfg = f.herramientas[herramientaId] ?? { planes: [] }
+      return {
+        ...f,
+        herramientas: {
+          ...f.herramientas,
+          [herramientaId]: {
+            ...cfg,
+            planes: [...(cfg.planes || []), { id: Date.now().toString(), label: '1 mes', dias: 30, precio: 0 }],
+          },
+        },
+      }
+    })
+  }
+
+  function updatePlan(herramientaId, planId, field, value) {
+    setForm(f => {
+      const cfg = f.herramientas[herramientaId] ?? { planes: [] }
+      return {
+        ...f,
+        herramientas: {
+          ...f.herramientas,
+          [herramientaId]: {
+            ...cfg,
+            planes: (cfg.planes || []).map(p => p.id === planId ? { ...p, [field]: value } : p),
+          },
+        },
+      }
+    })
+  }
+
+  function removePlan(herramientaId, planId) {
+    setForm(f => {
+      const cfg = f.herramientas[herramientaId] ?? { planes: [] }
+      return {
+        ...f,
+        herramientas: {
+          ...f.herramientas,
+          [herramientaId]: {
+            ...cfg,
+            planes: (cfg.planes || []).filter(p => p.id !== planId),
+          },
+        },
+      }
+    })
+  }
+
+  function togglePaqueteCompleto() {
+    setForm(f => {
+      const cfg = f.herramientas.paquete_completo ?? { planes: [] }
+      return {
+        ...f,
+        herramientas: {
+          ...f.herramientas,
+          paquete_completo: { ...cfg, activo: !cfg.activo },
+        },
+      }
+    })
   }
 
   async function guardar() {
@@ -421,12 +483,154 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
                             Seleccionado: <strong>{cerebroSel.nombre}</strong> · {cerebroSel.proveedor} · ${cerebroSel.precioInput}/1M in
                           </span>
                         </div>
+
+                        {/* Planes de precio */}
+                        <div className="pt-2 border-t border-primary/10">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Planes de precio</p>
+                            <button
+                              onClick={() => addPlan(h.id)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-xs">add</span>
+                              Agregar plan
+                            </button>
+                          </div>
+                          {(!config.planes || config.planes.length === 0) ? (
+                            <p className="text-[10px] text-on-surface-variant italic py-2">Sin planes definidos. Agrega al menos uno.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {config.planes.map(plan => (
+                                <div key={plan.id} className="flex items-center gap-2 p-2 rounded-xl bg-surface-container border border-outline-variant/20">
+                                  <input
+                                    value={plan.label}
+                                    onChange={e => updatePlan(h.id, plan.id, 'label', e.target.value)}
+                                    placeholder="Ej: 1 mes"
+                                    className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] outline-none focus:ring-1 focus:ring-primary/30"
+                                  />
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <input
+                                      type="number" min="1"
+                                      value={plan.dias}
+                                      onChange={e => updatePlan(h.id, plan.id, 'dias', Number(e.target.value))}
+                                      className="w-14 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] text-center outline-none focus:ring-1 focus:ring-primary/30"
+                                    />
+                                    <span className="text-[9px] text-on-surface-variant">días</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="text-[9px] text-on-surface-variant">$</span>
+                                    <input
+                                      type="number" min="0"
+                                      value={plan.precio}
+                                      onChange={e => updatePlan(h.id, plan.id, 'precio', Number(e.target.value))}
+                                      className="w-20 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] text-center outline-none focus:ring-1 focus:ring-primary/30"
+                                    />
+                                    <span className="text-[9px] text-on-surface-variant">COP</span>
+                                  </div>
+                                  <button
+                                    onClick={() => removePlan(h.id, plan.id)}
+                                    className="p-1 rounded-lg text-on-surface-variant hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">delete</span>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 )
               })}
             </div>
+
+            {/* Paquete Completo */}
+            {(() => {
+              const pcCfg = form.herramientas.paquete_completo ?? { activo: false, planes: [] }
+              const anyActive = HERRAMIENTAS.some(h => form.herramientas[h.id]?.activo)
+              if (!anyActive) return null
+              return (
+                <div className={`border-2 rounded-2xl overflow-hidden transition-all ${pcCfg.activo ? 'border-amber-400/50 bg-amber-50/50' : 'border-dashed border-outline-variant/30'}`}>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`material-symbols-outlined text-xl ${pcCfg.activo ? 'text-amber-600' : 'text-on-surface-variant'}`}
+                        style={{ fontVariationSettings: "'FILL' 1" }}
+                      >
+                        workspace_premium
+                      </span>
+                      <div>
+                        <p className="text-sm font-bold text-on-surface">Paquete Completo</p>
+                        <p className="text-[10px] text-on-surface-variant">Precio especial por acceso a todas las herramientas activas</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={togglePaqueteCompleto}
+                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${pcCfg.activo ? 'bg-amber-500' : 'bg-outline-variant'}`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${pcCfg.activo ? 'left-6' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  {pcCfg.activo && (
+                    <div className="px-4 pb-4 border-t border-amber-200/50 pt-3 space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Planes del paquete completo</p>
+                        <button
+                          onClick={() => addPlan('paquete_completo')}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-bold hover:bg-amber-200 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-xs">add</span>
+                          Agregar plan
+                        </button>
+                      </div>
+                      {(!pcCfg.planes || pcCfg.planes.length === 0) ? (
+                        <p className="text-[10px] text-on-surface-variant italic py-1">Sin planes definidos.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {pcCfg.planes.map(plan => (
+                            <div key={plan.id} className="flex items-center gap-2 p-2 rounded-xl bg-white border border-amber-200/50">
+                              <input
+                                value={plan.label}
+                                onChange={e => updatePlan('paquete_completo', plan.id, 'label', e.target.value)}
+                                placeholder="Ej: 1 mes"
+                                className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] outline-none focus:ring-1 focus:ring-amber-400/30"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number" min="1"
+                                  value={plan.dias}
+                                  onChange={e => updatePlan('paquete_completo', plan.id, 'dias', Number(e.target.value))}
+                                  className="w-14 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] text-center outline-none focus:ring-1 focus:ring-amber-400/30"
+                                />
+                                <span className="text-[9px] text-on-surface-variant">días</span>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[9px] text-on-surface-variant">$</span>
+                                <input
+                                  type="number" min="0"
+                                  value={plan.precio}
+                                  onChange={e => updatePlan('paquete_completo', plan.id, 'precio', Number(e.target.value))}
+                                  className="w-20 px-2 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest text-[11px] text-center outline-none focus:ring-1 focus:ring-amber-400/30"
+                                />
+                                <span className="text-[9px] text-on-surface-variant">COP</span>
+                              </div>
+                              <button
+                                onClick={() => removePlan('paquete_completo', plan.id)}
+                                className="p-1 rounded-lg text-on-surface-variant hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                              >
+                                <span className="material-symbols-outlined text-sm">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </section>
 
           {error && (

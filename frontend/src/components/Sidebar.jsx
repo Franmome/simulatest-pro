@@ -7,8 +7,6 @@ import APP from '../utils/app.config.js'
 const NAV_DEFS = [
   { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard',        hint: 'Vista principal'           },
   { icon: 'assignment',        label: 'Paquetes',           path: '/catalogo',          hint: 'Simulacros y pruebas',      adminOnly: true },
-  { icon: 'leaderboard',       labelKey: 'nav.results',    path: '/perfil',            hint: 'Resultados y métricas',     adminOnly: true },
-  { icon: 'menu_book',         labelKey: 'nav.study',      path: '/estudio',           hint: 'Material y recursos',       adminOnly: true },
   { icon: 'manage_accounts',   label: 'Análisis de perfil', path: '/analisis-perfil',  hint: 'Tu perfil vs convocatoria' },
   { icon: 'history_edu',       label: 'Registros',          path: '/registros',         hint: 'Historial de pruebas y análisis' },
 ]
