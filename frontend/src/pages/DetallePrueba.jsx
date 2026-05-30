@@ -862,9 +862,10 @@ export default function DetallePrueba() {
     if (isPackageMode) {
       const { data: pkgData, error: pkgErr } = await supabase
         .from('packages')
-        .select('id, name, description, has_ai_chat, convocatoria_id, herramientas')
+        .select('*')
         .eq('id', idNum).maybeSingle()
-      if (pkgErr || !pkgData) throw new Error('Paquete no encontrado')
+      if (pkgErr) throw new Error(`Error BD: ${pkgErr.message} (id=${idNum})`)
+      if (!pkgData) throw new Error(`Paquete ${idNum} no existe o sin acceso`)
 
       // Construir "ev" virtual desde el paquete
       const evalData = {
