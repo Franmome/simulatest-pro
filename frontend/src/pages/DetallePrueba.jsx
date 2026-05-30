@@ -7,6 +7,13 @@ import { useFetch } from '../hooks/useFetch'
 import IAPraxia, { ModelSelector } from '../components/IAPraxia'
 import { generarSimulacroPersonal, verificarOpec, generarModoPractica } from '../utils/gemini'
 
+const toStr = (v) => {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'object') return v.texto || v.text || v.descripcion || v.nombre || v.name || JSON.stringify(v)
+  return String(v)
+}
+
 // ── Constantes visuales ───────────────────────────────────────────────────────
 
 const ICONOS = {
@@ -209,7 +216,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   <p className="text-[10px] text-on-surface-variant mt-0.5">
                     {ultimoAnalisis.score_correctas}/{ultimoAnalisis.score_total} correctas
                     {an.nivel_preparacion && (
-                      <span className="ml-2 font-bold text-primary">{an.nivel_preparacion}</span>
+                      <span className="ml-2 font-bold text-primary">{toStr(an.nivel_preparacion)}</span>
                     )}
                   </p>
                 </div>
@@ -221,7 +228,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                 <div className="mt-3 flex items-start gap-2">
                   <span className="material-symbols-outlined text-amber-500 text-base shrink-0 mt-0.5"
                     style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                  <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{an.patron_error}</p>
+                  <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{toStr(an.patron_error)}</p>
                 </div>
               )}
 
@@ -232,7 +239,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   <div className="flex flex-wrap gap-1">
                     {an.areas_mejora.slice(0, 3).map((a, i) => (
                       <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">
-                        {a}
+                        {toStr(a)}
                       </span>
                     ))}
                     {an.areas_mejora.length > 3 && (
@@ -250,7 +257,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   <div className="flex flex-wrap gap-1">
                     {an.fortalezas.slice(0, 2).map((f, i) => (
                       <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">
-                        {f}
+                        {toStr(f)}
                       </span>
                     ))}
                   </div>
@@ -2332,11 +2339,11 @@ export default function DetallePrueba() {
                         <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                           <span className="material-symbols-outlined text-blue-600 text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>travel_explore</span>
                           <span className="font-bold text-blue-800">Datos verificados en Google</span>
-                          {verificacion.año_info && <span className="ml-auto text-blue-500 font-semibold">{verificacion.año_info}</span>}
+                          {verificacion.año_info && <span className="ml-auto text-blue-500 font-semibold">{toStr(verificacion.año_info)}</span>}
                         </div>
                         <div className="px-3 pb-3 space-y-1.5">
                           {verificacion.entidad && (
-                            <p className="text-blue-700"><span className="font-bold">Entidad:</span> {verificacion.entidad}</p>
+                            <p className="text-blue-700"><span className="font-bold">Entidad:</span> {toStr(verificacion.entidad)}</p>
                           )}
                           {verificacion.total_preguntas && (
                             <p className="text-blue-700"><span className="font-bold">Preguntas reales:</span> ~{verificacion.total_preguntas}</p>
@@ -2350,14 +2357,14 @@ export default function DetallePrueba() {
                               <div className="flex flex-wrap gap-1">
                                 {verificacion.modulos.map((m, i) => (
                                   <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-semibold">
-                                    {m.nombre} {m.porcentaje}%
+                                    {toStr(m.nombre)} {m.porcentaje}%
                                   </span>
                                 ))}
                               </div>
                             </div>
                           )}
                           {verificacion.nota && (
-                            <p className="text-blue-600 italic">{verificacion.nota}</p>
+                            <p className="text-blue-600 italic">{toStr(verificacion.nota)}</p>
                           )}
                           {verificacion.total_preguntas && (
                             <div className="mt-2 flex items-start gap-1.5 bg-blue-50 border border-blue-200 rounded-lg p-2">
@@ -2511,7 +2518,7 @@ export default function DetallePrueba() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Áreas cubiertas</p>
                       <div className="flex flex-wrap gap-1.5">
                         {practicaGenerada.areas_cubiertas.map((a, i) => (
-                          <span key={i} className="text-[10px] bg-secondary/10 text-secondary font-bold px-2.5 py-1 rounded-full">{a}</span>
+                          <span key={i} className="text-[10px] bg-secondary/10 text-secondary font-bold px-2.5 py-1 rounded-full">{toStr(a)}</span>
                         ))}
                       </div>
                     </div>
@@ -2603,11 +2610,11 @@ export default function DetallePrueba() {
                           <>
                             {an.nivel_preparacion && (
                               <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full inline-block mb-1">
-                                {an.nivel_preparacion}
+                                {toStr(an.nivel_preparacion)}
                               </span>
                             )}
                             {an.patron_error && (
-                              <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{an.patron_error}</p>
+                              <p className="text-[11px] text-on-surface leading-relaxed line-clamp-2">{toStr(an.patron_error)}</p>
                             )}
                             {an.areas_mejora?.length > 0 && (
                               <p className="text-[10px] text-on-surface-variant mt-1">
