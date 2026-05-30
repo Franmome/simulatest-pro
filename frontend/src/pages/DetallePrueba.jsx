@@ -495,18 +495,6 @@ function TabMaterial({ packageId, tienePlan, evaluacionId, userId, convocatoriaI
     return a
   }, {})
 
-  if (!tienePlan) return (
-    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-      <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
-        <span className="material-symbols-outlined text-primary text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>lock</span>
-      </div>
-      <h3 className="font-extrabold text-xl mb-2">Contenido exclusivo</h3>
-      <p className="text-on-surface-variant text-sm max-w-xs leading-relaxed">
-        Adquiere el paquete para acceder a todo el material de estudio incluido.
-      </p>
-    </div>
-  )
-
   return (
     <div className="space-y-6">
 
@@ -893,7 +881,8 @@ export default function DetallePrueba() {
     }
 
     let tienePlan = false, packageId = null, hasAiChat = false, versionNombre = null
-    let convocatoriaId = null, convocatoriaNombre = null
+    let convocatoriaId = null, convocatoriaNombre = null, packageNombre = null, packageExpiry = null
+    const iaStats = { total: 0, completados: 0, avgScore: null, bestScore: null }
     if (user?.id) {
       const evalIdNum = parseInt(id, 10)
       const esAdmin = user.role === 'admin'
@@ -927,7 +916,7 @@ export default function DetallePrueba() {
         // Modelo nuevo: user_tool_purchases (herramienta simulacros)
         const { data: toolPur } = await supabase
           .from('user_tool_purchases')
-          .select('package_id')
+          .select('package_id, end_date')
           .eq('user_id', user.id)
           .eq('herramienta_id', 'simulacros')
           .in('package_id', evalPackageIds)
@@ -937,12 +926,13 @@ export default function DetallePrueba() {
         if (toolPur) {
           tienePlan = true
           packageId = toolPur.package_id
+          packageExpiry = toolPur.end_date
         }
 
         // Modelo viejo: purchases
         if (!tienePlan) {
           const { data: compra } = await supabase
-            .from('purchases').select('package_id, package_version_id')
+            .from('purchases').select('package_id, package_version_id, end_date')
             .eq('user_id', user.id)
             .eq('status', 'active')
             .gte('end_date', new Date().toISOString())
@@ -952,6 +942,7 @@ export default function DetallePrueba() {
           if (compra) {
             tienePlan = true
             packageId = compra.package_id
+            packageExpiry = compra.end_date
             if (compra.package_version_id) {
               const { data: ver } = await supabase
                 .from('package_versions').select('display_name')
@@ -962,7 +953,7 @@ export default function DetallePrueba() {
         }
       }
 
-      // Datos del paquete para obtener convocatoria_id (admins siempre tienen hasAiChat=true)
+      // Datos del paquete
       if (packageId) {
         const { data: pkg } = await supabase
           .from('packages')
@@ -970,6 +961,25 @@ export default function DetallePrueba() {
           .eq('id', packageId).maybeSingle()
         if (!esAdmin) hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
+        packageNombre = pkg?.nombre ?? null
+      }
+
+      // IA stats del usuario en esta evaluación
+      const { data: simsIA } = await supabase
+        .from('user_simulacros')
+        .select('score_pct, completado, dificultad_config')
+        .eq('evaluacion_id', parseInt(id, 10))
+        .eq('user_id', user.id)
+        .neq('dificultad_config', 'practica')
+      if (simsIA?.length) {
+        iaStats.total = simsIA.length
+        const done = simsIA.filter(s => s.completado && s.score_pct !== null)
+        iaStats.completados = done.length
+        if (done.length) {
+          const scores = done.map(s => s.score_pct)
+          iaStats.avgScore  = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          iaStats.bestScore = Math.round(Math.max(...scores))
+        }
       }
     }
 
@@ -984,7 +994,7 @@ export default function DetallePrueba() {
       .limit(8)
     const ranking = (rankingRaw || []).map(r => ({ ...r, users: { full_name: 'Candidato' } }))
 
-    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId, convocatoriaNombre }
+    return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId, convocatoriaNombre, packageNombre, packageExpiry, iaStats }
   }, ['detalle-prueba', id, user?.id])
 
   // ── Derivados ───────────────────────────────────────────────────────────────
@@ -1001,6 +1011,9 @@ export default function DetallePrueba() {
   const ranking            = data?.ranking ?? []
   const convocatoriaId     = data?.convocatoriaId ?? null
   const convocatoriaNombre = data?.convocatoriaNombre ?? null
+  const packageNombre      = data?.packageNombre ?? null
+  const packageExpiry      = data?.packageExpiry ?? null
+  const iaStats            = data?.iaStats ?? { total: 0, completados: 0, avgScore: null, bestScore: null }
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -1024,7 +1037,6 @@ export default function DetallePrueba() {
 
   function abrirModal(modo) {
     if (!user) { navigate('/login'); return }
-    if (!tienePlan) { navigate('/planes'); return }
     if (!nivelActual) return
     if (pregsNivel === 0) { alert('Este nivel aún no tiene preguntas.'); return }
     if (modo === 'examen') setConfigExamen(c => ({ ...c, cantidad: pregsNivel, cantidad_custom: '', tipo_cantidad: 'all' }))
@@ -1048,13 +1060,11 @@ export default function DetallePrueba() {
 
   function irASala() {
     if (!user) { navigate('/login'); return }
-    if (!tienePlan) { navigate('/planes'); return }
     navigate('/salas')
   }
 
   async function abrirModalExamenIA() {
     if (!user) { navigate('/login'); return }
-    if (!tienePlan) { navigate('/planes'); return }
     setLoadingSimsEx(true)
     setModalExamenIA(true)
     try {
@@ -1074,7 +1084,6 @@ export default function DetallePrueba() {
 
   async function abrirModoPracticaIA() {
     if (!user) { navigate('/login'); return }
-    if (!tienePlan) { navigate('/planes'); return }
     setErrorPractica('')
 
     // Si ya hay práctica pre-generada, ir directo
@@ -1248,9 +1257,8 @@ export default function DetallePrueba() {
 
   const ModeCards = () => (
     <div className="space-y-3">
-      {tienePlan ? (
-        <>
-          {/* Práctica IA */}
+      <>
+        {/* Práctica IA */}
           <button onClick={abrirModoPracticaIA} disabled={generandoPractica}
             className={`w-full group text-left p-4 rounded-2xl border-2 transition-all duration-300
               ${practicaLista
@@ -1348,25 +1356,17 @@ export default function DetallePrueba() {
                 </div>
                 <div className="flex-1">
                   <p className="font-extrabold text-white text-sm">Prueba personalizada Praxia</p>
-                  <p className="text-white/60 text-xs group-hover:text-white/80 transition-colors duration-300">160-200 preguntas · Juicio situado · 4 opciones psicométricas</p>
+                  <p className="text-white/60 text-xs group-hover:text-white/80 transition-colors duration-300">
+                    {iaStats.total > 0
+                      ? `${iaStats.total} prueba${iaStats.total !== 1 ? 's' : ''} creada${iaStats.total !== 1 ? 's' : ''} · ${iaStats.bestScore != null ? `${iaStats.bestScore}% mejor score` : 'sin completar aún'}`
+                      : '160-200 preguntas · Juicio situado · 4 opciones psicométricas'}
+                  </p>
                 </div>
                 <span className="material-symbols-outlined text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all duration-300">arrow_forward</span>
               </div>
             </button>
           )}
-        </>
-      ) : (
-        <div className={`bg-gradient-to-br ${colorGrad} rounded-2xl p-6 text-center`}>
-          <span className="material-symbols-outlined text-white/70 text-4xl mb-3 block"
-            style={{ fontVariationSettings: "'FILL' 1" }}>lock_open</span>
-          <p className="font-extrabold text-white text-lg mb-1">¿Listo para prepararte?</p>
-          <p className="text-white/70 text-sm mb-4">Adquiere el paquete para acceder a todos los modos de práctica</p>
-          <button onClick={() => navigate('/planes')}
-            className="w-full py-3 bg-white text-primary font-extrabold rounded-full hover:shadow-2xl hover:-translate-y-0.5 hover:scale-[1.02] transition-all duration-300 active:scale-95 text-sm ring-2 ring-white/20">
-            Ver planes y precios →
-          </button>
-        </div>
-      )}
+      </>
     </div>
   )
 
@@ -1415,8 +1415,19 @@ export default function DetallePrueba() {
                         Plan {versionNombre}
                       </span>
                     )}
+                    {tienePlan && packageExpiry && (
+                      <span className="flex items-center gap-1 bg-white/10 text-white/80 text-[10px] font-bold px-3 py-0.5 rounded-full">
+                        <span className="material-symbols-outlined text-sm">event</span>
+                        Vence {new Date(packageExpiry).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
                   </div>
-                  <h1 className="text-xl md:text-3xl font-extrabold leading-tight">{ev.title}</h1>
+                  <h1 className="text-xl md:text-3xl font-extrabold leading-tight">
+                    {packageNombre || ev.title}
+                  </h1>
+                  {packageNombre && packageNombre !== ev.title && (
+                    <p className="text-white/60 text-xs mt-0.5">{ev.title}</p>
+                  )}
                 </div>
               </div>
               <p className="text-white/75 text-sm leading-relaxed line-clamp-2">
@@ -1427,12 +1438,17 @@ export default function DetallePrueba() {
 
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3">
-            {[
-              { val: totalPregs || '—', label: 'Preguntas', icon: 'quiz',         color: 'text-primary',   bg: 'bg-primary/10' },
-              { val: durMax,            label: 'Duración',  icon: 'timer',         color: 'text-tertiary',  bg: 'bg-tertiary/10' },
-              { val: niveles.length,    label: 'Niveles',   icon: 'layers',        color: 'text-secondary', bg: 'bg-secondary/10' },
-              { val: aprobMax,          label: 'Aprobación',icon: 'verified',      color: 'text-on-surface',bg: 'bg-surface-container' },
-            ].map(s => (
+            {(hasAiChat ? [
+              { val: iaStats.total  || '0',                                     label: 'Pruebas Praxia', icon: 'auto_awesome', color: 'text-primary',   bg: 'bg-primary/10' },
+              { val: iaStats.completados || '0',                                label: 'Completadas',    icon: 'task_alt',     color: 'text-tertiary',  bg: 'bg-tertiary/10' },
+              { val: iaStats.bestScore != null ? `${iaStats.bestScore}%` : '—', label: 'Mejor score',   icon: 'emoji_events', color: 'text-secondary', bg: 'bg-secondary/10' },
+              { val: iaStats.avgScore  != null ? `${iaStats.avgScore}%`  : '—', label: 'Promedio',      icon: 'analytics',    color: 'text-on-surface',bg: 'bg-surface-container' },
+            ] : [
+              { val: totalPregs || '—', label: 'Preguntas', icon: 'quiz',    color: 'text-primary',   bg: 'bg-primary/10' },
+              { val: durMax,            label: 'Duración',  icon: 'timer',   color: 'text-tertiary',  bg: 'bg-tertiary/10' },
+              { val: niveles.length,    label: 'Niveles',   icon: 'layers',  color: 'text-secondary', bg: 'bg-secondary/10' },
+              { val: aprobMax,          label: 'Aprobación',icon: 'verified',color: 'text-on-surface',bg: 'bg-surface-container' },
+            ]).map(s => (
               <div key={s.label} className="bg-white rounded-2xl p-4 text-center border border-slate-200 shadow-sm hover:-translate-y-1 hover:shadow-lg hover:border-primary/20 transition-all duration-300 cursor-default group">
                 <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform duration-300`}>
                   <span className={`material-symbols-outlined text-lg ${s.color}`}
@@ -1444,8 +1460,8 @@ export default function DetallePrueba() {
             ))}
           </div>
 
-          {/* Historial */}
-          {user && totalIntentos > 0 && (
+          {/* Historial — solo para paquetes tradicionales */}
+          {user && !hasAiChat && totalIntentos > 0 && (
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
               <p className="font-bold text-sm mb-4 flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-lg">history</span>
@@ -1586,7 +1602,7 @@ export default function DetallePrueba() {
             <IAPraxia evaluacionNombre={ev?.title} tienePlan={tienePlan && hasAiChat} />
 
             {/* Cuaderno Praxia */}
-            {tienePlan && packageId && (
+            {packageId && (
               <button
                 onClick={() => navigate(`/cuaderno/${packageId}`)}
                 className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 transition-all duration-300 group"
@@ -1602,7 +1618,7 @@ export default function DetallePrueba() {
             )}
 
             {/* Análisis de perfil (si tiene convocatoria vinculada) */}
-            {tienePlan && convocatoriaId && (
+            {convocatoriaId && (
               <button
                 onClick={() => navigate(`/analisis-perfil?conv=${convocatoriaId}`)}
                 className="w-full bg-primary/5 border-2 border-primary/20 hover:border-primary hover:bg-primary/10 rounded-2xl p-4 text-left transition-all duration-300 group"
@@ -1690,7 +1706,7 @@ export default function DetallePrueba() {
             />
 
             {/* Cuaderno Praxia */}
-            {tienePlan && packageId && (
+            {packageId && (
               <button
                 onClick={() => navigate(`/cuaderno/${packageId}`)}
                 className="w-full bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white text-left hover:from-slate-700 hover:to-slate-800 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5 transition-all duration-300 group"
