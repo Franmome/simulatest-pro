@@ -7,9 +7,9 @@ import { useFetch } from '../hooks/useFetch'
 const BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
 
 const HERRAMIENTAS = [
-  { id: 'simulacros', nombre: 'Simulacros + Práctica', icon: 'quiz' },
-  { id: 'cuaderno',   nombre: 'Cuaderno IA',           icon: 'auto_stories' },
-  { id: 'salas',      nombre: 'Salas Competitivas',    icon: 'groups' },
+  { id: 'simulacros', nombre: 'Simulacros + Práctica', icon: 'quiz',         ruta: () => '/dashboard' },
+  { id: 'cuaderno',   nombre: 'Cuaderno IA',           icon: 'auto_stories', ruta: (pkgId) => `/cuaderno/${pkgId}` },
+  { id: 'salas',      nombre: 'Salas Competitivas',    icon: 'groups',       ruta: () => '/salas' },
 ]
 
 function fmt(n) {
@@ -162,9 +162,18 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
                 </div>
 
                 {tieneAcceso ? (
-                  <div className="px-4 py-3 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-emerald-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                    <p className="text-xs text-on-surface-variant">Ya tienes acceso a esta herramienta.</p>
+                  <div className="px-4 py-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                      <p className="text-xs text-on-surface-variant">Ya tienes acceso.</p>
+                    </div>
+                    <button
+                      onClick={() => { onClose(); navigate(hDef.ruta(pkg.id)) }}
+                      className="flex items-center gap-1 px-4 py-2 rounded-full bg-primary text-on-primary text-xs font-bold hover:opacity-90 transition-opacity shrink-0"
+                    >
+                      Ir a {hDef.nombre.split(' ')[0]}
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </button>
                   </div>
                 ) : planes.length === 0 ? (
                   <div className="px-4 py-3">
