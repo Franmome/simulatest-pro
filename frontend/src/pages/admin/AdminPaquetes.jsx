@@ -198,17 +198,26 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
   const esNuevo = !paquete?.id
 
   const [form, setForm] = useState({
-    name:          paquete?.name          ?? '',
-    description:   paquete?.description   ?? '',
-    price:         paquete?.price         ?? 0,
-    duracion_dias: paquete?.duracion_dias ?? 30,
+    name:            paquete?.name            ?? '',
+    description:     paquete?.description     ?? '',
+    price:           paquete?.price           ?? 0,
+    duracion_dias:   paquete?.duracion_dias   ?? 30,
     convocatoria_id: paquete?.convocatoria_id ?? '',
-    is_active:     paquete?.is_active     ?? false,
-    herramientas:  { ...HERRAMIENTAS_DEFAULT, ...(paquete?.herramientas ?? {}) },
+    is_active:       paquete?.is_active       ?? false,
+    herramientas:    { ...HERRAMIENTAS_DEFAULT, ...(paquete?.herramientas ?? {}) },
+    evaluations_ids: paquete?.evaluations_ids ?? [],
   })
 
-  const [guardando, setGuardando] = useState(false)
-  const [error, setError] = useState('')
+  const [guardando,  setGuardando]  = useState(false)
+  const [error,      setError]      = useState('')
+  const [todasEvals, setTodasEvals] = useState([])
+  const [busqEval,   setBusqEval]   = useState('')
+
+  useEffect(() => {
+    supabase.from('evaluations').select('id, title, categories(name)')
+      .eq('is_active', true).order('title')
+      .then(({ data }) => setTodasEvals(data || []))
+  }, [])
 
   function setField(key, val) {
     setForm(f => ({ ...f, [key]: val }))
@@ -301,14 +310,15 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
     setError('')
 
     const payload = {
-      type:           'one_time',
-      name:           form.name.trim(),
-      description:    form.description.trim(),
-      price:          Number(form.price) || 0,
-      duracion_dias:  Number(form.duracion_dias) || 30,
+      type:            'one_time',
+      name:            form.name.trim(),
+      description:     form.description.trim(),
+      price:           Number(form.price) || 0,
+      duracion_dias:   Number(form.duracion_dias) || 30,
       convocatoria_id: form.convocatoria_id || null,
-      is_active:      form.is_active,
-      herramientas:   form.herramientas,
+      is_active:       form.is_active,
+      herramientas:    form.herramientas,
+      evaluations_ids: form.evaluations_ids,
     }
 
     let err
@@ -413,6 +423,64 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
                 <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${form.is_active ? 'left-7' : 'left-1'}`} />
               </button>
             </div>
+          </section>
+
+          {/* Evaluaciones vinculadas */}
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Evaluaciones vinculadas</h3>
+              <p className="text-xs text-on-surface-variant mt-1">Las pruebas que aparecen en el apartado Simulacros del paquete.</p>
+            </div>
+
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+              <input
+                value={busqEval}
+                onChange={e => setBusqEval(e.target.value)}
+                placeholder="Buscar evaluación..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-outline-variant/30 bg-surface-container text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-outline-variant/20 divide-y divide-outline-variant/10">
+              {todasEvals
+                .filter(e => !busqEval.trim() || e.title.toLowerCase().includes(busqEval.toLowerCase()))
+                .map(ev => {
+                  const sel = form.evaluations_ids.includes(ev.id)
+                  return (
+                    <label key={ev.id}
+                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-surface-container ${sel ? 'bg-primary/5' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={sel}
+                        onChange={() => setForm(f => ({
+                          ...f,
+                          evaluations_ids: sel
+                            ? f.evaluations_ids.filter(id => id !== ev.id)
+                            : [...f.evaluations_ids, ev.id],
+                        }))}
+                        className="accent-primary w-4 h-4 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-on-surface truncate">{ev.title}</p>
+                        {ev.categories?.name && (
+                          <p className="text-[10px] text-on-surface-variant">{ev.categories.name}</p>
+                        )}
+                      </div>
+                      {sel && <span className="material-symbols-outlined text-primary text-base shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                    </label>
+                  )
+                })}
+              {todasEvals.filter(e => !busqEval.trim() || e.title.toLowerCase().includes(busqEval.toLowerCase())).length === 0 && (
+                <p className="text-xs text-on-surface-variant text-center py-4">Sin resultados</p>
+              )}
+            </div>
+
+            {form.evaluations_ids.length > 0 && (
+              <p className="text-xs font-semibold text-primary">
+                {form.evaluations_ids.length} evaluación{form.evaluations_ids.length !== 1 ? 'es' : ''} seleccionada{form.evaluations_ids.length !== 1 ? 's' : ''}
+              </p>
+            )}
           </section>
 
           {/* Herramientas */}

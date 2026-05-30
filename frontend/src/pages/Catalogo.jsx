@@ -66,20 +66,34 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
   const activas = HERRAMIENTAS.filter(({ id }) => h[id]?.activo)
   const pcCfg   = h.paquete_completo
 
-  const [evaluaciones, setEvaluaciones] = useState([])
+  const [evaluaciones,  setEvaluaciones]  = useState([])
+  const [loadingEvals,  setLoadingEvals]  = useState(true)
   useEffect(() => {
+    setLoadingEvals(true)
     async function fetchEvals() {
-      const { data: pvs } = await supabase
-        .from('package_versions').select('id').eq('package_id', pkg.id).eq('is_active', true)
-      const pvIds = (pvs || []).map(v => v.id)
-      if (!pvIds.length) return
-      const { data: evVers } = await supabase
-        .from('evaluation_versions').select('evaluation_id').in('package_version_id', pvIds)
-      const evalIds = [...new Set((evVers || []).map(r => r.evaluation_id).filter(Boolean))]
-      if (!evalIds.length) return
-      const { data: evs } = await supabase
-        .from('evaluations').select('id, title').in('id', evalIds).eq('is_active', true).order('title')
-      setEvaluaciones(evs || [])
+      // 1. Directo: evaluations_ids en el paquete (modelo nuevo)
+      let evalIds = (pkg.evaluations_ids || []).filter(Boolean)
+
+      // 2. Fallback: package_versions → evaluation_versions (modelo viejo)
+      if (!evalIds.length) {
+        const { data: pvs } = await supabase
+          .from('package_versions').select('id').eq('package_id', pkg.id).eq('is_active', true)
+        const pvIds = (pvs || []).map(v => v.id)
+        if (pvIds.length) {
+          const { data: evVers } = await supabase
+            .from('evaluation_versions').select('evaluation_id').in('package_version_id', pvIds)
+          evalIds = [...new Set((evVers || []).map(r => r.evaluation_id).filter(Boolean))]
+        }
+      }
+
+      if (evalIds.length) {
+        const { data: evs } = await supabase
+          .from('evaluations').select('id, title').in('id', evalIds).eq('is_active', true).order('title')
+        setEvaluaciones(evs || [])
+      } else {
+        setEvaluaciones([])
+      }
+      setLoadingEvals(false)
     }
     fetchEvals()
   }, [pkg.id])
@@ -182,7 +196,9 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
                 {tieneAcceso ? (
                   <div className="px-4 pb-3 pt-1 space-y-2">
                     {hDef.id === 'simulacros' ? (
-                      evaluaciones.length > 0 ? (
+                      loadingEvals ? (
+                        <p className="text-xs text-on-surface-variant italic py-1">Cargando…</p>
+                      ) : evaluaciones.length > 0 ? (
                         evaluaciones.map(ev => (
                           <div key={ev.id} className="flex items-center justify-between gap-2 py-2 border-b border-outline-variant/10 last:border-0">
                             <p className="text-xs font-semibold text-on-surface leading-tight flex-1">{ev.title}</p>
@@ -196,7 +212,7 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-on-surface-variant italic py-1">Cargando evaluaciones…</p>
+                        <p className="text-xs text-on-surface-variant italic py-1">Sin evaluaciones vinculadas.</p>
                       )
                     ) : (
                       <button
