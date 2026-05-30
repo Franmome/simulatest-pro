@@ -367,8 +367,9 @@ async function deepseekChat(systemCtx, historial, mensaje) {
 
 export async function getTokens(req, res) {
   try {
-    const compra  = await getActivePurchase(req.user.id)
-    const balance = await checkTokenBalance(req.user.id, compra?.id)
+    const isAdmin = req.user.role === 'admin'
+    const compra  = await getActivePurchase(req.user.id, isAdmin)
+    const balance = await checkTokenBalance(req.user.id, compra?.id, isAdmin)
     return res.json({
       used:      balance.used,
       limit:     balance.limit,
@@ -384,16 +385,17 @@ export async function getTokens(req, res) {
 
 export async function generarBanco(req, res) {
   try {
-    const userId = req.user.id
+    const userId  = req.user.id
+    const isAdmin = req.user.role === 'admin'
     const { evaluacion_id, nivel_id, cargo, modelo = 'gemini' } = req.body
     const file   = req.file
     const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo)) + FORMAT_ENFORCER
 
-    const compra = await getActivePurchase(userId)
+    const compra = await getActivePurchase(userId, isAdmin)
     if (!compra?.packages?.has_ai_chat)
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
 
-    const balance = await checkTokenBalance(userId, compra.id)
+    const balance = await checkTokenBalance(userId, compra.id, isAdmin)
     if (!balance.ok)
       return res.status(402).json({
         error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados). Renueva tu plan para continuar.`,
@@ -452,7 +454,8 @@ export async function generarBanco(req, res) {
 
 export async function generarSimulacroPersonal(req, res) {
   try {
-    const userId = req.user.id
+    const userId  = req.user.id
+    const isAdmin = req.user.role === 'admin'
     const { evaluacion_id, cargo, modelo = 'gemini', cantidad, tiempo_por_pregunta, dificultad_config } = req.body
     const file   = req.file
     const SP = (await getPrompt('opec_maestro', SYSTEM_PROMPT, modelo)) + FORMAT_ENFORCER
@@ -461,11 +464,11 @@ export async function generarSimulacroPersonal(req, res) {
     const tiempoPregunta   = parseInt(tiempo_por_pregunta) || 0
     const dificultadTarget = ['mixta','facil','medio','dificil'].includes(dificultad_config) ? dificultad_config : 'mixta'
 
-    const compra = await getActivePurchase(userId)
+    const compra = await getActivePurchase(userId, isAdmin)
     if (!compra?.packages?.has_ai_chat)
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
 
-    const balance = await checkTokenBalance(userId, compra.id)
+    const balance = await checkTokenBalance(userId, compra.id, isAdmin)
     if (!balance.ok)
       return res.status(402).json({
         error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados). Renueva tu plan para continuar.`,
@@ -667,14 +670,15 @@ Incluye: quién destacó y por qué, puntos de mejora, recomendaciones de estudi
 
 export async function chatIA(req, res) {
   try {
-    const userId = req.user.id
+    const userId  = req.user.id
+    const isAdmin = req.user.role === 'admin'
     const { mensaje, contexto_evaluacion, historial = [], modelo = 'gemini' } = req.body
 
-    const compra = await getActivePurchase(userId)
+    const compra = await getActivePurchase(userId, isAdmin)
     if (!compra?.packages?.has_ai_chat)
       return res.status(403).json({ error: 'Tu plan no incluye el asistente de IA.' })
 
-    const balance = await checkTokenBalance(userId, compra.id)
+    const balance = await checkTokenBalance(userId, compra.id, isAdmin)
     if (!balance.ok)
       return res.status(402).json({
         error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados). Renueva tu plan para continuar.`,
@@ -2078,9 +2082,10 @@ export async function generarModoPractica(req, res) {
   ])
 
   // 3. Verificar tokens
-  const compra = await getActivePurchase(userId)
+  const isAdmin = req.user.role === 'admin'
+  const compra = await getActivePurchase(userId, isAdmin)
   if (!compra) return res.status(402).json({ error: 'No tienes tokens disponibles.' })
-  const balance = await checkTokenBalance(userId, compra.id)
+  const balance = await checkTokenBalance(userId, compra.id, isAdmin)
   if (!balance.ok) return res.status(402).json({ error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados).`, tokens_agotados: true })
 
   // 4. Calcular áreas débiles

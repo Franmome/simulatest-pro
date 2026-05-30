@@ -15,6 +15,10 @@ export const authMiddleware = async (req, res, next) => {
     const { data: { user }, error } = await supabase.auth.getUser(token)
     if (error || !user) return res.status(401).json({ error: 'Token inválido' })
     req.user = user
+    // Adjuntar rol para bypass de admin en endpoints de IA
+    const { data: userRow } = await supabase
+      .from('users').select('role').eq('id', user.id).maybeSingle()
+    req.user.role = userRow?.role || 'user'
     next()
   } catch {
     res.status(401).json({ error: 'Token inválido o expirado' })

@@ -8,7 +8,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const TOKEN_LIMIT_DEFAULT = 1_000_000
 
 // Devuelve la compra activa del usuario (necesitamos el purchase_id para el saldo)
-export async function getActivePurchase(userId) {
+// isAdmin=true → devuelve purchase ficticio con acceso total, sin tocar DB de compras
+export async function getActivePurchase(userId, isAdmin = false) {
+  if (isAdmin) return { id: null, packages: { has_ai_chat: true } }
   const { data } = await supabase
     .from('purchases')
     .select('id, packages(has_ai_chat)')
@@ -19,7 +21,9 @@ export async function getActivePurchase(userId) {
 }
 
 // Verifica si el usuario tiene saldo de tokens disponible
-export async function checkTokenBalance(userId, purchaseId) {
+// isAdmin=true → siempre ok, sin límite, sin contar contra ningún purchase
+export async function checkTokenBalance(userId, purchaseId, isAdmin = false) {
+  if (isAdmin) return { ok: true, used: 0, limit: 999_999_999, remaining: 999_999_999 }
   if (!purchaseId) return { ok: true, used: 0, limit: TOKEN_LIMIT_DEFAULT, remaining: TOKEN_LIMIT_DEFAULT }
 
   const { data } = await supabase
