@@ -224,38 +224,33 @@ export default function Catalogo() {
       supabase.from('convocatorias').select('id, nombre'),
     ])
 
+    const esAdmin  = user?.role === 'admin'
     let toolAccess = new Map()
-    let esAdmin    = false
 
-    if (user?.id) {
-      const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
-      esAdmin = userRow?.role === 'admin'
+    if (user?.id && !esAdmin) {
+      const [{ data: toolPurchases }, { data: legacyPurchases }] = await Promise.all([
+        supabase.from('user_tool_purchases')
+          .select('package_id, herramienta_id, end_date')
+          .eq('user_id', user.id)
+          .gte('end_date', new Date().toISOString()),
+        supabase.from('purchases')
+          .select('package_id, end_date')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .gte('end_date', new Date().toISOString()),
+      ])
 
-      if (!esAdmin) {
-        const [{ data: toolPurchases }, { data: legacyPurchases }] = await Promise.all([
-          supabase.from('user_tool_purchases')
-            .select('package_id, herramienta_id, end_date')
-            .eq('user_id', user.id)
-            .gte('end_date', new Date().toISOString()),
-          supabase.from('purchases')
-            .select('package_id, end_date')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
-            .gte('end_date', new Date().toISOString()),
-        ])
+      ;(toolPurchases || []).forEach(tp => {
+        toolAccess.set(`${tp.package_id}:${tp.herramienta_id}`, tp.end_date)
+      })
 
-        ;(toolPurchases || []).forEach(tp => {
-          toolAccess.set(`${tp.package_id}:${tp.herramienta_id}`, tp.end_date)
+      // Legado: purchase del paquete completo → acceso a todas las herramientas
+      ;(legacyPurchases || []).forEach(lp => {
+        HERRAMIENTAS.forEach(({ id }) => {
+          const key = `${lp.package_id}:${id}`
+          if (!toolAccess.has(key)) toolAccess.set(key, lp.end_date)
         })
-
-        // Legado: purchase del paquete completo → acceso a todas las herramientas
-        ;(legacyPurchases || []).forEach(lp => {
-          HERRAMIENTAS.forEach(({ id }) => {
-            const key = `${lp.package_id}:${id}`
-            if (!toolAccess.has(key)) toolAccess.set(key, lp.end_date)
-          })
-        })
-      }
+      })
     }
 
     return { paquetes: pkgs || [], convocatorias: convs || [], toolAccess, esAdmin }

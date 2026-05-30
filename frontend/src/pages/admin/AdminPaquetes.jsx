@@ -872,8 +872,12 @@ export default function AdminPaquetes() {
   async function eliminar() {
     if (!confirmar) return
     setEliminando(true)
-    await supabase.from('packages').delete().eq('id', confirmar.id)
+    const { error } = await supabase.from('packages').delete().eq('id', confirmar.id)
     setEliminando(false)
+    if (error) {
+      alert(`Error al eliminar: ${error.message}`)
+      return
+    }
     setConfirmar(null)
     cargarPaquetes()
   }
