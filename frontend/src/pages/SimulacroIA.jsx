@@ -262,6 +262,12 @@ function TarjetaRevisionIA({ p, idx, resp, esCor, sinResp }) {
 }
 
 function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroId, onRepetir, onVolver, esPractica, esExamen }) {
+  const toStr = (v) => {
+    if (v === null || v === undefined) return ''
+    if (typeof v === 'string') return v
+    if (typeof v === 'object') return v.texto || v.text || v.descripcion || v.nombre || JSON.stringify(v)
+    return String(v)
+  }
   const total     = preguntas.length
   const correctas = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
   const score     = total > 0 ? Math.round((correctas / total) * 100) : 0
@@ -350,7 +356,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   {nivelCfg.label}
                 </span>
               </div>
-              <p className="text-sm leading-relaxed text-on-surface">{analisis.resumen}</p>
+              <p className="text-sm leading-relaxed text-on-surface">{toStr(analisis.resumen)}</p>
             </div>
 
             {/* Fortalezas y áreas de mejora */}
@@ -364,7 +370,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   {(analisis.fortalezas || []).map((f, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-emerald-800">
                       <span className="material-symbols-outlined text-emerald-500 text-sm shrink-0 mt-0.5">check_circle</span>
-                      {f}
+                      {toStr(f)}
                     </li>
                   ))}
                 </ul>
@@ -379,7 +385,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   {(analisis.areas_mejora || []).map((a, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-amber-800">
                       <span className="material-symbols-outlined text-amber-500 text-sm shrink-0 mt-0.5">warning</span>
-                      {a}
+                      {toStr(a)}
                     </li>
                   ))}
                 </ul>
@@ -393,11 +399,11 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   <span className="material-symbols-outlined text-rose-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>pattern</span>
                   <p className="font-bold text-rose-800 text-sm">Patrón de error detectado</p>
                 </div>
-                <p className="text-xs text-rose-800 leading-relaxed mb-2">{analisis.patron_error}</p>
+                <p className="text-xs text-rose-800 leading-relaxed mb-2">{toStr(analisis.patron_error)}</p>
                 {analisis.tipo_distractor_frecuente && analisis.tipo_distractor_frecuente !== 'A' && (
                   <div className="bg-rose-100 rounded-xl px-3 py-2 flex items-start gap-2">
-                    <span className="font-extrabold text-rose-700 text-sm shrink-0">Opción {analisis.tipo_distractor_frecuente}</span>
-                    <span className="text-xs text-rose-700">{DISTRACTOR_DESC[analisis.tipo_distractor_frecuente] || ''} — {analisis.significado_distractor || ''}</span>
+                    <span className="font-extrabold text-rose-700 text-sm shrink-0">Opción {toStr(analisis.tipo_distractor_frecuente)}</span>
+                    <span className="text-xs text-rose-700">{DISTRACTOR_DESC[analisis.tipo_distractor_frecuente] || ''} — {toStr(analisis.significado_distractor)}</span>
                   </div>
                 )}
               </div>
@@ -414,7 +420,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   {analisis.recomendaciones.map((r, i) => (
                     <li key={i} className="flex items-start gap-3 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
-                      {r}
+                      {toStr(r)}
                     </li>
                   ))}
                 </ol>
@@ -430,7 +436,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {analisis.temas_criticos.map((t, i) => (
-                    <span key={i} className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs font-semibold text-slate-700">{t}</span>
+                    <span key={i} className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs font-semibold text-slate-700">{toStr(t)}</span>
                   ))}
                 </div>
               </div>
@@ -443,7 +449,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
                   <span className="material-symbols-outlined text-blue-600 text-lg">timer</span>
                   <p className="font-bold text-blue-800 text-sm">Gestión del tiempo</p>
                 </div>
-                <p className="text-xs text-blue-800 leading-relaxed">{analisis.analisis_tiempo}</p>
+                <p className="text-xs text-blue-800 leading-relaxed">{toStr(analisis.analisis_tiempo)}</p>
               </div>
             )}
 
@@ -451,7 +457,7 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
             {analisis.mensaje_motivacional && (
               <div className={`rounded-2xl p-5 text-white text-center ${aprueba ? 'bg-gradient-to-br from-secondary to-[#1a5c20]' : 'bg-gradient-to-br from-primary to-primary-container'}`}>
                 <span className="material-symbols-outlined text-white/70 text-3xl mb-2 block" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                <p className="text-sm font-medium leading-relaxed italic">"{analisis.mensaje_motivacional}"</p>
+                <p className="text-sm font-medium leading-relaxed italic">"{toStr(analisis.mensaje_motivacional)}"</p>
                 <p className="text-white/50 text-xs mt-2">— Praxia</p>
               </div>
             )}
