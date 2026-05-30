@@ -924,23 +924,40 @@ export default function DetallePrueba() {
         hasAiChat = true
         packageId  = evalPackageIds[0] ?? null
       } else if (evalPackageIds.length) {
-        // Usuario normal: verificar compra específica para este paquete
-        const { data: compra } = await supabase
-          .from('purchases').select('package_id, package_version_id')
+        // Modelo nuevo: user_tool_purchases (herramienta simulacros)
+        const { data: toolPur } = await supabase
+          .from('user_tool_purchases')
+          .select('package_id')
           .eq('user_id', user.id)
-          .eq('status', 'active')
-          .gte('end_date', new Date().toISOString())
+          .eq('herramienta_id', 'simulacros')
           .in('package_id', evalPackageIds)
+          .gte('end_date', new Date().toISOString())
           .order('end_date', { ascending: false })
           .limit(1).maybeSingle()
-        if (compra) {
+        if (toolPur) {
           tienePlan = true
-          packageId = compra.package_id
-          if (compra.package_version_id) {
-            const { data: ver } = await supabase
-              .from('package_versions').select('display_name')
-              .eq('id', compra.package_version_id).maybeSingle()
-            versionNombre = ver?.display_name ?? null
+          packageId = toolPur.package_id
+        }
+
+        // Modelo viejo: purchases
+        if (!tienePlan) {
+          const { data: compra } = await supabase
+            .from('purchases').select('package_id, package_version_id')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .gte('end_date', new Date().toISOString())
+            .in('package_id', evalPackageIds)
+            .order('end_date', { ascending: false })
+            .limit(1).maybeSingle()
+          if (compra) {
+            tienePlan = true
+            packageId = compra.package_id
+            if (compra.package_version_id) {
+              const { data: ver } = await supabase
+                .from('package_versions').select('display_name')
+                .eq('id', compra.package_version_id).maybeSingle()
+              versionNombre = ver?.display_name ?? null
+            }
           }
         }
       }

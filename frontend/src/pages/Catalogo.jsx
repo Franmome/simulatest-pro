@@ -512,12 +512,23 @@ export default function Catalogo() {
                       <p className="text-xs text-on-surface-variant italic">Consultar precio</p>
                     )}
                   </div>
-                  <button
-                    onClick={() => setModalPkg(pkg)}
-                    className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
-                  >
-                    Ver planes →
-                  </button>
+                  <div className="flex flex-col items-end gap-1">
+                    {pkg.evaluations_ids?.length > 0 ? (
+                      <button
+                        onClick={() => navigate(`/prueba/${pkg.evaluations_ids[0]}`)}
+                        className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+                      >
+                        Ver detalle →
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setModalPkg(pkg)}
+                        className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+                      >
+                        Ver planes →
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
