@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 
+const toStr = (v) => {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'object') return v.texto || v.text || v.descripcion || v.nombre || v.name || v.fortaleza || v.area || v.recomendacion || v.tema || v.accion || JSON.stringify(v)
+  return String(v)
+}
+
 function tiempoRelativo(fecha) {
   if (!fecha) return '—'
   const d = Math.floor((Date.now() - new Date(fecha)) / 1000)
@@ -306,7 +313,7 @@ function TabAnalisisPruebas({ userId }) {
                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                   {an.nivel_preparacion && (
                     <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                      {an.nivel_preparacion}
+                      {toStr(an.nivel_preparacion)}
                     </span>
                   )}
                   {a.score_correctas !== null && a.score_total > 0 && (
@@ -327,24 +334,24 @@ function TabAnalisisPruebas({ userId }) {
 
                 {an.resumen && (
                   <p className="text-xs text-on-surface leading-relaxed bg-primary/5 border border-primary/10 rounded-xl p-3">
-                    {an.resumen}
+                    {toStr(an.resumen)}
                   </p>
                 )}
 
                 {an.patron_error && (
                   <div>
                     <SectionLabel icon="bolt" label="Patrón de error detectado" color="text-amber-600" />
-                    <p className="text-xs text-on-surface leading-relaxed">{an.patron_error}</p>
+                    <p className="text-xs text-on-surface leading-relaxed">{toStr(an.patron_error)}</p>
                   </div>
                 )}
 
                 {(an.tipo_distractor_frecuente || an.significado_distractor) && (
                   <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                     <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-700 mb-1">
-                      Distractor más elegido: Opción {an.tipo_distractor_frecuente || '—'}
+                      Distractor más elegido: Opción {toStr(an.tipo_distractor_frecuente) || '—'}
                     </p>
                     {an.significado_distractor && (
-                      <p className="text-xs text-on-surface leading-relaxed">{an.significado_distractor}</p>
+                      <p className="text-xs text-on-surface leading-relaxed">{toStr(an.significado_distractor)}</p>
                     )}
                   </div>
                 )}
@@ -354,7 +361,7 @@ function TabAnalisisPruebas({ userId }) {
                     <SectionLabel icon="trending_down" label={`Áreas a reforzar (${an.areas_mejora.length})`} color="text-red-600" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.areas_mejora.map((item, i) => (
-                        <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">{item}</span>
+                        <span key={i} className="text-[10px] bg-red-50 border border-red-100 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">{toStr(item)}</span>
                       ))}
                     </div>
                   </div>
@@ -365,7 +372,7 @@ function TabAnalisisPruebas({ userId }) {
                     <SectionLabel icon="priority_high" label="Temas críticos" color="text-rose-700" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.temas_criticos.map((t, i) => (
-                        <span key={i} className="text-[10px] bg-rose-50 border border-rose-100 text-rose-700 font-semibold px-2.5 py-0.5 rounded-full">{t}</span>
+                        <span key={i} className="text-[10px] bg-rose-50 border border-rose-100 text-rose-700 font-semibold px-2.5 py-0.5 rounded-full">{toStr(t)}</span>
                       ))}
                     </div>
                   </div>
@@ -376,7 +383,7 @@ function TabAnalisisPruebas({ userId }) {
                     <SectionLabel icon="trending_up" label={`Fortalezas (${an.fortalezas.length})`} color="text-emerald-700" />
                     <div className="flex flex-wrap gap-1.5">
                       {an.fortalezas.map((f, i) => (
-                        <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">{f}</span>
+                        <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">{toStr(f)}</span>
                       ))}
                     </div>
                   </div>
@@ -386,7 +393,7 @@ function TabAnalisisPruebas({ userId }) {
                   <div className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
                     <span className="material-symbols-outlined text-primary text-base shrink-0 mt-0.5"
                       style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
-                    <p className="text-xs text-on-surface leading-relaxed">{an.analisis_tiempo}</p>
+                    <p className="text-xs text-on-surface leading-relaxed">{toStr(an.analisis_tiempo)}</p>
                   </div>
                 )}
 
@@ -397,7 +404,7 @@ function TabAnalisisPruebas({ userId }) {
                       {an.recomendaciones.map((r, i) => (
                         <li key={i} className="flex items-start gap-2 text-xs text-on-surface">
                           <span className="text-secondary font-extrabold shrink-0">{i + 1}.</span>
-                          {r}
+                          {toStr(r)}
                         </li>
                       ))}
                     </ul>
@@ -408,7 +415,7 @@ function TabAnalisisPruebas({ userId }) {
                   <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-xl p-3">
                     <span className="material-symbols-outlined text-primary text-base shrink-0 mt-0.5"
                       style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                    <p className="text-xs text-primary font-medium leading-relaxed italic">{an.mensaje_motivacional}</p>
+                    <p className="text-xs text-primary font-medium leading-relaxed italic">{toStr(an.mensaje_motivacional)}</p>
                   </div>
                 )}
               </div>
@@ -521,7 +528,7 @@ function TabAnalisisPerfil({ userId }) {
 
                 {(diag.resumen || an.observacion_general) && (
                   <p className="text-xs text-on-surface leading-relaxed bg-slate-50 rounded-xl p-3 border border-slate-200">
-                    {diag.resumen || an.observacion_general}
+                    {toStr(diag.resumen || an.observacion_general)}
                   </p>
                 )}
 
@@ -529,13 +536,13 @@ function TabAnalisisPerfil({ userId }) {
                   <div className="bg-primary/5 border border-primary/10 rounded-xl p-3">
                     <SectionLabel icon="person" label="Tu perfil profesional" color="text-primary" />
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                      {perfil.profesion_principal && <div><span className="text-on-surface-variant block text-[10px]">Profesión</span><span className="font-bold">{perfil.profesion_principal}</span></div>}
-                      {perfil.nivel_formacion && <div><span className="text-on-surface-variant block text-[10px]">Nivel</span><span className="font-bold">{perfil.nivel_formacion}</span></div>}
+                      {perfil.profesion_principal && <div><span className="text-on-surface-variant block text-[10px]">Profesión</span><span className="font-bold">{toStr(perfil.profesion_principal)}</span></div>}
+                      {perfil.nivel_formacion && <div><span className="text-on-surface-variant block text-[10px]">Nivel</span><span className="font-bold">{toStr(perfil.nivel_formacion)}</span></div>}
                       {perfil.experiencia_total_estimada_meses > 0 && <div><span className="text-on-surface-variant block text-[10px]">Experiencia</span><span className="font-bold">{perfil.experiencia_total_estimada_meses} meses</span></div>}
                       {perfil.tarjeta_profesional?.estado && <div><span className="text-on-surface-variant block text-[10px]">Tarjeta prof.</span><span className="font-bold">{perfil.tarjeta_profesional.estado}</span></div>}
                     </div>
                     {diag.nivel_competitividad && (
-                      <p className="text-[10px] font-bold text-primary mt-2">Competitividad: {diag.nivel_competitividad}</p>
+                      <p className="text-[10px] font-bold text-primary mt-2">Competitividad: {toStr(diag.nivel_competitividad)}</p>
                     )}
                   </div>
                 )}
@@ -548,7 +555,7 @@ function TabAnalisisPerfil({ userId }) {
                         <ul className="space-y-1">
                           {fortalezas.map((f, i) => (
                             <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
-                              <span className="text-emerald-500 shrink-0 mt-0.5">●</span>{f}
+                              <span className="text-emerald-500 shrink-0 mt-0.5">●</span>{toStr(f)}
                             </li>
                           ))}
                         </ul>
@@ -560,7 +567,7 @@ function TabAnalisisPerfil({ userId }) {
                         <ul className="space-y-1">
                           {areasMejora.map((a, i) => (
                             <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
-                              <span className="text-red-400 shrink-0 mt-0.5">●</span>{a}
+                              <span className="text-red-400 shrink-0 mt-0.5">●</span>{toStr(a)}
                             </li>
                           ))}
                         </ul>
@@ -613,7 +620,7 @@ function TabAnalisisPerfil({ userId }) {
                               <div className="ml-7 mt-1.5 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
                                 <p className="text-[10px] font-bold text-primary flex items-center gap-1">
                                   <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
-                                  {accion}
+                                  {toStr(accion)}
                                 </p>
                               </div>
                             )}
@@ -628,12 +635,12 @@ function TabAnalisisPerfil({ userId }) {
                   <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-3">
                     <SectionLabel icon="star" label="Cargo más recomendado" color="text-secondary" />
                     {(rec.denominacion || rec.cargo) && <p className="text-sm font-extrabold text-on-surface mb-1">{rec.denominacion || rec.cargo}</p>}
-                    {(rec.razon_principal || rec.motivo) && <p className="text-xs text-on-surface-variant leading-relaxed">{rec.razon_principal || rec.motivo}</p>}
+                    {(rec.razon_principal || rec.motivo) && <p className="text-xs text-on-surface-variant leading-relaxed">{toStr(rec.razon_principal || rec.motivo)}</p>}
                     {rec.accion_prioritaria_antes_de_postularse && (
                       <div className="mt-2 bg-primary/5 border border-primary/10 rounded-lg px-2 py-1">
                         <p className="text-[10px] font-bold text-primary flex items-center gap-1">
                           <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>flag</span>
-                          {rec.accion_prioritaria_antes_de_postularse}
+                          {toStr(rec.accion_prioritaria_antes_de_postularse)}
                         </p>
                       </div>
                     )}
