@@ -957,11 +957,18 @@ export default function DetallePrueba() {
       if (packageId) {
         const { data: pkg } = await supabase
           .from('packages')
-          .select('has_ai_chat, convocatoria_id, nombre')
+          .select('has_ai_chat, convocatoria_id, nombre, name, herramientas')
           .eq('id', packageId).maybeSingle()
         if (!esAdmin) hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
-        packageNombre = pkg?.nombre ?? null
+        packageNombre  = pkg?.nombre || pkg?.name || null
+        // herramientas activas del paquete
+        if (pkg?.herramientas) {
+          const tools = Object.entries(pkg.herramientas)
+            .filter(([k, v]) => k !== 'paquete_completo' && v?.activo)
+            .map(([k]) => k)
+          if (tools.length) iaStats.herramientas = tools
+        }
       }
 
       // IA stats del usuario en esta evaluación
@@ -1013,7 +1020,7 @@ export default function DetallePrueba() {
   const convocatoriaNombre = data?.convocatoriaNombre ?? null
   const packageNombre      = data?.packageNombre ?? null
   const packageExpiry      = data?.packageExpiry ?? null
-  const iaStats            = data?.iaStats ?? { total: 0, completados: 0, avgScore: null, bestScore: null }
+  const iaStats            = data?.iaStats ?? { total: 0, completados: 0, avgScore: null, bestScore: null, herramientas: [] }
   const nivelActual      = nivelSeleccionado ?? (niveles.length ? niveles[0] : null)
   const pregsNivel       = nivelActual ? (pregsPorNivel[nivelActual.id] || 0) : 0
   const intentoActual    = nivelActual ? intentosPorNivel[nivelActual.id] : null
@@ -1387,7 +1394,7 @@ export default function DetallePrueba() {
         {/* ═══════════════════ COLUMNA PRINCIPAL ═══════════════════ */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Hero */}
+          {/* Hero — Dashboard del paquete */}
           <div className={`bg-gradient-to-br ${colorGrad} rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-shadow duration-500`}>
             <div className="absolute top-0 right-0 w-56 h-56 bg-white/5 rounded-full -translate-y-20 translate-x-20 pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/5 rounded-full translate-y-14 -translate-x-14 pointer-events-none" />
@@ -1398,21 +1405,16 @@ export default function DetallePrueba() {
                     style={{ fontVariationSettings: "'FILL' 1" }}>{icono}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                  {/* Badges de estado */}
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
                     <span className="text-[10px] font-bold uppercase tracking-widest bg-white/15 text-white/90 px-3 py-0.5 rounded-full">
                       {catNombre}
                     </span>
                     {tienePlan && (
-                      <span className="flex items-center gap-1 bg-white/20 text-white text-[10px] font-bold px-3 py-0.5 rounded-full">
+                      <span className="flex items-center gap-1 bg-emerald-400/25 text-white text-[10px] font-bold px-3 py-0.5 rounded-full">
                         <span className="material-symbols-outlined text-sm"
                           style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
                         Activo
-                      </span>
-                    )}
-                    {tienePlan && versionNombre && (
-                      <span className="flex items-center gap-1 bg-white/15 text-white/90 text-[10px] font-bold px-3 py-0.5 rounded-full">
-                        <span className="material-symbols-outlined text-sm">badge</span>
-                        Plan {versionNombre}
                       </span>
                     )}
                     {tienePlan && packageExpiry && (
@@ -1421,18 +1423,51 @@ export default function DetallePrueba() {
                         Vence {new Date(packageExpiry).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     )}
+                    {tienePlan && versionNombre && (
+                      <span className="flex items-center gap-1 bg-white/15 text-white/90 text-[10px] font-bold px-3 py-0.5 rounded-full">
+                        <span className="material-symbols-outlined text-sm">badge</span>
+                        {versionNombre}
+                      </span>
+                    )}
                   </div>
-                  <h1 className="text-xl md:text-3xl font-extrabold leading-tight">
+
+                  {/* Título del paquete */}
+                  <h1 className="text-2xl md:text-3xl font-extrabold leading-tight">
                     {packageNombre || ev.title}
                   </h1>
                   {packageNombre && packageNombre !== ev.title && (
-                    <p className="text-white/60 text-xs mt-0.5">{ev.title}</p>
+                    <p className="text-white/60 text-xs mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">quiz</span>
+                      {ev.title}
+                    </p>
                   )}
                 </div>
               </div>
               <p className="text-white/75 text-sm leading-relaxed line-clamp-2">
                 {ev.description || 'Simulacro oficial con preguntas actualizadas y diseñado para prepararte en condiciones reales.'}
               </p>
+
+              {/* Herramientas incluidas en el paquete */}
+              {iaStats.herramientas?.length > 0 && (() => {
+                const MAP = {
+                  simulacros: { icon: 'auto_awesome', label: 'Pruebas Praxia' },
+                  cuaderno:   { icon: 'auto_stories',  label: 'Cuaderno IA' },
+                  salas:      { icon: 'groups',         label: 'Salas' },
+                }
+                return (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {iaStats.herramientas.map(h => {
+                      const m = MAP[h] || { icon: 'star', label: h }
+                      return (
+                        <span key={h} className="flex items-center gap-1.5 bg-white/15 text-white text-[10px] font-bold px-3 py-1 rounded-full">
+                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{m.icon}</span>
+                          {m.label}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </div>
           </div>
 
