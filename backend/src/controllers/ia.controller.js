@@ -228,6 +228,12 @@ function formatError(err) {
   const msg = (err.message || '').toLowerCase()
   if (msg.includes('429') || msg.includes('quota') || msg.includes('too many') || msg.includes('rate limit') || msg.includes('resource_exhausted'))
     return 'El servicio de IA está temporalmente saturado. Intenta en unos minutos o usa DeepSeek.'
+  if (msg.includes('payload') || msg.includes('too large') || msg.includes('size') || msg.includes('limit exceeded'))
+    return 'El PDF es demasiado grande. Intenta con un archivo más pequeño o sin PDF.'
+  if (msg.includes('safety') || msg.includes('blocked') || msg.includes('harm'))
+    return 'El contenido fue bloqueado por filtros de seguridad. Intenta reformular el cargo.'
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect'))
+    return 'Error de conexión con el servicio de IA. Intenta de nuevo.'
   if (msg.includes('404') || msg.includes('not found'))
     return 'Modelo de IA no disponible temporalmente. Prueba el otro modelo.'
   if (msg.includes('401') || msg.includes('403') || msg.includes('api key') || msg.includes('authentication') || msg.includes('permission_denied'))
@@ -609,18 +615,24 @@ INSTRUCCIONES PARA ESTE CARGO:
       }
     }
 
-    const { data: sim, error: simErr } = await supabase.from('user_simulacros')
-      .insert({
-        user_id:           userId,
-        evaluacion_id:     evaluacion_id ? parseInt(evaluacion_id, 10) : null,
-        cargo:             cargo?.trim() || null,
-        preguntas,
-        cantidad_preguntas: cantidadTarget,
-        tiempo_por_pregunta: tiempoPregunta || null,
-        dificultad_config:  dificultadTarget,
-      })
-      .select('id').single()
+    const simPayload = {
+      user_id:            userId,
+      evaluacion_id:      evaluacion_id ? parseInt(evaluacion_id, 10) : null,
+      cargo:              cargo?.trim() || null,
+      preguntas,
+      cantidad_preguntas: cantidadTarget,
+      tiempo_por_pregunta: tiempoPregunta || null,
+      dificultad_config:  dificultadTarget,
+    }
+    let { data: sim, error: simErr } = await supabase
+      .from('user_simulacros').insert(simPayload).select('id').single()
 
+    // FK violation (23503): evaluacion_id es un package_id sin fila en evaluations
+    if (simErr?.code === '23503') {
+      console.warn('[IA] FK en evaluacion_id, reintentando con null. ID original:', simPayload.evaluacion_id)
+      ;({ data: sim, error: simErr } = await supabase
+        .from('user_simulacros').insert({ ...simPayload, evaluacion_id: null }).select('id').single())
+    }
     if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)
 
     if (tokensIn + tokensOut > 0)
@@ -629,8 +641,8 @@ INSTRUCCIONES PARA ESTE CARGO:
     return res.json({ simulacro_id: sim.id, total: preguntas.length, desde_cache: tokensIn === 0, proveedor_real: proveedorReal })
 
   } catch (err) {
-    console.error('[IA] generarSimulacroPersonal:', err)
-    return res.status(500).json({ error: formatError(err) })
+    console.error('[IA] generarSimulacroPersonal:', err.name, '|', err.message)
+    return res.status(500).json({ error: formatError(err), _debug: err.message?.slice(0, 200) })
   }
 }
 
