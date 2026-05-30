@@ -225,6 +225,8 @@ function validarPreguntas(arr) {
 }
 
 function formatError(err) {
+  if ((err.message || '').startsWith('FK_EVALUACION'))
+    return 'Falta migración en base de datos. Contacta al admin para correr migration_drop_evaluacion_fk.sql'
   const msg = (err.message || '').toLowerCase()
   if (msg.includes('429') || msg.includes('quota') || msg.includes('too many') || msg.includes('rate limit') || msg.includes('resource_exhausted'))
     return 'El servicio de IA está temporalmente saturado. Intenta en unos minutos o usa DeepSeek.'
@@ -615,24 +617,19 @@ INSTRUCCIONES PARA ESTE CARGO:
       }
     }
 
-    const simPayload = {
-      user_id:            userId,
-      evaluacion_id:      evaluacion_id ? parseInt(evaluacion_id, 10) : null,
-      cargo:              cargo?.trim() || null,
-      preguntas,
-      cantidad_preguntas: cantidadTarget,
-      tiempo_por_pregunta: tiempoPregunta || null,
-      dificultad_config:  dificultadTarget,
-    }
-    let { data: sim, error: simErr } = await supabase
-      .from('user_simulacros').insert(simPayload).select('id').single()
+    const { data: sim, error: simErr } = await supabase
+      .from('user_simulacros').insert({
+        user_id:            userId,
+        evaluacion_id:      evaluacion_id ? parseInt(evaluacion_id, 10) : null,
+        cargo:              cargo?.trim() || null,
+        preguntas,
+        cantidad_preguntas: cantidadTarget,
+        tiempo_por_pregunta: tiempoPregunta || null,
+        dificultad_config:  dificultadTarget,
+      }).select('id').single()
 
-    // FK violation (23503): evaluacion_id es un package_id sin fila en evaluations
-    if (simErr?.code === '23503') {
-      console.warn('[IA] FK en evaluacion_id, reintentando con null. ID original:', simPayload.evaluacion_id)
-      ;({ data: sim, error: simErr } = await supabase
-        .from('user_simulacros').insert({ ...simPayload, evaluacion_id: null }).select('id').single())
-    }
+    if (simErr?.code === '23503')
+      throw new Error('FK_EVALUACION: Corre la migración migration_drop_evaluacion_fk.sql en Supabase para habilitar el modo paquete.')
     if (simErr) throw new Error('Error guardando simulacro: ' + simErr.message)
 
     if (tokensIn + tokensOut > 0)
