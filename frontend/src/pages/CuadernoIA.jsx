@@ -1470,12 +1470,12 @@ export default function CuadernoIA() {
   // ── Render vista central ──
   function CenterContent() {
     if (vista !== 'chat' && generando === vista) return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400">
-        <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="flex flex-col items-center justify-center h-full gap-4 bg-[#1a1b1e]">
+        <div className="w-14 h-14 bg-[#2d2e34] rounded-2xl flex items-center justify-center border border-[#3a3b41]">
+          <div className="w-6 h-6 border-2 border-[#81c995] border-t-transparent rounded-full animate-spin" />
         </div>
-        <p className="font-bold text-slate-600">Generando {ACCIONES.find(a => a.tipo === vista)?.label}…</p>
-        <p className="text-xs">Esto puede tomar unos segundos</p>
+        <p className="font-bold text-[#e3e4e8]">Generando {ACCIONES.find(a => a.tipo === vista)?.label}…</p>
+        <p className="text-xs text-[#8e9099]">Esto puede tomar unos segundos</p>
       </div>
     )
 
@@ -1499,21 +1499,25 @@ export default function CuadernoIA() {
 
     // Chat (default)
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full bg-[#1a1b1e]">
+        {/* Header Chat */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#3a3b41] flex-shrink-0">
+          <p className="font-semibold text-[#e3e4e8] text-sm">Chat</p>
+        </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {mensajes.length === 0 && !enviando && (
-            <div className="flex flex-col items-center justify-center h-full text-center py-10 text-slate-400">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-3xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+            <div className="flex flex-col items-center justify-center h-full text-center py-10">
+              <div className="w-16 h-16 bg-[#2d2e34] rounded-2xl flex items-center justify-center mb-4 border border-[#3a3b41]">
+                <span className="material-symbols-outlined text-3xl text-[#81c995]" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
               </div>
-              <p className="font-bold text-slate-600 mb-1">Pregúntale al Asistente Praxia</p>
-              <p className="text-xs max-w-xs leading-relaxed mb-5">
+              <p className="font-bold text-[#e3e4e8] mb-1">Pregúntale al Asistente Praxia</p>
+              <p className="text-xs text-[#8e9099] max-w-xs leading-relaxed mb-5">
                 Explícame un artículo, hazme un resumen, dame preguntas de práctica o pídeme que te evalúe.
               </p>
               <div className="flex flex-wrap gap-2 justify-center max-w-sm">
                 {['¿Cuáles son los temas más frecuentes?','Explícame la etapa precontractual','Dame 5 preguntas de práctica','¿Qué es el mérito en el Estado?'].map(s => (
                   <button key={s} onClick={() => enviar(s)}
-                    className="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-full hover:border-primary hover:text-primary transition-all">
+                    className="text-xs bg-[#2d2e34] border border-[#4a4b52] text-[#c4c5cb] px-3 py-1.5 rounded-full hover:border-[#81c995] hover:text-[#81c995] transition-all">
                     {s}
                   </button>
                 ))}
@@ -1543,22 +1547,28 @@ export default function CuadernoIA() {
             <span className="material-symbols-outlined text-sm">error</span>{chatErr}
           </div>
         )}
-        <div data-tour="chat-input" className="p-4 bg-white border-t border-slate-200 flex-shrink-0">
+        {/* Input estilo NotebookLM */}
+        <div data-tour="chat-input" className="p-3 bg-[#1a1b1e] border-t border-[#3a3b41] flex-shrink-0">
           {agotado ? (
-            <div className="p-3 bg-error/10 text-error text-sm font-semibold rounded-xl text-center space-y-1">
+            <div className="p-3 bg-red-900/30 text-red-400 text-sm font-semibold rounded-2xl text-center space-y-1 border border-red-800/50">
               <p>Agotaste tus 2M tokens este mes.</p>
-              <p className="text-xs font-normal">Se renuevan el 1 del próximo mes o recarga tokens.</p>
+              <p className="text-xs font-normal opacity-70">Se renuevan el 1 del próximo mes.</p>
             </div>
           ) : (
-            <div className="flex gap-2 items-end">
+            <div className="flex items-end gap-2 bg-[#2d2e34] rounded-2xl px-4 py-3 border border-[#4a4b52] focus-within:border-[#81c995] transition-colors">
               <textarea rows={1} value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
-                placeholder="Pregunta al Asistente Praxia… (Enter para enviar)"
-                className="flex-1 resize-none bg-slate-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-36 overflow-y-auto"
+                placeholder="Haz una pregunta o crea algo"
+                className="flex-1 resize-none bg-transparent text-sm text-[#e3e4e8] placeholder-[#8e9099] focus:outline-none max-h-36 overflow-y-auto"
                 style={{ lineHeight: '1.5' }} />
+              {totalFuentes > 0 && (
+                <span className="text-[11px] text-[#8e9099] font-semibold whitespace-nowrap flex-shrink-0 mb-0.5">
+                  {totalFuentes} fuente{totalFuentes !== 1 ? 's' : ''}
+                </span>
+              )}
               <button onClick={() => enviar()} disabled={!input.trim() || enviando}
-                className="w-11 h-11 bg-primary text-on-primary rounded-2xl flex items-center justify-center hover:shadow-md transition-all disabled:opacity-40 flex-shrink-0">
-                <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
+                className="w-8 h-8 bg-white text-[#1a1b1e] rounded-full flex items-center justify-center hover:bg-[#e3e4e8] transition-all disabled:opacity-30 flex-shrink-0 mb-0.5">
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>arrow_upward</span>
               </button>
             </div>
           )}
@@ -1567,55 +1577,51 @@ export default function CuadernoIA() {
     )
   }
 
-  return (
-    <div className="flex flex-col h-[100dvh] bg-slate-50 overflow-hidden max-w-full">
+  // ── Cantidad de fuentes activas (para mostrar en el input) ──────────────────
+  const totalFuentes = fuentesAdmin.length + fuentesUser.length
 
-      {/* ── Header ── */}
-      <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 flex-shrink-0 shadow-sm z-10">
+  return (
+    <div className="flex flex-col h-[100dvh] bg-[#1a1b1e] overflow-hidden max-w-full">
+
+      {/* ── Header estilo NotebookLM ── */}
+      <header className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1e] border-b border-[#3a3b41] flex-shrink-0 z-10">
         <button onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors">
-          <span className="material-symbols-outlined text-xl">arrow_back</span>
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#35363d] transition-colors">
+          <span className="material-symbols-outlined text-[#e3e4e8] text-xl">arrow_back</span>
         </button>
-        <div className="w-9 h-9 bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl flex items-center justify-center flex-shrink-0">
-          <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-        </div>
         <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-sm leading-tight truncate">Cuaderno Praxia</p>
-          <p className="text-xs text-on-surface-variant truncate">{pkgNombre || '…'}</p>
+          <p className="font-semibold text-[#e3e4e8] text-sm truncate">{pkgNombre || 'Cuaderno Praxia'}</p>
         </div>
         {vista !== 'chat' && (
           <button onClick={() => { setVista('chat'); setVistaData(null) }}
-            className="flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 px-2 sm:px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors flex-shrink-0">
+            className="flex items-center gap-1.5 text-xs font-bold text-[#81c995] bg-[#1e3520] px-3 py-1.5 rounded-full hover:bg-[#25402a] transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-sm">chat</span>
-            <span className="hidden sm:inline">Volver al chat</span>
+            <span className="hidden sm:inline">Chat</span>
           </button>
         )}
         <div data-tour="token-counter" className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full flex-shrink-0
-          ${tokensUsados >= tokensLimite * 0.8 ? 'bg-error/10 text-error' : 'bg-slate-100 text-slate-500'}`}>
+          ${tokensUsados >= tokensLimite * 0.8 ? 'bg-red-900/40 text-red-400' : 'bg-[#2d2e34] text-[#8e9099]'}`}>
           <span className="material-symbols-outlined text-xs">token</span>
-          <span className="hidden sm:inline">
+          <span>
             {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}/{(tokensLimite/1_000_000).toFixed(0)}M
           </span>
-          <span className="sm:hidden">
-            {tokensUsados >= 1_000_000 ? `${(tokensUsados/1_000_000).toFixed(1)}M` : `${Math.round(tokensUsados/1000)}K`}
-          </span>
         </div>
-        <button onClick={() => { localStorage.removeItem(TOUR_KEY); setTourActivo(true) }} title="Ver tutorial"
-          className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-shrink-0 font-extrabold text-sm">
+        <button onClick={() => { localStorage.removeItem(TOUR_KEY); setTourActivo(true) }} title="Tutorial"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-[#2d2e34] text-[#8e9099] hover:bg-[#35363d] transition-colors text-xs font-bold flex-shrink-0">
           ?
         </button>
       </header>
 
       {/* ── Tabs móvil ── */}
-      <div className="flex border-b border-slate-200 bg-white flex-shrink-0 lg:hidden">
+      <div className="flex border-b border-[#3a3b41] bg-[#23242a] flex-shrink-0 lg:hidden">
         {[
-          { key: 'chat',    icon: 'smart_toy',     label: 'Chat' },
-          { key: 'generar', icon: 'auto_awesome',   label: 'Generar' },
-          { key: 'notas',   icon: 'sticky_note_2',  label: `Notas${notas.length ? ` (${notas.length})` : ''}` },
+          { key: 'chat',    icon: 'smart_toy',    label: 'Chat' },
+          { key: 'fuentes', icon: 'folder',        label: 'Fuentes' },
+          { key: 'studio',  icon: 'auto_awesome',  label: `Studio${notas.length ? ` (${notas.length})` : ''}` },
         ].map(t => (
           <button key={t.key} onClick={() => setTabMobile(t.key)}
             className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-[11px] font-bold border-b-2 transition-all
-              ${tabMobile === t.key ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>
+              ${tabMobile === t.key ? 'border-[#81c995] text-[#81c995]' : 'border-transparent text-[#8e9099]'}`}>
             <span className="material-symbols-outlined text-sm"
                   style={{ fontVariationSettings: tabMobile === t.key ? "'FILL' 1" : "'FILL' 0" }}>{t.icon}</span>
             {t.label}
@@ -1626,247 +1632,276 @@ export default function CuadernoIA() {
       {/* ── Cuerpo ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ══ LEFT: Fuentes + Generar ══ */}
-        <aside className={`flex flex-col w-full lg:w-60 border-r border-slate-200 bg-white overflow-y-auto flex-shrink-0
-          ${tabMobile !== 'generar' ? 'hidden lg:flex' : ''}`}>
+        {/* ══ LEFT: Fuentes (estilo NotebookLM) ══ */}
+        <aside className={`flex flex-col w-full lg:w-[260px] border-r border-[#3a3b41] bg-[#23242a] overflow-hidden flex-shrink-0
+          ${tabMobile !== 'fuentes' ? 'hidden lg:flex' : ''}`}>
 
-          {/* Fuentes admin */}
-          <div data-tour="fuentes-admin" className="p-3 border-b border-slate-100">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">folder</span>Fuentes del paquete
-            </p>
-            {fuentesAdmin.length === 0 ? (
-              <p className="text-[11px] text-slate-400 italic">El admin aún no ha cargado archivos.</p>
-            ) : (
-              <div className="space-y-1">
+          {/* Header panel */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#3a3b41] flex-shrink-0">
+            <p className="font-semibold text-[#e3e4e8] text-sm">Fuentes</p>
+            <span className="text-[11px] text-[#8e9099] bg-[#2d2e34] px-2 py-0.5 rounded-full">{totalFuentes}</span>
+          </div>
+
+          {/* Botón agregar fuentes */}
+          <div className="px-3 pt-3 pb-2 flex-shrink-0">
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp" className="hidden"
+              onChange={e => e.target.files?.[0] && subirPDF(e.target.files[0])} />
+            <button onClick={() => fileRef.current?.click()} disabled={subiendo}
+              className="w-full flex items-center justify-center gap-2 bg-[#2d2e34] hover:bg-[#35363d] text-[#e3e4e8] font-semibold text-sm py-2.5 rounded-full transition-all disabled:opacity-50 border border-[#4a4b52]">
+              {subiendo
+                ? <><div className="w-3.5 h-3.5 border-2 border-[#81c995] border-t-transparent rounded-full animate-spin" />Subiendo…</>
+                : <><span className="material-symbols-outlined text-base">add</span>Agregar fuentes</>
+              }
+            </button>
+          </div>
+
+          {/* YouTube URL */}
+          <div className="px-3 pb-2 flex gap-1.5 flex-shrink-0">
+            <div className="flex-1 flex items-center gap-1.5 bg-[#2d2e34] rounded-full px-3 py-1.5 border border-[#4a4b52] focus-within:border-[#81c995] transition-colors">
+              <span className="material-symbols-outlined text-red-500 text-sm flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>smart_display</span>
+              <input value={ytUrl} onChange={e => setYtUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && agregarYoutube()}
+                placeholder="YouTube URL…"
+                className="flex-1 bg-transparent text-[11px] text-[#e3e4e8] placeholder-[#8e9099] outline-none min-w-0" />
+            </div>
+            <button onClick={agregarYoutube} disabled={!ytUrl.trim() || agregandoYt}
+              className="w-8 h-8 flex items-center justify-center bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors disabled:opacity-40 flex-shrink-0">
+              {agregandoYt
+                ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <span className="material-symbols-outlined text-sm">add</span>
+              }
+            </button>
+          </div>
+
+          {errorSubida && (
+            <div className="mx-3 mb-2 bg-red-900/30 border border-red-800/50 rounded-xl px-3 py-2 flex items-start gap-2">
+              <span className="material-symbols-outlined text-red-400 text-xs mt-0.5 flex-shrink-0">error</span>
+              <p className="text-[10px] text-red-400 leading-snug">{errorSubida}</p>
+            </div>
+          )}
+
+          {/* Lista fuentes scroll */}
+          <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
+
+            {/* Fuentes admin */}
+            {fuentesAdmin.length > 0 && (
+              <div data-tour="fuentes-admin">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e9099] px-2 py-2">Del paquete</p>
                 {fuentesAdmin.map(f => (
                   <button key={f.id} onClick={() => setModalFuente(f)}
-                    className="w-full flex items-center gap-2 text-left text-xs bg-slate-50 hover:bg-primary/5 rounded-lg px-2.5 py-2 transition-colors group">
-                    <span className="material-symbols-outlined text-sm text-red-500 flex-shrink-0"
+                    className="w-full flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors group">
+                    <span className="material-symbols-outlined text-red-500 text-base flex-shrink-0"
                           style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
-                    <span className="truncate flex-1">{f.title}</span>
-                    <span className="material-symbols-outlined text-xs text-slate-300 group-hover:text-primary">open_in_new</span>
+                    <span className="truncate flex-1 text-[13px] text-[#e3e4e8]">{f.title}</span>
+                    <span className="w-4 h-4 rounded-sm border border-[#81c995] flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-[#81c995]" style={{ fontSize: '12px', fontVariationSettings: "'FILL' 1" }}>check</span>
+                    </span>
                   </button>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Fuentes del usuario */}
-          <div data-tour="mis-docs" className="p-3 border-b border-slate-100">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">upload_file</span>Mis documentos
-            </p>
-            <div className="space-y-1">
-              {fuentesUser.map(f => (
-                <div key={f.id} className="flex items-center gap-1.5">
-                  <button onClick={() => setModalFuente(f)}
-                    className="flex-1 flex items-center gap-2 text-xs bg-slate-50 hover:bg-primary/5 rounded-lg px-2.5 py-1.5 transition-colors text-left">
-                    <span className={`material-symbols-outlined text-sm flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-500'}`}
-                          style={{ fontVariationSettings: "'FILL' 1" }}>
-                      {f.tipo === 'youtube' ? 'smart_display' : 'description'}
-                    </span>
-                    <span className="truncate">{f.nombre}</span>
-                  </button>
-                  <button onClick={() => eliminarFuente(f.id)}
-                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-error/10 text-slate-300 hover:text-error transition-colors flex-shrink-0">
-                    <span className="material-symbols-outlined text-xs">close</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp" className="hidden"
-              onChange={e => e.target.files?.[0] && subirPDF(e.target.files[0])} />
-            <button onClick={() => fileRef.current?.click()} disabled={subiendo}
-              className="mt-2 w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-primary/10 hover:text-primary
-                         text-slate-500 font-bold text-[11px] py-2 rounded-xl transition-all disabled:opacity-50 border-2 border-dashed border-slate-200">
-              {subiendo
-                ? <><div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />Subiendo…</>
-                : <><span className="material-symbols-outlined text-xs">upload</span>Subir archivo</>
-              }
-            </button>
-            {/* YouTube URL */}
-            <div className="mt-2 flex gap-1">
-              <div className="flex-1 flex items-center gap-1.5 bg-slate-100 rounded-xl px-2.5 py-1.5 border border-transparent focus-within:border-red-400 transition-colors">
-                <span className="material-symbols-outlined text-red-500 text-sm flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>smart_display</span>
-                <input value={ytUrl} onChange={e => setYtUrl(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && agregarYoutube()}
-                  placeholder="Pega un link de YouTube…"
-                  className="flex-1 bg-transparent text-[11px] outline-none min-w-0" />
-              </div>
-              <button onClick={agregarYoutube} disabled={!ytUrl.trim() || agregandoYt}
-                className="w-8 h-8 flex items-center justify-center bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-40 flex-shrink-0">
-                {agregandoYt
-                  ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-                }
-              </button>
-            </div>
-
-            {errorSubida && (
-              <div className="mt-1.5 bg-error/10 border border-error/20 rounded-xl px-3 py-2 flex items-start gap-2">
-                <span className="material-symbols-outlined text-error text-xs mt-0.5 flex-shrink-0">error</span>
-                <p className="text-[10px] text-error leading-snug">{errorSubida}</p>
+            {/* Fuentes usuario */}
+            {(fuentesUser.length > 0 || fuentesAdmin.length === 0) && (
+              <div data-tour="mis-docs">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e9099] px-2 py-2">Mis documentos</p>
+                {fuentesUser.length === 0 && (
+                  <p className="text-[11px] text-[#8e9099] italic px-2 py-1">Sube un archivo o pega un video de YouTube.</p>
+                )}
+                {fuentesUser.map(f => (
+                  <div key={f.id} className="flex items-center gap-1.5 group">
+                    <button onClick={() => setModalFuente(f)}
+                      className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
+                      <span className={`material-symbols-outlined text-base flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-400'}`}
+                            style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {f.tipo === 'youtube' ? 'smart_display' : 'description'}
+                      </span>
+                      <span className="truncate text-[13px] text-[#e3e4e8]">{f.nombre}</span>
+                    </button>
+                    <button onClick={() => eliminarFuente(f.id)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-red-400 hover:bg-red-900/20 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
-          </div>
 
-          {/* Generar */}
-          <div data-tour="generar-ia" className="p-3 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">auto_awesome</span>Generar con Praxia
-            </p>
-            <div className="space-y-1.5">
-              {ACCIONES.map(a => (
-                <button key={a.tipo} onClick={() => generar(a.tipo)} disabled={!!generando}
-                  className={`w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition-all
-                    border-2 ${vista === a.tipo ? 'border-primary bg-primary/5' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}
-                    disabled:opacity-50`}>
-                  <div className={`w-8 h-8 bg-gradient-to-br ${a.grad} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                    {generando === a.tipo
-                      ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      : <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{a.icon}</span>
-                    }
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-xs">{a.label}</p>
-                    <p className="text-[10px] text-slate-400 leading-tight truncate">{a.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+            {fuentesAdmin.length === 0 && fuentesUser.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                <span className="material-symbols-outlined text-4xl text-[#8e9099] opacity-40 mb-3">folder_open</span>
+                <p className="text-sm font-semibold text-[#8e9099]">Sin fuentes</p>
+                <p className="text-[11px] text-[#8e9099] mt-1">Agrega PDFs, docs o videos de YouTube.</p>
+              </div>
+            )}
           </div>
         </aside>
 
         {/* ══ CENTER: Vista dinámica ══ */}
-        <main className={`flex-1 overflow-hidden ${tabMobile === 'notas' || tabMobile === 'generar' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
+        <main className={`flex-1 overflow-hidden bg-[#1a1b1e] ${tabMobile === 'studio' || tabMobile === 'fuentes' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
           <CenterContent />
         </main>
 
-        {/* ══ RIGHT: Notas ══ */}
-        <aside data-tour="panel-notas" className={`flex flex-col w-full lg:w-72 border-l border-slate-200 bg-white overflow-hidden
-          ${tabMobile !== 'notas' ? 'hidden lg:flex' : ''}`}>
+        {/* ══ RIGHT: Studio (NotebookLM style) ══ */}
+        <aside data-tour="panel-notas" className={`flex flex-col w-full lg:w-[280px] border-l border-[#3a3b41] bg-[#23242a] overflow-hidden
+          ${tabMobile !== 'studio' ? 'hidden lg:flex' : ''}`}>
 
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2 flex-shrink-0">
-            <span className="material-symbols-outlined text-base text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>sticky_note_2</span>
-            <p className="font-bold text-sm flex-1">Mis notas</p>
-            {notas.length > 0 && (
-              <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">{notas.length}</span>
-            )}
+          {/* Header Studio */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#3a3b41] flex-shrink-0">
+            <p className="font-semibold text-[#e3e4e8] text-sm">Studio</p>
           </div>
 
-          {/* Error artefacto dañado */}
-          <AnimatePresence>
-            {errorNota && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                className="px-3 py-2.5 bg-red-50 border-b border-red-100 flex flex-col gap-2"
-              >
-                <div className="flex items-start gap-2 text-[11px] text-red-700">
-                  <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
-                  <span className="flex-1">{errorNota.msg}</span>
-                  <button onClick={() => setErrorNota(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">
-                    <span className="material-symbols-outlined text-sm">close</span>
-                  </button>
-                </div>
-                {errorNota.notaId && (
-                  <button
-                    onClick={() => { borrarNota(errorNota.notaId); setErrorNota(null) }}
-                    className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold py-1.5 rounded-lg transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-xs">delete</span>
-                    Eliminar nota dañada
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className="flex-1 overflow-y-auto">
 
-          {/* Input nueva nota */}
-          <div className="p-3 border-b border-slate-100 flex-shrink-0">
-            <textarea rows={2} value={nuevaNota} onChange={e => setNuevaNota(e.target.value)}
-              placeholder="Escribe una nota rápida…"
-              className="w-full resize-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" />
-            <button onClick={agregarNota} disabled={!nuevaNota.trim() || addingNota}
-              className="mt-1.5 w-full bg-primary/10 text-primary font-bold text-xs py-2 rounded-xl hover:bg-primary/20 transition-colors disabled:opacity-40 flex items-center justify-center gap-1">
-              <span className="material-symbols-outlined text-xs">add</span>
-              {addingNota ? 'Guardando…' : 'Agregar nota'}
-            </button>
-          </div>
-
-          {/* Lista notas */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {notas.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
-                <span className="material-symbols-outlined text-4xl opacity-30 mb-2">sticky_note_2</span>
-                <p className="text-xs font-semibold">Sin notas aún</p>
-                <p className="text-[11px] mt-1 max-w-[180px]">Guarda respuestas del chat o genera artefactos Praxia.</p>
+            {/* Grid 2 columnas de artefactos */}
+            <div data-tour="generar-ia" className="p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e9099] mb-2">Generar con Praxia</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {ACCIONES.map(a => (
+                  <button key={a.tipo} onClick={() => generar(a.tipo)} disabled={!!generando}
+                    className={`flex flex-col items-start gap-2 p-3 rounded-xl text-left transition-all border
+                      ${vista === a.tipo
+                        ? 'border-[#81c995] bg-[#1e3520]'
+                        : 'border-[#3a3b41] bg-[#2d2e34] hover:bg-[#35363d] hover:border-[#4a4b52]'}
+                      disabled:opacity-50`}>
+                    <div className="flex items-center justify-between w-full">
+                      <div className={`w-7 h-7 bg-gradient-to-br ${a.grad} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                        {generando === a.tipo
+                          ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          : <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{a.icon}</span>
+                        }
+                      </div>
+                      <span className="material-symbols-outlined text-[#8e9099] text-sm">chevron_right</span>
+                    </div>
+                    <div className="min-w-0 w-full">
+                      <p className="font-semibold text-[11px] text-[#e3e4e8] leading-tight">{a.label}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
-            )}
-            {notas.map(nota => {
-              const meta       = FUENTE_META[nota.fuente] || FUENTE_META.manual
-              const esArtef    = ARTIFACT_TIPOS.has(nota.fuente)
-              const exp        = !!expandidas[nota.id]
-              return (
-                <div key={nota.id} className={`bg-white border rounded-xl overflow-hidden transition-all ${nota.fijada ? 'border-primary/30' : 'border-slate-200'}`}>
-                  {/* ── Cabecera ── */}
-                  <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-100">
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meta.cls}`}>
-                      <span className="material-symbols-outlined text-[10px]">{meta.icon}</span>
-                      {meta.label}
-                    </span>
-                    {nota.fijada && (
-                      <span className="material-symbols-outlined text-primary text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
-                    )}
-                    <div className="flex-1" />
-                    <button onClick={() => toggleFijar(nota)} title="Fijar"
-                      className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors
-                        ${nota.fijada ? 'text-primary hover:bg-primary/10' : 'text-slate-300 hover:text-primary hover:bg-slate-100'}`}>
-                      <span className="material-symbols-outlined text-xs"
-                            style={{ fontVariationSettings: nota.fijada ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
-                    </button>
-                    {!esArtef && (
-                      <>
-                        <button onClick={() => setInput(nota.contenido.slice(0, 300))} title="Usar en chat"
-                          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-primary hover:bg-slate-100 transition-colors">
-                          <span className="material-symbols-outlined text-xs">reply</span>
-                        </button>
-                        <button onClick={() => setExpandidas(p => ({ ...p, [nota.id]: !p[nota.id] }))}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:bg-slate-100 transition-colors">
-                          <span className="material-symbols-outlined text-xs">{exp ? 'expand_less' : 'expand_more'}</span>
-                        </button>
-                      </>
-                    )}
-                    <button onClick={() => borrarNota(nota.id)}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-error hover:bg-error/10 transition-colors">
-                      <span className="material-symbols-outlined text-xs">delete</span>
-                    </button>
-                  </div>
+            </div>
 
-                  {/* ── Cuerpo ── */}
-                  {esArtef ? (
-                    <div className="px-3 py-3 space-y-2">
-                      <p className="text-[11px] text-slate-500">{getArtefactoResumen(nota)}</p>
-                      <div className="flex gap-1.5">
-                        <button onClick={() => abrirArtefactoDesdeNota(nota)}
-                          className="flex-1 flex items-center justify-center gap-1 bg-primary/10 text-primary font-bold text-[11px] py-2 rounded-lg hover:bg-primary/20 transition-colors">
-                          <span className="material-symbols-outlined text-xs">open_in_new</span>Abrir
+            {/* Separador */}
+            <div className="border-t border-[#3a3b41] mx-3" />
+
+            {/* Sección notas */}
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e9099]">Notas</p>
+                {notas.length > 0 && (
+                  <span className="text-[10px] bg-[#2d2e34] text-[#8e9099] font-bold px-2 py-0.5 rounded-full">{notas.length}</span>
+                )}
+              </div>
+
+              {/* Input nueva nota */}
+              <div className="mb-3">
+                <textarea rows={2} value={nuevaNota} onChange={e => setNuevaNota(e.target.value)}
+                  placeholder="Escribe una nota rápida…"
+                  className="w-full resize-none bg-[#2d2e34] border border-[#4a4b52] rounded-xl px-3 py-2 text-xs text-[#e3e4e8] placeholder-[#8e9099] focus:outline-none focus:border-[#81c995] transition-colors" />
+                <button onClick={agregarNota} disabled={!nuevaNota.trim() || addingNota}
+                  className="mt-1.5 w-full bg-[#1e3520] text-[#81c995] font-bold text-xs py-2 rounded-xl hover:bg-[#25402a] transition-colors disabled:opacity-40 flex items-center justify-center gap-1 border border-[#2d4a30]">
+                  <span className="material-symbols-outlined text-xs">add</span>
+                  {addingNota ? 'Guardando…' : 'Agregar nota'}
+                </button>
+              </div>
+
+              {/* Error artefacto */}
+              <AnimatePresence>
+                {errorNota && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    className="mb-2 bg-red-900/30 border border-red-800/50 rounded-xl px-3 py-2"
+                  >
+                    <div className="flex items-start gap-2 text-[11px] text-red-400">
+                      <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
+                      <span className="flex-1">{errorNota.msg}</span>
+                      <button onClick={() => setErrorNota(null)} className="text-red-500 hover:text-red-300 flex-shrink-0">
+                        <span className="material-symbols-outlined text-sm">close</span>
+                      </button>
+                    </div>
+                    {errorNota.notaId && (
+                      <button onClick={() => { borrarNota(errorNota.notaId); setErrorNota(null) }}
+                        className="mt-2 w-full flex items-center justify-center gap-1.5 bg-red-800 hover:bg-red-700 text-white text-[11px] font-bold py-1.5 rounded-lg transition-colors">
+                        <span className="material-symbols-outlined text-xs">delete</span>Eliminar nota dañada
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Lista notas */}
+              <div className="space-y-2">
+                {notas.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <span className="material-symbols-outlined text-3xl text-[#8e9099] opacity-30 mb-2">sticky_note_2</span>
+                    <p className="text-xs font-semibold text-[#8e9099]">Sin notas aún</p>
+                    <p className="text-[11px] text-[#8e9099] mt-1 max-w-[160px]">Guarda respuestas del chat o genera artefactos.</p>
+                  </div>
+                )}
+                {notas.map(nota => {
+                  const meta    = FUENTE_META[nota.fuente] || FUENTE_META.manual
+                  const esArtef = ARTIFACT_TIPOS.has(nota.fuente)
+                  const exp     = !!expandidas[nota.id]
+                  return (
+                    <div key={nota.id} className={`bg-[#2d2e34] border rounded-xl overflow-hidden transition-all
+                      ${nota.fijada ? 'border-[#81c995]/40' : 'border-[#3a3b41]'}`}>
+                      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#3a3b41]">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#35363d] text-[#e3e4e8]`}>
+                          <span className="material-symbols-outlined text-[10px]">{meta.icon}</span>
+                          {meta.label}
+                        </span>
+                        {nota.fijada && (
+                          <span className="material-symbols-outlined text-[#81c995] text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
+                        )}
+                        <div className="flex-1" />
+                        <button onClick={() => toggleFijar(nota)} title="Fijar"
+                          className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors
+                            ${nota.fijada ? 'text-[#81c995]' : 'text-[#8e9099] hover:text-[#81c995]'}`}>
+                          <span className="material-symbols-outlined text-xs"
+                                style={{ fontVariationSettings: nota.fijada ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                         </button>
-                        <button onClick={() => descargarArtefacto(nota)} title="Descargar como .txt"
-                          className="flex items-center gap-1 bg-slate-100 text-slate-600 font-bold text-[11px] px-3 py-2 rounded-lg hover:bg-slate-200 transition-colors">
-                          <span className="material-symbols-outlined text-xs">download</span>
+                        {!esArtef && (
+                          <>
+                            <button onClick={() => setInput(nota.contenido.slice(0, 300))} title="Usar en chat"
+                              className="w-6 h-6 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-[#81c995] transition-colors">
+                              <span className="material-symbols-outlined text-xs">reply</span>
+                            </button>
+                            <button onClick={() => setExpandidas(p => ({ ...p, [nota.id]: !p[nota.id] }))}
+                              className="w-6 h-6 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-[#e3e4e8] transition-colors">
+                              <span className="material-symbols-outlined text-xs">{exp ? 'expand_less' : 'expand_more'}</span>
+                            </button>
+                          </>
+                        )}
+                        <button onClick={() => borrarNota(nota.id)}
+                          className="w-6 h-6 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-red-400 transition-colors">
+                          <span className="material-symbols-outlined text-xs">delete</span>
                         </button>
                       </div>
+                      {esArtef ? (
+                        <div className="px-3 py-2.5 space-y-2">
+                          <p className="text-[11px] text-[#8e9099]">{getArtefactoResumen(nota)}</p>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => abrirArtefactoDesdeNota(nota)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-[#1e3520] text-[#81c995] font-bold text-[11px] py-1.5 rounded-lg hover:bg-[#25402a] transition-colors">
+                              <span className="material-symbols-outlined text-xs">open_in_new</span>Abrir
+                            </button>
+                            <button onClick={() => descargarArtefacto(nota)}
+                              className="flex items-center gap-1 bg-[#35363d] text-[#8e9099] font-bold text-[11px] px-3 py-1.5 rounded-lg hover:bg-[#3d3e45] transition-colors">
+                              <span className="material-symbols-outlined text-xs">download</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`px-3 text-xs leading-relaxed whitespace-pre-wrap text-[#c4c5cb] transition-all overflow-hidden
+                          ${exp ? 'py-3 max-h-96' : 'py-2 max-h-14 line-clamp-3'}`}>
+                          {nota.contenido}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className={`px-3 text-xs leading-relaxed whitespace-pre-wrap text-slate-700 transition-all overflow-hidden
-                      ${exp ? 'py-3 max-h-96' : 'py-2 max-h-14 line-clamp-3'}`}>
-                      {nota.contenido}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </aside>
       </div>
