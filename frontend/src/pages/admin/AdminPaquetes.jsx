@@ -301,6 +301,7 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
     setError('')
 
     const payload = {
+      type:           'paquete',
       name:           form.name.trim(),
       description:    form.description.trim(),
       price:          Number(form.price) || 0,
