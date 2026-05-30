@@ -228,10 +228,11 @@ export default function Catalogo() {
   }, [])
 
   const { data, loading, error, retry } = useFetch(async () => {
-    const [{ data: pkgs }, { data: convs }] = await Promise.all([
+    const [{ data: pkgs, error: errPkgs }, { data: convs }] = await Promise.all([
       supabase.from('packages').select('*').eq('is_active', true).order('created_at'),
       supabase.from('convocatorias').select('id, nombre'),
     ])
+    if (errPkgs) throw new Error(errPkgs.message)
 
     const esAdmin  = user?.role === 'admin'
     let toolAccess = new Map()
