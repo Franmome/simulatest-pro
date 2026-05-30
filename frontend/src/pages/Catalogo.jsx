@@ -66,6 +66,24 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
   const activas = HERRAMIENTAS.filter(({ id }) => h[id]?.activo)
   const pcCfg   = h.paquete_completo
 
+  const [evaluaciones, setEvaluaciones] = useState([])
+  useEffect(() => {
+    async function fetchEvals() {
+      const { data: pvs } = await supabase
+        .from('package_versions').select('id').eq('package_id', pkg.id).eq('is_active', true)
+      const pvIds = (pvs || []).map(v => v.id)
+      if (!pvIds.length) return
+      const { data: evVers } = await supabase
+        .from('evaluation_versions').select('evaluation_id').in('package_version_id', pvIds)
+      const evalIds = [...new Set((evVers || []).map(r => r.evaluation_id).filter(Boolean))]
+      if (!evalIds.length) return
+      const { data: evs } = await supabase
+        .from('evaluations').select('id, title').in('id', evalIds).eq('is_active', true).order('title')
+      setEvaluaciones(evs || [])
+    }
+    fetchEvals()
+  }, [pkg.id])
+
   function BtnComprar({ pkgId, herramientaId, planId }) {
     const enCurso = comprando?.pkgId === pkgId && comprando?.herramientaId === herramientaId && comprando?.planId === planId
     if (!user) return (
@@ -162,18 +180,33 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
                 </div>
 
                 {tieneAcceso ? (
-                  <div className="px-4 py-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                      <p className="text-xs text-on-surface-variant">Ya tienes acceso.</p>
-                    </div>
-                    <button
-                      onClick={() => { onClose(); navigate(hDef.ruta(pkg.id)) }}
-                      className="flex items-center gap-1 px-4 py-2 rounded-full bg-primary text-on-primary text-xs font-bold hover:opacity-90 transition-opacity shrink-0"
-                    >
-                      Ir a {hDef.nombre.split(' ')[0]}
-                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    </button>
+                  <div className="px-4 pb-3 pt-1 space-y-2">
+                    {hDef.id === 'simulacros' ? (
+                      evaluaciones.length > 0 ? (
+                        evaluaciones.map(ev => (
+                          <div key={ev.id} className="flex items-center justify-between gap-2 py-2 border-b border-outline-variant/10 last:border-0">
+                            <p className="text-xs font-semibold text-on-surface leading-tight flex-1">{ev.title}</p>
+                            <button
+                              onClick={() => { onClose(); navigate(`/prueba/${ev.id}`) }}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary text-on-primary text-xs font-bold hover:opacity-90 transition-opacity shrink-0"
+                            >
+                              Ver detalle
+                              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-on-surface-variant italic py-1">Cargando evaluaciones…</p>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => { onClose(); navigate(hDef.ruta(pkg.id)) }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-primary text-on-primary text-xs font-bold hover:opacity-90 transition-opacity"
+                      >
+                        Ir a {hDef.nombre}
+                        <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                      </button>
+                    )}
                   </div>
                 ) : planes.length === 0 ? (
                   <div className="px-4 py-3">
