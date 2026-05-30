@@ -106,6 +106,15 @@ function ModalPlanes({ pkg, convNombre, toolAccess, esAdmin, onClose, onComprar,
 
         <div className="p-5 space-y-5">
 
+          {/* Sin planes configurados */}
+          {!pcCfg?.activo && activas.length === 0 && (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <span className="material-symbols-outlined text-4xl text-on-surface-variant/30">build_circle</span>
+              <p className="font-bold text-on-surface-variant">Este paquete aún no tiene planes de precio configurados.</p>
+              <p className="text-xs text-on-surface-variant">Pronto estará disponible. Contáctanos si tienes dudas.</p>
+            </div>
+          )}
+
           {/* Paquete completo */}
           {pcCfg?.activo && (pcCfg.planes || []).length > 0 && (
             <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
