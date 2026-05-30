@@ -1162,6 +1162,13 @@ export default function CuadernoIA() {
   const navigate      = useNavigate()
   const { user }      = useAuth()
 
+  // Animación de entrada: el cuaderno oscurece toda la pantalla al abrir
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 30)
+    return () => clearTimeout(t)
+  }, [])
+
   const [pkgNombre,   setPkgNombre]   = useState('')
   const [tabMobile,   setTabMobile]   = useState('chat')
   const [tourActivo,  setTourActivo]  = useState(() => !localStorage.getItem(TOUR_KEY))
@@ -1581,7 +1588,7 @@ export default function CuadernoIA() {
   const totalFuentes = fuentesAdmin.length + fuentesUser.length
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#1a1b1e] overflow-hidden max-w-full">
+    <div className={`fixed inset-0 z-50 flex flex-col bg-[#1a1b1e] overflow-hidden transition-opacity duration-500 ${visible ? 'opacity-100' : 'opacity-0'}`}>
 
       {/* ── Header estilo NotebookLM ── */}
       <header className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1b1e] border-b border-[#3a3b41] flex-shrink-0 z-10">
