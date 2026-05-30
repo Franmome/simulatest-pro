@@ -520,12 +520,14 @@ export default function Catalogo() {
                       >
                         Ver detalle →
                       </button>
+                    ) : esAdmin ? (
+                      <span className="text-[10px] text-on-surface-variant italic text-right">Vincule una evaluación<br/>en el panel admin</span>
                     ) : (
                       <button
-                        onClick={() => setModalPkg(pkg)}
+                        onClick={() => !user ? navigate('/login') : navigate('/planes')}
                         className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
                       >
-                        Ver planes →
+                        Comprar →
                       </button>
                     )}
                   </div>
