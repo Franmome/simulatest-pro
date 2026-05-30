@@ -513,23 +513,12 @@ export default function Catalogo() {
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    {pkg.evaluations_ids?.length > 0 ? (
-                      <button
-                        onClick={() => navigate(`/prueba/${pkg.evaluations_ids[0]}`)}
-                        className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
-                      >
-                        Ver detalle →
-                      </button>
-                    ) : esAdmin ? (
-                      <span className="text-[10px] text-on-surface-variant italic text-right">Vincule una evaluación<br/>en el panel admin</span>
-                    ) : (
-                      <button
-                        onClick={() => !user ? navigate('/login') : navigate('/planes')}
-                        className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
-                      >
-                        Comprar →
-                      </button>
-                    )}
+                    <button
+                      onClick={() => !user ? navigate('/login') : navigate(`/paquete/${pkg.id}`)}
+                      className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-xs font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+                    >
+                      {user ? 'Ver paquete →' : 'Comprar →'}
+                    </button>
                   </div>
                 </div>
               </div>

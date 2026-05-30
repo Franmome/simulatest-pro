@@ -639,7 +639,11 @@ function Segmented({ options, value, onChange, color = 'primary' }) {
 
 export default function DetallePrueba() {
   const navigate = useNavigate()
-  const { id }   = useParams()
+  const { id: evalId, pkgId } = useParams()
+  // pkgId = ruta /paquete/:pkgId (nuevo modelo, packageId como cabeza)
+  // evalId = ruta /prueba/:id (legado)
+  const id = pkgId || evalId
+  const isPackageMode = !!pkgId
   const { user } = useAuth()
   const { addNotif, updateNotif } = useNotifications()
 
@@ -852,6 +856,100 @@ export default function DetallePrueba() {
   // ── Carga de datos ──────────────────────────────────────────────────────────
 
   const { data, loading, error, retry } = useFetch(async () => {
+    const idNum = parseInt(id, 10)
+
+    // ── Modo Paquete (cabeza) ────────────────────────────────────────────────
+    if (isPackageMode) {
+      const { data: pkgData, error: pkgErr } = await supabase
+        .from('packages')
+        .select('id, nombre, name, descripcion, has_ai_chat, convocatoria_id, herramientas')
+        .eq('id', idNum).maybeSingle()
+      if (pkgErr || !pkgData) throw new Error('Paquete no encontrado')
+
+      // Construir "ev" virtual desde el paquete
+      const evalData = {
+        id:          pkgData.id,
+        title:       pkgData.nombre || pkgData.name || 'Paquete',
+        description: pkgData.descripcion || '',
+        categories:  { id: null, name: 'General' },
+      }
+
+      let tienePlan = false, packageId = idNum, hasAiChat = pkgData.has_ai_chat ?? false
+      let versionNombre = null, packageNombre = pkgData.nombre || pkgData.name || null
+      let packageExpiry = null, convocatoriaId = pkgData.convocatoria_id ?? null, convocatoriaNombre = null
+      const iaStats = { total: 0, completados: 0, avgScore: null, bestScore: null, herramientas: [] }
+
+      // Herramientas activas
+      if (pkgData.herramientas) {
+        const tools = Object.entries(pkgData.herramientas)
+          .filter(([k, v]) => k !== 'paquete_completo' && v?.activo)
+          .map(([k]) => k)
+        iaStats.herramientas = tools
+      }
+
+      if (user?.id) {
+        const esAdmin = user.role === 'admin'
+        if (esAdmin) {
+          tienePlan = true
+          hasAiChat = true
+        } else {
+          // Verificar acceso: user_tool_purchases
+          const { data: toolPur } = await supabase
+            .from('user_tool_purchases')
+            .select('end_date')
+            .eq('user_id', user.id)
+            .eq('package_id', idNum)
+            .gte('end_date', new Date().toISOString())
+            .order('end_date', { ascending: false })
+            .limit(1).maybeSingle()
+          if (toolPur) { tienePlan = true; packageExpiry = toolPur.end_date }
+
+          // Fallback: purchases
+          if (!tienePlan) {
+            const { data: compra } = await supabase
+              .from('purchases').select('end_date')
+              .eq('user_id', user.id).eq('status', 'active').eq('package_id', idNum)
+              .gte('end_date', new Date().toISOString())
+              .order('end_date', { ascending: false }).limit(1).maybeSingle()
+            if (compra) { tienePlan = true; packageExpiry = compra.end_date }
+          }
+        }
+
+        // IA stats: simulacros del usuario para este paquete (evaluacion_id = packageId)
+        const { data: simsIA } = await supabase
+          .from('user_simulacros')
+          .select('score_pct, completado, dificultad_config')
+          .eq('evaluacion_id', idNum)
+          .eq('user_id', user.id)
+          .neq('dificultad_config', 'practica')
+        if (simsIA?.length) {
+          iaStats.total = simsIA.length
+          const done = simsIA.filter(s => s.completado && s.score_pct !== null)
+          iaStats.completados = done.length
+          if (done.length) {
+            const scores = done.map(s => s.score_pct)
+            iaStats.avgScore  = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+            iaStats.bestScore = Math.round(Math.max(...scores))
+          }
+        }
+      }
+
+      // Ranking global del paquete
+      const { data: rankingRaw } = await supabase
+        .from('user_simulacros').select('cargo, score_pct, user_id')
+        .eq('evaluacion_id', idNum).eq('completado', true)
+        .not('score_pct', 'is', null)
+        .order('score_pct', { ascending: false }).limit(8)
+      const ranking = (rankingRaw || []).map(r => ({ ...r, users: { full_name: 'Candidato' } }))
+
+      return {
+        ev: evalData, niveles: [], pregsPorNivel: {}, intentosPorNivel: {}, totalPregs: 0,
+        tienePlan, packageId, hasAiChat, versionNombre, ranking,
+        convocatoriaId, convocatoriaNombre, packageNombre, packageExpiry, iaStats,
+      }
+    }
+
+    // ── Modo Evaluación (legado) ─────────────────────────────────────────────
     const { data: evalData, error: evalErr } = await supabase
       .from('evaluations').select('*, categories(id, name)').eq('id', id).maybeSingle()
     if (evalErr) throw new Error(evalErr.message)
@@ -882,24 +980,19 @@ export default function DetallePrueba() {
 
     let tienePlan = false, packageId = null, hasAiChat = false, versionNombre = null
     let convocatoriaId = null, convocatoriaNombre = null, packageNombre = null, packageExpiry = null
-    const iaStats = { total: 0, completados: 0, avgScore: null, bestScore: null }
+    const iaStats = { total: 0, completados: 0, avgScore: null, bestScore: null, herramientas: [] }
     if (user?.id) {
-      const evalIdNum = parseInt(id, 10)
       const esAdmin = user.role === 'admin'
-
-      // Resolver paquetes que contienen esta evaluación
       let evalPackageIds = []
       const [{ data: evalVers }, { data: pkgDirect }] = await Promise.all([
-        supabase.from('evaluation_versions').select('package_version_id').eq('evaluation_id', evalIdNum),
-        supabase.from('packages').select('id').contains('evaluations_ids', [evalIdNum]),
+        supabase.from('evaluation_versions').select('package_version_id').eq('evaluation_id', idNum),
+        supabase.from('packages').select('id').contains('evaluations_ids', [idNum]),
       ])
       if (evalVers?.length) {
-        // Filtra nulls para evitar .in('id',[null]) que genera 400 en PostgREST
         const versionIds = evalVers.map(v => v.package_version_id).filter(Boolean)
         if (versionIds.length) {
           const { data: versData } = await supabase
-            .from('package_versions').select('package_id')
-            .in('id', versionIds)
+            .from('package_versions').select('package_id').in('id', versionIds)
           evalPackageIds = versData?.map(v => v.package_id).filter(Boolean) || []
         }
       }
@@ -908,41 +1001,24 @@ export default function DetallePrueba() {
       }
 
       if (esAdmin) {
-        // Admin: acceso total, IA siempre activa
-        tienePlan = true
-        hasAiChat = true
-        packageId  = evalPackageIds[0] ?? null
+        tienePlan = true; hasAiChat = true; packageId = evalPackageIds[0] ?? null
       } else if (evalPackageIds.length) {
-        // Modelo nuevo: user_tool_purchases (herramienta simulacros)
         const { data: toolPur } = await supabase
-          .from('user_tool_purchases')
-          .select('package_id, end_date')
-          .eq('user_id', user.id)
-          .eq('herramienta_id', 'simulacros')
-          .in('package_id', evalPackageIds)
-          .gte('end_date', new Date().toISOString())
-          .order('end_date', { ascending: false })
-          .limit(1).maybeSingle()
-        if (toolPur) {
-          tienePlan = true
-          packageId = toolPur.package_id
-          packageExpiry = toolPur.end_date
-        }
+          .from('user_tool_purchases').select('package_id, end_date')
+          .eq('user_id', user.id).eq('herramienta_id', 'simulacros')
+          .in('package_id', evalPackageIds).gte('end_date', new Date().toISOString())
+          .order('end_date', { ascending: false }).limit(1).maybeSingle()
+        if (toolPur) { tienePlan = true; packageId = toolPur.package_id; packageExpiry = toolPur.end_date }
 
-        // Modelo viejo: purchases
         if (!tienePlan) {
           const { data: compra } = await supabase
             .from('purchases').select('package_id, package_version_id, end_date')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
+            .eq('user_id', user.id).eq('status', 'active')
             .gte('end_date', new Date().toISOString())
             .in('package_id', evalPackageIds)
-            .order('end_date', { ascending: false })
-            .limit(1).maybeSingle()
+            .order('end_date', { ascending: false }).limit(1).maybeSingle()
           if (compra) {
-            tienePlan = true
-            packageId = compra.package_id
-            packageExpiry = compra.end_date
+            tienePlan = true; packageId = compra.package_id; packageExpiry = compra.end_date
             if (compra.package_version_id) {
               const { data: ver } = await supabase
                 .from('package_versions').select('display_name')
@@ -953,31 +1029,23 @@ export default function DetallePrueba() {
         }
       }
 
-      // Datos del paquete
       if (packageId) {
         const { data: pkg } = await supabase
-          .from('packages')
-          .select('has_ai_chat, convocatoria_id, nombre, name, herramientas')
+          .from('packages').select('has_ai_chat, convocatoria_id, nombre, name, herramientas')
           .eq('id', packageId).maybeSingle()
         if (!esAdmin) hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
         packageNombre  = pkg?.nombre || pkg?.name || null
-        // herramientas activas del paquete
         if (pkg?.herramientas) {
           const tools = Object.entries(pkg.herramientas)
-            .filter(([k, v]) => k !== 'paquete_completo' && v?.activo)
-            .map(([k]) => k)
+            .filter(([k, v]) => k !== 'paquete_completo' && v?.activo).map(([k]) => k)
           if (tools.length) iaStats.herramientas = tools
         }
       }
 
-      // IA stats del usuario en esta evaluación
       const { data: simsIA } = await supabase
-        .from('user_simulacros')
-        .select('score_pct, completado, dificultad_config')
-        .eq('evaluacion_id', parseInt(id, 10))
-        .eq('user_id', user.id)
-        .neq('dificultad_config', 'practica')
+        .from('user_simulacros').select('score_pct, completado, dificultad_config')
+        .eq('evaluacion_id', idNum).eq('user_id', user.id).neq('dificultad_config', 'practica')
       if (simsIA?.length) {
         iaStats.total = simsIA.length
         const done = simsIA.filter(s => s.completado && s.score_pct !== null)
@@ -990,15 +1058,10 @@ export default function DetallePrueba() {
       }
     }
 
-    // Ranking sin join de tabla users para evitar 400 por foreign key no configurado
     const { data: rankingRaw } = await supabase
-      .from('user_simulacros')
-      .select('cargo, score_pct, completado, user_id')
-      .eq('evaluacion_id', parseInt(id))
-      .eq('completado', true)
-      .not('score_pct', 'is', null)
-      .order('score_pct', { ascending: false })
-      .limit(8)
+      .from('user_simulacros').select('cargo, score_pct, completado, user_id')
+      .eq('evaluacion_id', idNum).eq('completado', true)
+      .not('score_pct', 'is', null).order('score_pct', { ascending: false }).limit(8)
     const ranking = (rankingRaw || []).map(r => ({ ...r, users: { full_name: 'Candidato' } }))
 
     return { ev: evalData, niveles, pregsPorNivel, intentosPorNivel, totalPregs, tienePlan, packageId, hasAiChat, versionNombre, ranking, convocatoriaId, convocatoriaNombre, packageNombre, packageExpiry, iaStats }

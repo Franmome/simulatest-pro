@@ -72,9 +72,10 @@ export default function App() {
 
           {/* 📚 Catálogo público (con Layout compartido) */}
           <Route element={<Layout title="Praxia" />}>
-            <Route path="/catalogo"       element={<Catalogo />} />
-            <Route path="/prueba/:id"     element={<DetallePrueba />} />
-            <Route path="/pago-resultado" element={<PagoResultado />} />
+            <Route path="/catalogo"        element={<Catalogo />} />
+            <Route path="/paquete/:pkgId"  element={<DetallePrueba />} />
+            <Route path="/prueba/:id"      element={<DetallePrueba />} />
+            <Route path="/pago-resultado"  element={<PagoResultado />} />
           </Route>
 
           {/* 🔒 Rutas privadas para todos los usuarios autenticados */}
