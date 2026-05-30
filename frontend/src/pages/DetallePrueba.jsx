@@ -862,20 +862,20 @@ export default function DetallePrueba() {
     if (isPackageMode) {
       const { data: pkgData, error: pkgErr } = await supabase
         .from('packages')
-        .select('id, nombre, name, descripcion, has_ai_chat, convocatoria_id, herramientas')
+        .select('id, name, description, has_ai_chat, convocatoria_id, herramientas')
         .eq('id', idNum).maybeSingle()
       if (pkgErr || !pkgData) throw new Error('Paquete no encontrado')
 
       // Construir "ev" virtual desde el paquete
       const evalData = {
         id:          pkgData.id,
-        title:       pkgData.nombre || pkgData.name || 'Paquete',
-        description: pkgData.descripcion || '',
+        title:       pkgData.name || 'Paquete',
+        description: pkgData.description || '',
         categories:  { id: null, name: 'General' },
       }
 
       let tienePlan = false, packageId = idNum, hasAiChat = pkgData.has_ai_chat ?? false
-      let versionNombre = null, packageNombre = pkgData.nombre || pkgData.name || null
+      let versionNombre = null, packageNombre = pkgData.name || null
       let packageExpiry = null, convocatoriaId = pkgData.convocatoria_id ?? null, convocatoriaNombre = null
       const iaStats = { total: 0, completados: 0, avgScore: null, bestScore: null, herramientas: [] }
 
@@ -1031,11 +1031,11 @@ export default function DetallePrueba() {
 
       if (packageId) {
         const { data: pkg } = await supabase
-          .from('packages').select('has_ai_chat, convocatoria_id, nombre, name, herramientas')
+          .from('packages').select('has_ai_chat, convocatoria_id, name, herramientas')
           .eq('id', packageId).maybeSingle()
         if (!esAdmin) hasAiChat = pkg?.has_ai_chat ?? false
         convocatoriaId = pkg?.convocatoria_id ?? null
-        packageNombre  = pkg?.nombre || pkg?.name || null
+        packageNombre  = pkg?.name || null
         if (pkg?.herramientas) {
           const tools = Object.entries(pkg.herramientas)
             .filter(([k, v]) => k !== 'paquete_completo' && v?.activo).map(([k]) => k)
