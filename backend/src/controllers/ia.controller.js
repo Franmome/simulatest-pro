@@ -2116,7 +2116,7 @@ export async function generarModoPractica(req, res) {
 
   // 5. Total a generar — al menos 20, máx 60 para caber en ~90s (BATCH=5/PARALLEL=3)
   const srcCount    = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
-  const totalTarget = Math.min(60, Math.max(20, srcCount))
+  const totalTarget = srcCount || 20
 
   // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'gemini')
@@ -2213,79 +2213,100 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
     return { preguntas: arr, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
   }
 
-  // 10. Generar en oleadas paralelas
-  const allPreguntas = []
-  let totalTIn = 0, totalTOut = 0
-  for (let i = 0; i < lotes.length; i += PARALLEL) {
-    const wave = lotes.slice(i, i + PARALLEL)
-    const resultados = await Promise.allSettled(wave.map(l => generarLote(l)))
-    for (const r of resultados) {
-      if (r.status === 'fulfilled') {
-        allPreguntas.push(...r.value.preguntas)
-        totalTIn  += r.value.tokensIn
-        totalTOut += r.value.tokensOut
-      } else {
-        console.error('[Práctica] lote error:', r.reason?.message, r.reason?.stack?.split('\n')[1])
-      }
-    }
-  }
-
-  if (!allPreguntas.length)
-    return res.status(500).json({ error: 'Praxia no pudo generar las preguntas. Intenta de nuevo.' })
-
-  // 10b. Normalizar campos — DeepSeek y Gemini pueden usar nombres distintos
-  const normalized = allPreguntas.map(p => {
-    const getOpt = k => p[k] || p[k.toLowerCase()] || ''
-    const correcta = (p.correcta || p.respuesta_correcta || 'A').toUpperCase()
-    return {
-      area:        p.area        || 'General',
-      tipo:        p.tipo        || 'funcional',
-      dificultad:  p.dificultad  || 'medio',
-      bloom:       p.bloom       || null,
-      estado:      p.estado      || null,
-      contexto:    p.contexto    || null,
-      enunciado:   p.enunciado   || p.pregunta || p.question || '',
-      A:           getOpt('A'),
-      B:           getOpt('B'),
-      C:           getOpt('C'),
-      D:           getOpt('D'),
-      correcta,
-      justificacion:   p.justificacion   || p.justification || p.explicacion || '',
-      analisis_A:      p.analisis_A      || p.analisis_a    || null,
-      analisis_B:      p.analisis_B      || p.analisis_b    || null,
-      analisis_C:      p.analisis_C      || p.analisis_c    || null,
-      analisis_D:      p.analisis_D      || p.analisis_d    || null,
-    }
-  }).filter(p => p.enunciado && p.A && p.B)  // descartar objetos incompletos
-
-  if (!normalized.length)
-    return res.status(500).json({ error: 'Las preguntas generadas tienen formato inválido. Intenta de nuevo.' })
-
-  // 11. Guardar como nuevo simulacro de práctica
+  // 11. INSERT previo — responder inmediatamente mientras se genera en fondo
   const evalId = evaluacion_id || sim.evaluacion_id
-  const { data: nuevo, error: insErr } = await supabase
+  const { data: simulacroPrevio, error: insErrPrevio } = await supabase
     .from('user_simulacros')
     .insert({
       user_id:             userId,
       evaluacion_id:       evalId ? parseInt(evalId) : null,
       cargo:               sim.cargo,
-      preguntas:           normalized,
-      cantidad_preguntas:  normalized.length,
+      preguntas:           [],
+      cantidad_preguntas:  0,
       tiempo_por_pregunta: 90,
       dificultad_config:   'practica',
       simulacro_origen_id: parseInt(simulacro_id),
+      status:              'generando',
     })
     .select('id')
     .single()
-  if (insErr) return res.status(500).json({ error: insErr.message })
+  if (insErrPrevio) return res.status(500).json({ error: insErrPrevio.message })
 
-  // 12. Registrar tokens
-  await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
+  const nuevoId = simulacroPrevio.id
 
-  // Áreas reales de las preguntas generadas (no las débiles pre-calculadas)
-  const areasCubiertas = [...new Set(normalized.map(p => p.area).filter(Boolean))]
+  // Responder inmediatamente al frontend
+  res.json({ simulacro_id: nuevoId, total: 0, areas_cubiertas: [], status: 'generando' })
 
-  return res.status(201).json({ simulacro_id: nuevo.id, total: normalized.length, areas_cubiertas: areasCubiertas })
+  // Continuar generación en background
+  setImmediate(async () => {
+    try {
+      // 10. Generar en oleadas paralelas
+      const allPreguntas = []
+      let totalTIn = 0, totalTOut = 0
+      for (let i = 0; i < lotes.length; i += PARALLEL) {
+        const wave = lotes.slice(i, i + PARALLEL)
+        const resultados = await Promise.allSettled(wave.map(l => generarLote(l)))
+        for (const r of resultados) {
+          if (r.status === 'fulfilled') {
+            allPreguntas.push(...r.value.preguntas)
+            totalTIn  += r.value.tokensIn
+            totalTOut += r.value.tokensOut
+          } else {
+            console.error('[Práctica] lote error:', r.reason?.message, r.reason?.stack?.split('\n')[1])
+          }
+        }
+      }
+
+      if (!allPreguntas.length) {
+        await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
+        return
+      }
+
+      // 10b. Normalizar campos
+      const normalized = allPreguntas.map(p => {
+        const getOpt = k => p[k] || p[k.toLowerCase()] || ''
+        const correcta = (p.correcta || p.respuesta_correcta || 'A').toUpperCase()
+        return {
+          area:        p.area        || 'General',
+          tipo:        p.tipo        || 'funcional',
+          dificultad:  p.dificultad  || 'medio',
+          bloom:       p.bloom       || null,
+          estado:      p.estado      || null,
+          contexto:    p.contexto    || null,
+          enunciado:   p.enunciado   || p.pregunta || p.question || '',
+          A:           getOpt('A'),
+          B:           getOpt('B'),
+          C:           getOpt('C'),
+          D:           getOpt('D'),
+          correcta,
+          justificacion:   p.justificacion   || p.justification || p.explicacion || '',
+          analisis_A:      p.analisis_A      || p.analisis_a    || null,
+          analisis_B:      p.analisis_B      || p.analisis_b    || null,
+          analisis_C:      p.analisis_C      || p.analisis_c    || null,
+          analisis_D:      p.analisis_D      || p.analisis_d    || null,
+        }
+      }).filter(p => p.enunciado && p.A && p.B)
+
+      if (!normalized.length) {
+        await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
+        return
+      }
+
+      // 11. UPDATE con preguntas generadas
+      await supabase.from('user_simulacros').update({
+        preguntas:          normalized,
+        cantidad_preguntas: normalized.length,
+        status:             'listo',
+      }).eq('id', nuevoId)
+
+      // 12. Registrar tokens
+      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
+
+    } catch (bgErr) {
+      console.error('[Práctica] background error:', bgErr.message)
+      await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId).catch(() => {})
+    }
+  })
 
   } catch (err) {
     console.error('[Práctica] error no capturado:', err.message, err.stack?.split('\n')[1])

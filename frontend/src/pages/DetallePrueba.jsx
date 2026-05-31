@@ -703,6 +703,7 @@ export default function DetallePrueba() {
   const [practicaGenerada,  setPracticaGenerada]  = useState(null)   // { simulacro_id, total, areas_cubiertas }
   const [practicaCantidad,  setPracticaCantidad]  = useState(0)
   const [practicaTiempo,    setPracticaTiempo]    = useState(90)
+  const [pollingPractica,   setPollingPractica]   = useState(false)
 
   const PRACTICA_STEPS = [
     { icon: 'psychology',    text: 'Leyendo tu último simulacro…' },
@@ -1285,14 +1286,50 @@ export default function DetallePrueba() {
     setErrorPractica('')
     try {
       const result = await generarModoPractica({ simulacro_id: practicaPreflight.simulacroId, evaluacion_id: parseInt(id) })
-      setPracticaGenerada(result)
-      setPracticaCantidad(result.total)
-      setPracticaTiempo(90)
+      if (result.status === 'generando') {
+        setPracticaGenerada(result)
+        setPracticaCantidad(0)
+        setPracticaTiempo(90)
+        setGenerandoPractica(false)
+        setPollingPractica(true)
+        iniciarPollingPractica(result.simulacro_id)
+      } else {
+        setPracticaGenerada(result)
+        setPracticaCantidad(result.total)
+        setPracticaTiempo(90)
+        setGenerandoPractica(false)
+      }
     } catch (e) {
       setErrorPractica(e.message)
-    } finally {
       setGenerandoPractica(false)
     }
+  }
+
+  function iniciarPollingPractica(simulacroId) {
+    const interval = setInterval(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/ia/modo-practica/${simulacroId}/status`,
+          { headers: { Authorization: `Bearer ${session?.access_token || ''}` } }
+        )
+        const data = await res.json()
+        if (data.status === 'listo') {
+          clearInterval(interval)
+          setPollingPractica(false)
+          setPracticaGenerada({ simulacro_id: simulacroId, total: data.cantidad_preguntas })
+          setPracticaCantidad(data.cantidad_preguntas)
+        } else if (data.status === 'error') {
+          clearInterval(interval)
+          setPollingPractica(false)
+          setErrorPractica('No fue posible generar la práctica. Intenta de nuevo.')
+        }
+      } catch (e) {
+        clearInterval(interval)
+        setPollingPractica(false)
+        setErrorPractica('Error verificando el estado de la práctica.')
+      }
+    }, 5000)
   }
 
   function iniciarPractica() {
@@ -2675,24 +2712,30 @@ export default function DetallePrueba() {
             </div>
 
             {/* Footer */}
-            {!loadingPreflight && !generandoPractica && (practicaPreflight || practicaGenerada) && (
+            {!loadingPreflight && !generandoPractica && (practicaPreflight || practicaGenerada || pollingPractica) && (
               <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
                 <button onClick={() => { setShowPracticaModal(false); setPracticaGenerada(null) }}
                   className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
                   {practicaGenerada ? 'Cancelar' : 'Cancelar'}
                 </button>
-                {practicaGenerada ? (
+                {practicaGenerada && !pollingPractica ? (
                   <button onClick={iniciarPractica}
                     className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
                     Iniciar práctica
                   </button>
+                ) : pollingPractica ? (
+                  <div className="flex-1 flex flex-col items-center gap-2 py-2">
+                    <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium text-gray-700">Generando tu práctica personalizada...</p>
+                    <p className="text-xs text-gray-500">Esto puede tomar 1-2 minutos. Puedes cerrar este modal.</p>
+                  </div>
                 ) : (
-                <button onClick={confirmarGenerarPractica}
-                  className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
-                  Generar práctica
-                </button>
+                  <button onClick={confirmarGenerarPractica}
+                    className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+                    Generar práctica
+                  </button>
                 )}
               </div>
             )}

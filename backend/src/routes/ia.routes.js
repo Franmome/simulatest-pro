@@ -1,7 +1,10 @@
 // ia.routes.js
 import { Router } from 'express'
 import multer from 'multer'
+import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth } from '../controllers/ia.controller.js'
 
 const router = Router()
@@ -42,6 +45,15 @@ router.delete('/procuraduria-opecs/:id', authMiddleware, deleteProcuraduriaOpec)
 router.delete('/procuraduria-opecs',     authMiddleware, deleteOpecsMasivo)
 router.post('/opec-maestro/import',      authMiddleware, importOpecMaestro)
 router.post('/modo-practica',            authMiddleware, generarModoPractica)
+router.get('/modo-practica/:id/status',  authMiddleware, async (req, res) => {
+  const { data } = await supabase
+    .from('user_simulacros')
+    .select('id, status, cantidad_preguntas')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single()
+  res.json(data || { status: 'error' })
+})
 router.get('/cerebros-health',           authMiddleware, cerebrosHealth)
 
 export default router
