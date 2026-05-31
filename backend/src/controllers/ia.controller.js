@@ -253,10 +253,10 @@ function formatError(err) {
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
-async function geminiGenerar(parts, systemInstruction = null) {
+async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-2.5-flash') {
   const modelConfig = systemInstruction
-    ? { model: 'gemini-2.5-flash-lite', systemInstruction }
-    : { model: 'gemini-2.5-flash-lite' }
+    ? { model: modelId, systemInstruction }
+    : { model: modelId }
   const model  = genAI.getGenerativeModel(modelConfig)
   const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
   const usage  = result.response.usageMetadata
@@ -268,7 +268,7 @@ async function geminiGenerar(parts, systemInstruction = null) {
 }
 
 async function geminiTexto(prompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent(prompt)
   const usage  = result.response.usageMetadata
   return {
@@ -359,7 +359,7 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
 }
 
 async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
   const usage  = result.response.usageMetadata
   return { texto: result.response.text(), tokensIn: usage?.promptTokenCount || 0, tokensOut: usage?.candidatesTokenCount || 0 }
@@ -736,7 +736,7 @@ export async function verificarOpec(req, res) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-2.5-flash',
       tools: [{ googleSearch: {} }],
     })
 
@@ -2057,17 +2057,18 @@ export async function deleteProcuraduriaOpec(req, res) {
 
 // ── Modo Práctica personalizado por DeepSeek ─────────────────────────────────
 
-const DEFAULT_PRACTICA_SYSTEM = `Eres un psicómetra experto en preparación de aspirantes para concursos de selección del sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría y entidades territoriales).
+const DEFAULT_PRACTICA_SYSTEM = `Eres un psicómetra experto en preparación de aspirantes para concursos del sector público colombiano (CNSC, Contraloría, Procuraduría, DIAN, Defensoría y entidades territoriales).
 
-Tu tarea: generar un MODO PRÁCTICA personalizado basado en el análisis de errores del aspirante.
+MISIÓN: Generar una práctica personalizada ENFOCADA en las áreas donde el aspirante tuvo más errores.
 
-PROCESO:
-1. Analiza las respuestas del aspirante e identifica las áreas con más errores.
-2. Genera preguntas nuevas enfocadas en esas áreas débiles (formato idéntico al examen original).
-3. Cada pregunta debe abordar el mismo concepto que el aspirante falló, pero desde una situación diferente.
-4. Mantén la arquitectura psicométrica: contexto real (100-150 palabras), enunciado directo, 4 opciones con roles A=correcta B=sentido_común_incorrecto C=norma_mal_aplicada D=extralimitación.
+REGLAS CRÍTICAS:
+1. CONCENTRA el 80% de las preguntas en las áreas débiles indicadas. Las preguntas deben abordar el mismo concepto que el aspirante falló pero desde situaciones nuevas y diferentes.
+2. El 20% restante cubre otras áreas del cargo para mantener la variedad.
+3. Varía la dificultad: 40% fácil, 40% medio, 20% difícil — el aspirante necesita recuperar confianza.
+4. Cada pregunta debe tener contexto real de oficina pública colombiana (100-120 palabras), enunciado directo y 4 opciones con roles psicométricos: A=correcta, B=sentido_común_sin_procedimiento, C=norma_mal_aplicada, D=extralimitación_de_funciones.
+5. NUNCA repitas situaciones del examen original — crea casos nuevos con la misma competencia.
 
-FORMATO OBLIGATORIO (JSON array — sin campos analisis_X para reducir tamaño):
+FORMATO OBLIGATORIO (JSON array):
 [{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","contexto":"...","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","justificacion":"..."}]
 
 Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`
@@ -2183,17 +2184,17 @@ export async function generarModoPractica(req, res) {
     try {
       // 10. Llamada única a Gemini
       const mensaje = `CARGO: ${sim.cargo}
-ÁREA A REFORZAR: ${areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'}
-PREGUNTAS A GENERAR: 15
-RESULTADO ORIGINAL: ${pctError}% de error
+ÁREAS DÉBILES DEL ASPIRANTE (enfoca aquí el 80% de las preguntas): ${areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'}
+PREGUNTAS A GENERAR: 80
+RESULTADO ORIGINAL: ${pctError}% de error en el examen
 ${ctxAnalisis}
 
-Devuelve ÚNICAMENTE el JSON array con exactamente 15 preguntas siguiendo el formato del prompt.`
+Devuelve ÚNICAMENTE el JSON array con exactamente 80 preguntas siguiendo el formato del prompt.`
 
       const promptFinal = `${systemPrompt}\n\n${mensaje}`
       console.log('[P-DEBUG] BG llamando Gemini, prompt length:', promptFinal.length)
       const respuesta = await Promise.race([
-        geminiGenerar(promptFinal),
+        geminiGenerar(promptFinal, null, 'gemini-2.5-flash'),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 120s')), 120_000)),
       ])
       console.log('[P-DEBUG] BG Gemini respondió, texto length:', respuesta.texto?.length)
@@ -2311,7 +2312,7 @@ export async function cerebrosHealth(req, res) {
 
   // Gemini: sin API de billing pública — ping con llamada mínima
   try {
-    const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+    const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
     const result = await model.generateContent('ping')
     results.gemini = { ok: !!result.response.text(), nota: 'pago por uso — sin saldo prepago' }
   } catch (e) {
