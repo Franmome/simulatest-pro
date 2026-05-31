@@ -316,9 +316,12 @@ async function conFallback(modelo, deepFn, gemFn) {
     return { ...r, proveedor_real: modelo }
   } catch (err) {
     const saturado = err?.status === 429
+      || err?.status === 402
       || String(err?.message).includes('429')
+      || String(err?.message).includes('402')
       || String(err?.message).toLowerCase().includes('rate limit')
       || String(err?.message).toLowerCase().includes('too many')
+      || String(err?.message).toLowerCase().includes('insufficient')
     if (!saturado) throw err
     const fallbackNombre = esPrimarioDeep ? 'gemini' : 'deepseek'
     console.warn(`[IA] ${modelo} saturado → cambiando a ${fallbackNombre}`)
@@ -1230,8 +1233,8 @@ INSTRUCCIONES ESPECÍFICAS:
 
     return res.json({ simulacro_id: nueva.id, areas_debiles: areasDebiles, total: preguntas.length })
   } catch (err) {
-    console.error('[IA] generarPracticaDesdeIA:', err)
-    return res.status(500).json({ error: err.message || 'Error generando práctica' })
+    console.error('[Práctica] error final:', err.message)
+    return res.status(500).json({ error: 'No fue posible generar la práctica. Intenta de nuevo en unos segundos.' })
   }
 }
 

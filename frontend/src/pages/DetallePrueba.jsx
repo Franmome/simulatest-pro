@@ -68,7 +68,7 @@ const MODULOS_OPEC = [
   { label: 'Comportamentales', pct: 30 },
 ]
 
-function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = false, progFondo = 0, msgFondo = '', cargoFondo = '', onGenerarPractica, generandoPractica = false, errorPractica = '' }) {
+function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = false, progFondo = 0, msgFondo = '', cargoFondo = '', onGenerarPractica, generandoPractica = false, errorPractica = '', onEnviarAnalisis }) {
   const navigate = useNavigate()
   const [sims,             setSims]             = useState([])
   const [loading,          setLoading]          = useState(true)
@@ -286,7 +286,7 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                   </button>
                 )}
                 <button
-                  onClick={() => enviarAnalisisCuaderno(ultimoAnalisis)}
+                  onClick={() => onEnviarAnalisis?.(ultimoAnalisis)}
                   className="px-3 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold hover:bg-violet-700 transition-colors flex items-center gap-1 active:scale-95"
                   title="Enviar análisis al Cuaderno IA"
                 >
@@ -1679,6 +1679,7 @@ export default function DetallePrueba() {
                     onGenerarPractica={abrirModoPracticaIA}
                     generandoPractica={generandoPractica}
                     errorPractica={errorPractica}
+                    onEnviarAnalisis={enviarAnalisisCuaderno}
                   />
                 </div>
 
