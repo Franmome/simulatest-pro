@@ -44,8 +44,6 @@ const AdminEditor      = lazy(() => import('./pages/admin/AdminEditor'))
 const AdminErrores     = lazy(() => import('./pages/admin/AdminErrores'))
 const AdminIATraining  = lazy(() => import('./pages/admin/AdminIATraining'))
 const AdminTokens      = lazy(() => import('./pages/admin/AdminTokens'))
-const EvaluacionesList = lazy(() => import('./pages/admin/EvaluacionesList'))
-const EvaluacionForm   = lazy(() => import('./pages/admin/EvaluacionForm'))
 
 function AdminFallback() {
   return (
@@ -106,9 +104,7 @@ export default function App() {
           {/* 👑 Panel de administración */}
           <Route path="/admin" element={<PrivateRoute requireAdmin><AdminLayout /></PrivateRoute>}>
             <Route index                          element={<Suspense fallback={<AdminFallback />}><AdminDashboard /></Suspense>} />
-            <Route path="evaluaciones"            element={<Suspense fallback={<AdminFallback />}><EvaluacionesList /></Suspense>} />
-            <Route path="evaluaciones/nueva"      element={<Suspense fallback={<AdminFallback />}><EvaluacionForm /></Suspense>} />
-            <Route path="evaluaciones/:id/editar" element={<Suspense fallback={<AdminFallback />}><EvaluacionForm /></Suspense>} />
+            <Route path="evaluaciones/*"           element={<Navigate to="/admin/paquetes" replace />} />
             <Route path="usuarios"                element={<Suspense fallback={<AdminFallback />}><AdminUsuarios /></Suspense>} />
             <Route path="paquetes"                element={<Suspense fallback={<AdminFallback />}><AdminPaquetes /></Suspense>} />
             <Route path="tesoreria"               element={<Suspense fallback={<AdminFallback />}><AdminTesoreria /></Suspense>} />

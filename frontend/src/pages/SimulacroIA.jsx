@@ -346,122 +346,42 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
           </div>
         ) : !esPractica && errorIA ? null
         : analisis ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
+            {Object.entries(analisis).map(([key, value]) => {
+              if (value === null || value === undefined || value === '') return null
 
-            {/* Nivel de preparación */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${nivelCfg.color}`}>
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{nivelCfg.icon}</span>
-                  {nivelCfg.label}
-                </span>
-              </div>
-              <p className="text-sm leading-relaxed text-on-surface">{toStr(analisis.resumen)}</p>
-            </div>
+              const titulo = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
-            {/* Fortalezas y áreas de mejora */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined text-emerald-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>thumb_up</span>
-                  <p className="font-bold text-emerald-800 text-sm">Fortalezas</p>
-                </div>
-                <ul className="space-y-1.5">
-                  {(analisis.fortalezas || []).map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-emerald-800">
-                      <span className="material-symbols-outlined text-emerald-500 text-sm shrink-0 mt-0.5">check_circle</span>
-                      {toStr(f)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined text-amber-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>priority_high</span>
-                  <p className="font-bold text-amber-800 text-sm">A mejorar</p>
-                </div>
-                <ul className="space-y-1.5">
-                  {(analisis.areas_mejora || []).map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-amber-800">
-                      <span className="material-symbols-outlined text-amber-500 text-sm shrink-0 mt-0.5">warning</span>
-                      {toStr(a)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* Patrón de error */}
-            {analisis.patron_error && (
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-rose-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>pattern</span>
-                  <p className="font-bold text-rose-800 text-sm">Patrón de error detectado</p>
-                </div>
-                <p className="text-xs text-rose-800 leading-relaxed mb-2">{toStr(analisis.patron_error)}</p>
-                {analisis.tipo_distractor_frecuente && analisis.tipo_distractor_frecuente !== 'A' && (
-                  <div className="bg-rose-100 rounded-xl px-3 py-2 flex items-start gap-2">
-                    <span className="font-extrabold text-rose-700 text-sm shrink-0">Opción {toStr(analisis.tipo_distractor_frecuente)}</span>
-                    <span className="text-xs text-rose-700">{DISTRACTOR_DESC[analisis.tipo_distractor_frecuente] || ''} — {toStr(analisis.significado_distractor)}</span>
+              if (Array.isArray(value)) {
+                if (!value.length) return null
+                return (
+                  <div key={key} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-primary">list</span>
+                      {titulo}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {value.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-on-surface leading-relaxed">
+                          <span className="w-4 h-4 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                          {toStr(item)}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                )}
-              </div>
-            )}
+                )
+              }
 
-            {/* Recomendaciones */}
-            {(analisis.recomendaciones || []).length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>school</span>
-                  <p className="font-bold text-sm">Plan de estudio recomendado</p>
+              return (
+                <div key={key} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-primary">info</span>
+                    {titulo}
+                  </p>
+                  <p className="text-sm text-on-surface leading-relaxed">{toStr(value)}</p>
                 </div>
-                <ol className="space-y-2">
-                  {analisis.recomendaciones.map((r, i) => (
-                    <li key={i} className="flex items-start gap-3 text-xs text-on-surface-variant">
-                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
-                      {toStr(r)}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {/* Temas críticos */}
-            {(analisis.temas_criticos || []).length > 0 && (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-slate-500 text-lg">bookmark</span>
-                  <p className="font-bold text-sm text-slate-700">Temas que debes reforzar</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {analisis.temas_criticos.map((t, i) => (
-                    <span key={i} className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs font-semibold text-slate-700">{toStr(t)}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Tiempo */}
-            {analisis.analisis_tiempo && analisis.analisis_tiempo !== 'No medido' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="material-symbols-outlined text-blue-600 text-lg">timer</span>
-                  <p className="font-bold text-blue-800 text-sm">Gestión del tiempo</p>
-                </div>
-                <p className="text-xs text-blue-800 leading-relaxed">{toStr(analisis.analisis_tiempo)}</p>
-              </div>
-            )}
-
-            {/* Mensaje motivacional */}
-            {analisis.mensaje_motivacional && (
-              <div className={`rounded-2xl p-5 text-white text-center ${aprueba ? 'bg-gradient-to-br from-secondary to-[#1a5c20]' : 'bg-gradient-to-br from-primary to-primary-container'}`}>
-                <span className="material-symbols-outlined text-white/70 text-3xl mb-2 block" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                <p className="text-sm font-medium leading-relaxed italic">"{toStr(analisis.mensaje_motivacional)}"</p>
-                <p className="text-white/50 text-xs mt-2">— Praxia</p>
-              </div>
-            )}
-
+              )
+            })}
           </div>
         ) : null}
 

@@ -198,13 +198,6 @@ export default function AdminDashboard() {
               Actualizar
             </button>
 
-            <button
-              onClick={() => navigate('/admin/evaluaciones/nueva')}
-              className="px-6 py-3 rounded-full bg-primary text-on-primary font-bold text-sm shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-sm">add_circle</span>
-              Nuevo paquete
-            </button>
           </div>
         </div>
 

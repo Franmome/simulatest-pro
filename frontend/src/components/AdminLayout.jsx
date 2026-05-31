@@ -180,17 +180,6 @@ export default function AdminLayout() {
         </button>
 
         <button
-          onClick={() => {
-            setSideOpen(false)
-            navigate('/admin/evaluaciones/nueva')
-          }}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold bg-primary text-on-primary hover:bg-primary/90 active:scale-[0.98] transition-all"
-        >
-          <span className="material-symbols-outlined text-[20px]">add_circle</span>
-          <span>+ Nuevo Paquete</span>
-        </button>
-
-        <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-error hover:bg-error/10 transition-all"
         >
@@ -289,13 +278,6 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/admin/evaluaciones/nueva')}
-              className="px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-            >
-              Nuevo paquete
-            </button>
-
             <button
               onClick={() => navigate('/dashboard')}
               className="px-4 py-2 rounded-full border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-all"
