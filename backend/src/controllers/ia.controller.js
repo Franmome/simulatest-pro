@@ -2182,49 +2182,61 @@ export async function generarModoPractica(req, res) {
   setImmediate(async () => {
     console.log('[Práctica-BG] iniciando generación para simulacro:', nuevoId)
     try {
-      // 10. Llamada única a Gemini
-      const mensaje = `CARGO: ${sim.cargo}
-ÁREAS DÉBILES DEL ASPIRANTE (enfoca aquí el 80% de las preguntas): ${areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'}
-PREGUNTAS A GENERAR: 80
-RESULTADO ORIGINAL: ${pctError}% de error en el examen
+      // 10. Dos llamadas secuenciales de 30 preguntas = 60 total (~60s cada una)
+      const areasStr = areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'
+
+      function buildPrompt(n, lote) {
+        return `${systemPrompt}\n\nCARGO: ${sim.cargo}
+ÁREAS DÉBILES (enfoca el 80% aquí): ${areasStr}
+PREGUNTAS A GENERAR: ${n} (lote ${lote}/2 — no repitas situaciones del lote anterior)
+RESULTADO ORIGINAL: ${pctError}% de error
 ${ctxAnalisis}
 
-Devuelve ÚNICAMENTE el JSON array con exactamente 80 preguntas siguiendo el formato del prompt.`
-
-      const promptFinal = `${systemPrompt}\n\n${mensaje}`
-      console.log('[P-DEBUG] BG llamando Gemini, prompt length:', promptFinal.length)
-      const respuesta = await Promise.race([
-        geminiGenerar(promptFinal, null, 'gemini-2.5-flash'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 120s')), 120_000)),
-      ])
-      console.log('[P-DEBUG] BG Gemini respondió, texto length:', respuesta.texto?.length)
-      const cleaned   = (respuesta.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-
-      let parsed = null
-      try { parsed = JSON.parse(cleaned) } catch { /* fallback */ }
-
-      if (!parsed) {
-        const match = cleaned.match(/\[[\s\S]*\]/)
-        if (match) { try { parsed = JSON.parse(match[0]) } catch { /* fallback */ } }
+Devuelve ÚNICAMENTE el JSON array con exactamente ${n} preguntas.`
       }
 
-      if (!parsed) {
-        const rescued = []
-        let depth = 0, start = -1
-        for (let i = 0; i < cleaned.length; i++) {
-          if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
-          else if (cleaned[i] === '}') {
-            depth--
-            if (depth === 0 && start !== -1) {
-              try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
-              start = -1
+      function parsearRespuesta(texto) {
+        const cleaned = (texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        let parsed = null
+        try { parsed = JSON.parse(cleaned) } catch {}
+        if (!parsed) {
+          const match = cleaned.match(/\[[\s\S]*\]/)
+          if (match) { try { parsed = JSON.parse(match[0]) } catch {} }
+        }
+        if (!parsed) {
+          const rescued = []
+          let depth = 0, start = -1
+          for (let i = 0; i < cleaned.length; i++) {
+            if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
+            else if (cleaned[i] === '}') {
+              depth--
+              if (depth === 0 && start !== -1) {
+                try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
+                start = -1
+              }
             }
           }
+          if (rescued.length) parsed = rescued
         }
-        if (rescued.length) parsed = rescued
+        return Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
       }
 
-      const allPreguntas = Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
+      const TIMEOUT_MS = 100_000
+      const race = (fn) => Promise.race([fn(), new Promise((_, r) => setTimeout(() => r(new Error('Gemini timeout 100s')), TIMEOUT_MS))])
+
+      console.log('[P-DEBUG] BG lote 1/2...')
+      const r1 = await race(() => geminiGenerar(buildPrompt(30, 1), null, 'gemini-2.5-flash'))
+      const p1 = parsearRespuesta(r1.texto)
+      console.log('[P-DEBUG] BG lote 1 preguntas:', p1.length)
+
+      console.log('[P-DEBUG] BG lote 2/2...')
+      const r2 = await race(() => geminiGenerar(buildPrompt(30, 2), null, 'gemini-2.5-flash'))
+      const p2 = parsearRespuesta(r2.texto)
+      console.log('[P-DEBUG] BG lote 2 preguntas:', p2.length)
+
+      const allPreguntas = [...p1, ...p2]
+      const totalTIn  = (r1.tokensIn  || 0) + (r2.tokensIn  || 0)
+      const totalTOut = (r1.tokensOut || 0) + (r2.tokensOut || 0)
 
       if (!allPreguntas.length) {
         await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
@@ -2269,7 +2281,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente 80 preguntas siguiendo el for
       }).eq('id', nuevoId)
 
       // 12. Registrar tokens
-      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: respuesta.tokensIn || 0, tokensOut: respuesta.tokensOut || 0, endpoint: 'modo_practica', modelo: 'gemini' })
+      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
 
     } catch (err) {
       console.error('[Práctica-BG] falló:', err.message)
