@@ -286,8 +286,15 @@ export default function Catalogo() {
   }, [])
 
   const { data, loading, error, retry } = useFetch(async () => {
+    let pkgsQuery = supabase.from('packages').select('*').order('created_at')
+    if (user?.role === 'admin') {
+      pkgsQuery = pkgsQuery.or('is_active.eq.true,is_preview.eq.true')
+    } else {
+      pkgsQuery = pkgsQuery.eq('is_active', true)
+    }
+
     const [{ data: pkgs, error: errPkgs }, { data: convs }] = await Promise.all([
-      supabase.from('packages').select('*').eq('is_active', true).order('created_at'),
+      pkgsQuery,
       supabase.from('convocatorias').select('id, nombre'),
     ])
     if (errPkgs) throw new Error(errPkgs.message)

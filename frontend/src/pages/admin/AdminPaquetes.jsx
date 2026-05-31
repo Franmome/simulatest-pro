@@ -204,6 +204,7 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
     duracion_dias:   paquete?.duracion_dias   ?? 30,
     convocatoria_id: paquete?.convocatoria_id ?? '',
     is_active:       paquete?.is_active       ?? false,
+    is_preview:      paquete?.is_preview      ?? false,
     herramientas:    { ...HERRAMIENTAS_DEFAULT, ...(paquete?.herramientas ?? {}) },
   })
 
@@ -308,6 +309,8 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
       duracion_dias:   Number(form.duracion_dias) || 30,
       convocatoria_id: form.convocatoria_id || null,
       is_active:       form.is_active,
+      is_preview:      form.is_preview || false,
+      has_ai_chat:     form.herramientas?.simulacros?.activo || false,
       herramientas:    form.herramientas,
     }
 
@@ -411,6 +414,20 @@ function ModalPaquete({ paquete, convocatorias, onClose, onSaved }) {
                 className={`w-12 h-6 rounded-full transition-colors relative ${form.is_active ? 'bg-primary' : 'bg-outline-variant'}`}
               >
                 <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${form.is_active ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <div>
+                <p className="text-sm font-medium text-amber-800">Vista previa admin</p>
+                <p className="text-xs text-amber-600">Solo administradores pueden ver y probar este paquete</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, is_preview: !f.is_preview }))}
+                className={`w-10 h-6 rounded-full transition-colors ${form.is_preview ? 'bg-amber-500' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${form.is_preview ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
           </section>
