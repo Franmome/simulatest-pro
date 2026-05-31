@@ -2067,8 +2067,8 @@ PROCESO:
 3. Cada pregunta debe abordar el mismo concepto que el aspirante falló, pero desde una situación diferente.
 4. Mantén la arquitectura psicométrica: contexto real (100-150 palabras), enunciado directo, 4 opciones con roles A=correcta B=sentido_común_incorrecto C=norma_mal_aplicada D=extralimitación.
 
-FORMATO OBLIGATORIO (JSON array):
-[{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","bloom":"I|II|III","contexto":"...","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","justificacion":"...","analisis_A":"...","analisis_B":"...","analisis_C":"...","analisis_D":"..."}]
+FORMATO OBLIGATORIO (JSON array — sin campos analisis_X para reducir tamaño):
+[{"area":"...","tipo":"funcional|comportamental","dificultad":"facil|medio|dificil","contexto":"...","enunciado":"...","A":"...","B":"...","C":"...","D":"...","correcta":"A|B|C|D","justificacion":"..."}]
 
 Devuelve ÚNICAMENTE el array JSON válido, sin markdown ni texto adicional.`
 
@@ -2184,17 +2184,17 @@ export async function generarModoPractica(req, res) {
       // 10. Llamada única a Gemini
       const mensaje = `CARGO: ${sim.cargo}
 ÁREA A REFORZAR: ${areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'}
-PREGUNTAS A GENERAR: 40
+PREGUNTAS A GENERAR: 15
 RESULTADO ORIGINAL: ${pctError}% de error
 ${ctxAnalisis}
 
-Devuelve ÚNICAMENTE el JSON array con exactamente 40 preguntas siguiendo el formato del prompt.`
+Devuelve ÚNICAMENTE el JSON array con exactamente 15 preguntas siguiendo el formato del prompt.`
 
       const promptFinal = `${systemPrompt}\n\n${mensaje}`
       console.log('[P-DEBUG] BG llamando Gemini, prompt length:', promptFinal.length)
       const respuesta = await Promise.race([
         geminiGenerar(promptFinal),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 90s')), 90_000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 120s')), 120_000)),
       ])
       console.log('[P-DEBUG] BG Gemini respondió, texto length:', respuesta.texto?.length)
       const cleaned   = (respuesta.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
