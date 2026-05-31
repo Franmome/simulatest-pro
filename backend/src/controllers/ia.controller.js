@@ -1151,6 +1151,7 @@ ${preg.filter(p=>!p.es_correcta).slice(0,8).map((p,i)=>`- ${p.area||'General'} |
 
 export async function generarPracticaDesdeIA(req, res) {
   try {
+    console.log('[Práctica-DEBUG] iniciando:', { simulacro_id: req.body.simulacro_id, evaluacion_id: req.body.evaluacion_id, user_id: req.user?.id })
     const userId = req.user.id
     const { simulacro_id } = req.body
 
@@ -1234,6 +1235,7 @@ INSTRUCCIONES ESPECÍFICAS:
     return res.json({ simulacro_id: nueva.id, areas_debiles: areasDebiles, total: preguntas.length })
   } catch (err) {
     console.error('[Práctica] error final:', err.message)
+    console.error('[Práctica-DEBUG] error completo:', err.message, err.stack?.split('\n')[1])
     return res.status(500).json({ error: 'No fue posible generar la práctica. Intenta de nuevo en unos segundos.' })
   }
 }
