@@ -2116,7 +2116,7 @@ export async function generarModoPractica(req, res) {
 
   // 5. Total a generar — al menos 20, máx 60 para caber en ~90s (BATCH=5/PARALLEL=3)
   const srcCount    = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
-  const totalTarget = srcCount || 20
+  const totalTarget = Math.max(20, Math.round(srcCount * 0.5))
 
   // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'gemini')
@@ -2162,8 +2162,16 @@ export async function generarModoPractica(req, res) {
 
   // 9. Función de generación por lote
   async function generarLote(lote) {
-    const bloqueRef = lote.refPregs.length
-      ? `\nREFERENCIA DE ESTILO (${lote.refPregs.length} pregunta/s del área — replica nivel y formato):\n${JSON.stringify(lote.refPregs)}`
+    const refSimplificadas = lote.refPregs.slice(0, 2).map(p => ({
+      enunciado: (p.enunciado || p.pregunta || '').slice(0, 300),
+      A: (p.A || p.opcion_a || '').slice(0, 150),
+      B: (p.B || p.opcion_b || '').slice(0, 150),
+      C: (p.C || p.opcion_c || '').slice(0, 150),
+      D: (p.D || p.opcion_d || '').slice(0, 150),
+      correcta: p.correcta || p.respuesta_correcta || 'A',
+    }))
+    const bloqueRef = refSimplificadas.length
+      ? `REFERENCIA DE ESTILO:\n${JSON.stringify(refSimplificadas, null, 0)}`
       : ''
     const prompt = `${systemPrompt}
 
@@ -2239,6 +2247,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
   // Continuar generación en background
   setImmediate(async () => {
+    console.log('[Práctica-BG] iniciando generación para simulacro:', nuevoId)
     try {
       // 10. Generar en oleadas paralelas
       const allPreguntas = []
@@ -2302,9 +2311,9 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
       // 12. Registrar tokens
       await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
 
-    } catch (bgErr) {
-      console.error('[Práctica] background error:', bgErr.message)
-      await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId).catch(() => {})
+    } catch (err) {
+      console.error('[Práctica-BG] falló:', err.message)
+      await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
     }
   })
 
