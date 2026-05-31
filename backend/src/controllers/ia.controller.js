@@ -2150,92 +2150,6 @@ export async function generarModoPractica(req, res) {
     ? `ANÁLISIS IA: nivel ${an.nivel_preparacion || 'N/A'} · patrón de error: ${an.patron_error || 'N/A'} · temas críticos: ${(an.temas_criticos || []).join(', ') || 'N/A'} · distractor frecuente: opción ${an.tipo_distractor_frecuente || 'N/A'}`
     : ''
 
-  // 8. Construir lotes — distribuir totalTarget entre áreas débiles
-  // BATCH=5: cada pregunta con contexto+justificacion+analisis×4 ≈ 1200-1400 tokens → 5×1400=7000, margen seguro
-  const BATCH    = 5
-  const PARALLEL = 3
-  const lotes    = []
-
-  if (!areasDebiles.length) {
-    // Sin áreas claras: lotes generales
-    for (let r = totalTarget; r > 0; r -= BATCH)
-      lotes.push({ n: Math.min(BATCH, r), area: 'General', refPregs: [] })
-  } else {
-    // Distribuir preguntas entre áreas débiles proporcionalmente
-    const basePerArea = Math.floor(totalTarget / areasDebiles.length)
-    const extra       = totalTarget % areasDebiles.length
-    areasDebiles.forEach((area, idx) => {
-      const cuota = basePerArea + (idx < extra ? 1 : 0)
-      // 2 preguntas de referencia del área (estilo y nivel)
-      const ref = (pregsPorArea[area] || Object.values(pregsPorArea)[0] || [])
-        .slice(0, 2)
-        .map(p => ({ area: p.area, tipo: p.tipo, dificultad: p.dificultad, bloom: p.bloom,
-                     enunciado: p.enunciado, A: p.A, B: p.B, C: p.C, D: p.D, correcta: p.correcta }))
-      for (let r = cuota; r > 0; r -= BATCH)
-        lotes.push({ n: Math.min(BATCH, r), area, refPregs: ref })
-    })
-  }
-
-  console.log('[P-DEBUG] paso8 lotes:', lotes?.length)
-  // 9. Función de generación por lote
-  async function generarLote(lote) {
-    const refSimplificadas = lote.refPregs.slice(0, 2).map(p => ({
-      enunciado: (p.enunciado || p.pregunta || '').slice(0, 300),
-      A: (p.A || p.opcion_a || '').slice(0, 150),
-      B: (p.B || p.opcion_b || '').slice(0, 150),
-      C: (p.C || p.opcion_c || '').slice(0, 150),
-      D: (p.D || p.opcion_d || '').slice(0, 150),
-      correcta: p.correcta || p.respuesta_correcta || 'A',
-    }))
-    const bloqueRef = refSimplificadas.length
-      ? `REFERENCIA DE ESTILO:\n${JSON.stringify(refSimplificadas, null, 0)}`
-      : ''
-    const datoLote = `CARGO: ${sim.cargo}
-ÁREA A REFORZAR: ${lote.area}
-PREGUNTAS A GENERAR: ${lote.n}
-RESULTADO ORIGINAL: ${pctError}% de error
-${ctxAnalisis}
-${bloqueRef}
-
-Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
-
-    const r = await geminiGenerar(datoLote, systemPrompt)
-    const cleaned = (r.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-    let parsed = null
-    try { parsed = JSON.parse(cleaned) } catch { /* continúa con fallbacks */ }
-
-    if (!parsed) {
-      // Intento 1: extraer array completo con regex
-      const match = cleaned.match(/\[[\s\S]*\]/)
-      if (match) {
-        try { parsed = JSON.parse(match[0]) } catch { /* continúa */ }
-      }
-    }
-
-    if (!parsed) {
-      // Intento 2: rescatar objetos individuales completos aunque el array esté truncado
-      const rescued = []
-      let depth = 0, start = -1
-      for (let i = 0; i < cleaned.length; i++) {
-        if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
-        else if (cleaned[i] === '}') {
-          depth--
-          if (depth === 0 && start !== -1) {
-            try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
-            start = -1
-          }
-        }
-      }
-      if (rescued.length) {
-        console.warn(`[Práctica] JSON truncado — rescatadas ${rescued.length}/${lote.n} preguntas`)
-        return { preguntas: rescued, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
-      }
-      throw new Error('sin JSON array ni objetos rescatables')
-    }
-
-    const arr = Array.isArray(parsed) ? parsed : (parsed.preguntas || parsed.questions || [])
-    return { preguntas: arr, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
-  }
 
   console.log('[P-DEBUG] paso9 iniciando INSERT')
   // 11. INSERT previo — responder inmediatamente mientras se genera en fondo
@@ -2266,22 +2180,43 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
   setImmediate(async () => {
     console.log('[Práctica-BG] iniciando generación para simulacro:', nuevoId)
     try {
-      // 10. Generar en oleadas paralelas
-      const allPreguntas = []
-      let totalTIn = 0, totalTOut = 0
-      for (let i = 0; i < lotes.length; i += PARALLEL) {
-        const wave = lotes.slice(i, i + PARALLEL)
-        const resultados = await Promise.allSettled(wave.map(l => generarLote(l)))
-        for (const r of resultados) {
-          if (r.status === 'fulfilled') {
-            allPreguntas.push(...r.value.preguntas)
-            totalTIn  += r.value.tokensIn
-            totalTOut += r.value.tokensOut
-          } else {
-            console.error('[Práctica] lote error:', r.reason?.message, r.reason?.stack?.split('\n')[1])
+      // 10. Llamada única a Gemini
+      const mensaje = `CARGO: ${sim.cargo}
+ÁREA A REFORZAR: ${areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'}
+PREGUNTAS A GENERAR: 40
+RESULTADO ORIGINAL: ${pctError}% de error
+${ctxAnalisis}
+
+Devuelve ÚNICAMENTE el JSON array con exactamente 40 preguntas siguiendo el formato del prompt.`
+
+      const respuesta = await geminiGenerar(mensaje, systemPrompt)
+      const cleaned   = (respuesta.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+
+      let parsed = null
+      try { parsed = JSON.parse(cleaned) } catch { /* fallback */ }
+
+      if (!parsed) {
+        const match = cleaned.match(/\[[\s\S]*\]/)
+        if (match) { try { parsed = JSON.parse(match[0]) } catch { /* fallback */ } }
+      }
+
+      if (!parsed) {
+        const rescued = []
+        let depth = 0, start = -1
+        for (let i = 0; i < cleaned.length; i++) {
+          if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
+          else if (cleaned[i] === '}') {
+            depth--
+            if (depth === 0 && start !== -1) {
+              try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
+              start = -1
+            }
           }
         }
+        if (rescued.length) parsed = rescued
       }
+
+      const allPreguntas = Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
 
       if (!allPreguntas.length) {
         await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
@@ -2326,7 +2261,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
       }).eq('id', nuevoId)
 
       // 12. Registrar tokens
-      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
+      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: respuesta.tokensIn || 0, tokensOut: respuesta.tokensOut || 0, endpoint: 'modo_practica', modelo: 'gemini' })
 
     } catch (err) {
       console.error('[Práctica-BG] falló:', err.message)

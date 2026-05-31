@@ -2718,25 +2718,24 @@ export default function DetallePrueba() {
                   className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
                   {practicaGenerada ? 'Cancelar' : 'Cancelar'}
                 </button>
-                {practicaGenerada && !pollingPractica ? (
+                {pollingPractica ? (
+                  <div className="flex items-center justify-center gap-3 py-4 flex-1">
+                    <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm text-gray-600">Generando práctica personalizada...</p>
+                  </div>
+                ) : practicaGenerada?.total > 0 ? (
                   <button onClick={iniciarPractica}
                     className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
                     Iniciar práctica
                   </button>
-                ) : pollingPractica ? (
-                  <div className="flex-1 flex flex-col items-center gap-2 py-2">
-                    <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm font-medium text-gray-700">Generando tu práctica personalizada...</p>
-                    <p className="text-xs text-gray-500">Esto puede tomar 1-2 minutos. Puedes cerrar este modal.</p>
-                  </div>
-                ) : (
+                ) : !practicaGenerada ? (
                   <button onClick={confirmarGenerarPractica}
                     className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
                     Generar práctica
                   </button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
