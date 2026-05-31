@@ -2123,11 +2123,20 @@ export async function generarModoPractica(req, res) {
 
   // 7. Agrupar preguntas originales por área (para referencia de estilo por lote)
   const pregsPorArea = {}
-  ;(sim.preguntas || []).forEach(p => {
-    const a = p.area || 'General'
-    if (!pregsPorArea[a]) pregsPorArea[a] = []
-    pregsPorArea[a].push(p)
-  })
+  for (const p of (sim.preguntas || [])) {
+    const area = p.area || 'General'
+    if (!pregsPorArea[area]) pregsPorArea[area] = []
+    if (pregsPorArea[area].length < 2) {
+      pregsPorArea[area].push({
+        enunciado: (p.enunciado || p.pregunta || '').slice(0, 200),
+        A: (p.A || '').slice(0, 100),
+        B: (p.B || '').slice(0, 100),
+        C: (p.C || '').slice(0, 100),
+        D: (p.D || '').slice(0, 100),
+        correcta: p.correcta || 'A',
+      })
+    }
+  }
 
   // Contexto de análisis IA (va en todos los lotes)
   const ctxAnalisis = an
