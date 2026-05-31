@@ -2102,6 +2102,7 @@ export async function generarModoPractica(req, res) {
   const balance = await checkTokenBalance(userId, compra.id, isAdmin)
   if (!balance.ok) return res.status(402).json({ error: `Tokens de IA agotados (${balance.used.toLocaleString()} / ${balance.limit.toLocaleString()} usados).`, tokens_agotados: true })
 
+  console.log('[P-DEBUG] paso4 areas debiles ok')
   // 4. Calcular áreas débiles
   const an = analisisGuardado?.analisis
   let areasDebiles = [], pctError = 0
@@ -2118,9 +2119,11 @@ export async function generarModoPractica(req, res) {
   const srcCount    = (sim.preguntas || []).length || sim.cantidad_preguntas || 20
   const totalTarget = Math.max(20, Math.round(srcCount * 0.5))
 
+  console.log('[P-DEBUG] paso5 totalTarget:', totalTarget)
   // 6. Prompt configurable del admin panel
   const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'gemini')
 
+  console.log('[P-DEBUG] paso6 prompt cargado, length:', systemPrompt?.length)
   // 7. Agrupar preguntas originales por área (para referencia de estilo por lote)
   const pregsPorArea = {}
   for (const p of (sim.preguntas || [])) {
@@ -2138,6 +2141,7 @@ export async function generarModoPractica(req, res) {
     }
   }
 
+  console.log('[P-DEBUG] paso7 areas:', Object.keys(pregsPorArea))
   // Contexto de análisis IA (va en todos los lotes)
   const ctxAnalisis = an
     ? `ANÁLISIS IA: nivel ${an.nivel_preparacion || 'N/A'} · patrón de error: ${an.patron_error || 'N/A'} · temas críticos: ${(an.temas_criticos || []).join(', ') || 'N/A'} · distractor frecuente: opción ${an.tipo_distractor_frecuente || 'N/A'}`
@@ -2169,6 +2173,7 @@ export async function generarModoPractica(req, res) {
     })
   }
 
+  console.log('[P-DEBUG] paso8 lotes:', lotes?.length)
   // 9. Función de generación por lote
   async function generarLote(lote) {
     const refSimplificadas = lote.refPregs.slice(0, 2).map(p => ({
@@ -2230,6 +2235,7 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
     return { preguntas: arr, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 }
   }
 
+  console.log('[P-DEBUG] paso9 iniciando INSERT')
   // 11. INSERT previo — responder inmediatamente mientras se genera en fondo
   const evalId = evaluacion_id || sim.evaluacion_id
   const { data: simulacroPrevio, error: insErrPrevio } = await supabase
