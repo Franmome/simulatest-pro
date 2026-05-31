@@ -1287,9 +1287,6 @@ export default function DetallePrueba() {
     try {
       const result = await generarModoPractica({ simulacro_id: practicaPreflight.simulacroId, evaluacion_id: parseInt(id) })
       if (result.status === 'generando') {
-        setPracticaGenerada(result)
-        setPracticaCantidad(0)
-        setPracticaTiempo(90)
         setGenerandoPractica(false)
         setPollingPractica(true)
         iniciarPollingPractica(result.simulacro_id)
@@ -2534,6 +2531,19 @@ export default function DetallePrueba() {
                     {PRACTICA_STEPS.map((_, i) => (
                       <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i <= practicaStep ? 'bg-secondary' : 'bg-slate-200'}`} />
                     ))}
+                  </div>
+                </div>
+              ) : pollingPractica ? (
+                /* ── Generando en background ── */
+                <div className="flex flex-col items-center justify-center py-10 gap-4">
+                  <div className="relative w-14 h-14">
+                    <div className="absolute inset-0 rounded-full border-4 border-secondary/20" />
+                    <div className="absolute inset-0 rounded-full border-4 border-secondary border-t-transparent animate-spin" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-sm text-on-surface">Generando tu práctica personalizada...</p>
+                    <p className="text-xs text-on-surface-variant mt-1">Praxia está analizando tus errores. Esto puede tomar 1-2 minutos.</p>
+                    <p className="text-xs text-on-surface-variant mt-1">Puedes cerrar este modal — te notificaremos cuando esté lista.</p>
                   </div>
                 </div>
               ) : practicaGenerada ? (

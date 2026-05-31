@@ -2189,7 +2189,8 @@ ${ctxAnalisis}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente 40 preguntas siguiendo el formato del prompt.`
 
-      const respuesta = await geminiGenerar(mensaje, systemPrompt)
+      const promptFinal = `${systemPrompt}\n\n${mensaje}`
+      const respuesta = await geminiGenerar(promptFinal)
       const cleaned   = (respuesta.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
       let parsed = null
