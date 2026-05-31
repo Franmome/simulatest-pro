@@ -2123,8 +2123,9 @@ export async function generarModoPractica(req, res) {
   const totalTarget = Math.max(20, Math.round(srcCount * 0.5))
 
   console.log('[P-DEBUG] paso5 totalTarget:', totalTarget)
-  // 6. Prompt configurable del admin panel
-  const systemPrompt = await getPrompt('modo_practica', DEFAULT_PRACTICA_SYSTEM, 'gemini')
+  // 6. Prompt — usar siempre DEFAULT_PRACTICA_SYSTEM para evitar prompt equivocado en DB
+  const dbPrompt = await getPrompt('modo_practica', '', 'gemini')
+  const systemPrompt = (dbPrompt && dbPrompt.length < 5000) ? dbPrompt : DEFAULT_PRACTICA_SYSTEM
 
   console.log('[P-DEBUG] paso6 prompt cargado, length:', systemPrompt?.length)
   // 7. Agrupar preguntas originales por área (para referencia de estilo por lote)
@@ -2190,7 +2191,12 @@ ${ctxAnalisis}
 Devuelve ÚNICAMENTE el JSON array con exactamente 40 preguntas siguiendo el formato del prompt.`
 
       const promptFinal = `${systemPrompt}\n\n${mensaje}`
-      const respuesta = await geminiGenerar(promptFinal)
+      console.log('[P-DEBUG] BG llamando Gemini, prompt length:', promptFinal.length)
+      const respuesta = await Promise.race([
+        geminiGenerar(promptFinal),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 90s')), 90_000)),
+      ])
+      console.log('[P-DEBUG] BG Gemini respondió, texto length:', respuesta.texto?.length)
       const cleaned   = (respuesta.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
       let parsed = null
