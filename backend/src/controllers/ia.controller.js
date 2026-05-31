@@ -253,8 +253,11 @@ function formatError(err) {
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
-async function geminiGenerar(parts) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+async function geminiGenerar(parts, systemInstruction = null) {
+  const modelConfig = systemInstruction
+    ? { model: 'gemini-2.5-flash-lite', systemInstruction }
+    : { model: 'gemini-2.5-flash-lite' }
+  const model  = genAI.getGenerativeModel(modelConfig)
   const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
   const usage  = result.response.usageMetadata
   return {
@@ -2187,17 +2190,16 @@ export async function generarModoPractica(req, res) {
     const bloqueRef = refSimplificadas.length
       ? `REFERENCIA DE ESTILO:\n${JSON.stringify(refSimplificadas, null, 0)}`
       : ''
-    const prompt = `${systemPrompt}
-
-CARGO: ${sim.cargo}
-ÁREA A REFORZAR EN ESTE LOTE: ${lote.area}
+    const datoLote = `CARGO: ${sim.cargo}
+ÁREA A REFORZAR: ${lote.area}
 PREGUNTAS A GENERAR: ${lote.n}
 RESULTADO ORIGINAL: ${pctError}% de error
-${ctxAnalisis}${bloqueRef}
+${ctxAnalisis}
+${bloqueRef}
 
 Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas.`
 
-    const r = await geminiGenerar(prompt)
+    const r = await geminiGenerar(datoLote, systemPrompt)
     const cleaned = (r.texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
     let parsed = null
     try { parsed = JSON.parse(cleaned) } catch { /* continúa con fallbacks */ }
