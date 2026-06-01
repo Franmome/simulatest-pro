@@ -14,14 +14,19 @@ const ALLOWED_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'image/png', 'image/jpeg', 'image/webp',
+  'application/msword',
+  'text/plain', 'text/markdown', 'text/csv', 'text/x-markdown',
+  'image/png', 'image/jpeg', 'image/webp', 'image/gif',
 ]
+const ALLOWED_EXTS = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.txt', '.md', '.csv', '.png', '.jpg', '.jpeg', '.webp', '.gif']
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_TYPES.includes(file.mimetype)) cb(null, true)
-    else cb(new Error(`Tipo de archivo no soportado: ${file.mimetype}`))
+    const ext = '.' + (file.originalname || '').split('.').pop().toLowerCase()
+    if (ALLOWED_TYPES.includes(file.mimetype) || ALLOWED_EXTS.includes(ext)) cb(null, true)
+    else cb(new Error(`Tipo de archivo no soportado. Acepta: PDF, Word, Excel, TXT, MD, CSV, imágenes.`))
   },
 })
 

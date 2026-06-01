@@ -39,6 +39,16 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 // Imagen: Chat Completions base64 vision. Word/Excel: mammoth/SheetJS local.
 async function extraerContenido(buffer, mimetype, originalname) {
 
+  // Texto plano / Markdown / CSV → leer directamente como UTF-8
+  if (mimetype.startsWith('text/') || originalname.match(/\.(txt|md|csv)$/i)) {
+    return buffer.toString('utf8').slice(0, 200_000).trim() || null
+  }
+
+  // Word .doc antiguo → mammoth también lo maneja
+  if (mimetype === 'application/msword' || originalname.endsWith('.doc')) {
+    try { const { value } = await mammoth.extractRawText({ buffer }); return value?.trim() || null } catch { return null }
+  }
+
   // Word → mammoth (texto puro, cero RAM)
   if (mimetype.includes('wordprocessingml') || originalname.endsWith('.docx')) {
     const { value } = await mammoth.extractRawText({ buffer })
@@ -143,27 +153,37 @@ async function isAdmin(userId) {
   return data?.role === 'admin'
 }
 
-async function buildContexto(packageId, userId) {
+// selectedIds: array de {id, origen:'admin'|'user'} — si vacío, incluye todos
+async function buildContexto(packageId, userId, selectedIds = null) {
   const [{ data: adminSrcs }, { data: userSrcs }] = await Promise.all([
-    supabase.from('package_cuaderno_fuentes').select('nombre, texto')
+    supabase.from('package_cuaderno_fuentes').select('id, nombre, texto')
       .eq('package_id', packageId).order('created_at', { ascending: true }),
-    supabase.from('user_cuaderno_fuentes').select('nombre, texto')
+    supabase.from('user_cuaderno_fuentes').select('id, nombre, texto')
       .eq('user_id', userId).eq('package_id', packageId)
-      .order('created_at', { ascending: false }).limit(5),
+      .order('created_at', { ascending: false }).limit(20),
   ])
+
+  // Filtrar por selección si viene del frontend
+  let adminFiltradas = adminSrcs || []
+  let userFiltradas  = userSrcs  || []
+  if (selectedIds && selectedIds.length > 0) {
+    const adminIds = selectedIds.filter(s => s.origen === 'admin').map(s => s.id)
+    const userIds  = selectedIds.filter(s => s.origen === 'user' ).map(s => s.id)
+    adminFiltradas = adminFiltradas.filter(s => adminIds.includes(s.id))
+    userFiltradas  = userFiltradas.filter(s => userIds.includes(s.id))
+  }
 
   const partes = []
 
-  if (adminSrcs?.length) {
-    // Distribuir presupuesto de 25K chars entre todos los materiales admin
-    const charsPorFuente = Math.floor(25000 / adminSrcs.length)
+  if (adminFiltradas.length) {
+    const charsPorFuente = Math.floor(30000 / adminFiltradas.length)
     partes.push(
-      `Material base del paquete:\n${adminSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, charsPorFuente)}`).join('\n\n')}`
+      `Material base del paquete:\n${adminFiltradas.map(s => `【${s.nombre}】:\n${s.texto.slice(0, charsPorFuente)}`).join('\n\n')}`
     )
   }
 
-  if (userSrcs?.length)
-    partes.push(`Documentos personales del usuario:\n${userSrcs.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 15000)}`).join('\n\n')}`)
+  if (userFiltradas.length)
+    partes.push(`Documentos personales del usuario:\n${userFiltradas.map(s => `【${s.nombre}】:\n${s.texto.slice(0, 20000)}`).join('\n\n')}`)
 
   return partes.length ? partes.join('\n\n') : 'Material aún no cargado para este paquete.'
 }
@@ -171,7 +191,7 @@ async function buildContexto(packageId, userId) {
 // ── POST /api/cuaderno/:packageId/chat ────────────────────────────────────────
 export const chatCuaderno = async (req, res) => {
   const packageId = parseInt(req.params.packageId)
-  const { mensaje } = req.body
+  const { mensaje, selectedFuenteIds } = req.body
   const userId = req.user.id
 
   if (!mensaje?.trim()) return res.status(400).json({ error: 'Mensaje vacío.' })
@@ -184,7 +204,7 @@ export const chatCuaderno = async (req, res) => {
 
   const [{ data: pkg }, contexto] = await Promise.all([
     supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
-    buildContexto(packageId, userId),
+    buildContexto(packageId, userId, selectedFuenteIds || null),
   ])
 
   const { data: hist } = await supabase
@@ -345,7 +365,7 @@ Genera entre 3 y 5 módulos progresivos.`,
 
 export const generarArtefacto = async (req, res) => {
   const packageId = parseInt(req.params.packageId)
-  const { tipo } = req.body
+  const { tipo, selectedFuenteIds } = req.body
   const userId = req.user.id
 
   if (!PROMPTS[tipo]) return res.status(400).json({ error: 'Tipo inválido.' })
@@ -356,7 +376,7 @@ export const generarArtefacto = async (req, res) => {
 
   const [{ data: pkg }, contexto] = await Promise.all([
     supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
-    buildContexto(packageId, userId),
+    buildContexto(packageId, userId, selectedFuenteIds || null),
   ])
 
   let raw

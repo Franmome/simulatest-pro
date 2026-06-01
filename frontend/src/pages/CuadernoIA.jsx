@@ -1175,9 +1175,10 @@ export default function CuadernoIA() {
 
   const finalizarTour = () => { localStorage.setItem(TOUR_KEY, '1'); setTourActivo(false) }
 
-  // Fuentes
-  const [fuentes,      setFuentes]      = useState([])
-  const [subiendo,     setSubiendo]     = useState(false)
+  // Fuentes y selección
+  const [fuentes,             setFuentes]             = useState([])
+  const [fuentesSeleccionadas,setFuentesSeleccionadas] = useState(new Set()) // Set de "id:origen"
+  const [subiendo,            setSubiendo]             = useState(false)
   const [errorSubida,  setErrorSubida]  = useState('')
   const [ytUrl,        setYtUrl]        = useState('')
   const [agregandoYt,  setAgregandoYt]  = useState(false)
@@ -1220,7 +1221,12 @@ export default function CuadernoIA() {
     ])
     if (histRes.ok)    { const d = await histRes.json();    setMensajes(d.mensajes || []) }
     if (notasRes.ok)   { const d = await notasRes.json();   setNotas(d.notas || []) }
-    if (fuentesRes.ok) { const d = await fuentesRes.json(); setFuentes([...(d.admin || []), ...(d.user || [])]) }
+    if (fuentesRes.ok) {
+      const d = await fuentesRes.json()
+      const todas = [...(d.admin || []), ...(d.user || [])]
+      setFuentes(todas)
+      setFuentesSeleccionadas(new Set(todas.map(f => `${f.id}:${f.origen}`)))
+    }
     if (pkgRes.data)   setPkgNombre(pkgRes.data.name)
 
     const tokRes = await fetch(`${BASE}/api/cuaderno/${packageId}/tokens`, { headers: h })
@@ -1241,7 +1247,7 @@ export default function CuadernoIA() {
     try {
       const h = await hdrs()
       const res  = await fetch(`${BASE}/api/cuaderno/${packageId}/chat`, {
-        method: 'POST', headers: h, body: JSON.stringify({ mensaje: msg }),
+        method: 'POST', headers: h, body: JSON.stringify({ mensaje: msg, selectedFuenteIds: getSelectedFuenteIds() }),
       })
       const data = await res.json()
       if (!res.ok) { setChatErr(data.error || 'Error.'); return }
@@ -1283,7 +1289,7 @@ export default function CuadernoIA() {
     try {
       const h = await hdrs()
       const res  = await fetch(`${BASE}/api/cuaderno/${packageId}/generar`, {
-        method: 'POST', headers: h, body: JSON.stringify({ tipo }),
+        method: 'POST', headers: h, body: JSON.stringify({ tipo, selectedFuenteIds: getSelectedFuenteIds() }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -1310,6 +1316,7 @@ export default function CuadernoIA() {
       const data = await res.json()
       if (res.ok) {
         setFuentes(prev => [...prev, data.fuente])
+        setFuentesSeleccionadas(prev => new Set([...prev, `${data.fuente.id}:${data.fuente.origen}`]))
       } else {
         setErrorSubida(data.error || 'Error al subir el archivo.')
         setTimeout(() => setErrorSubida(''), 6000)
@@ -1331,7 +1338,11 @@ export default function CuadernoIA() {
         method: 'POST', headers: h, body: JSON.stringify({ url: ytUrl.trim() }),
       })
       const data = await res.json()
-      if (res.ok) { setFuentes(prev => [...prev, data.fuente]); setYtUrl('') }
+      if (res.ok) {
+        setFuentes(prev => [...prev, data.fuente])
+        setFuentesSeleccionadas(prev => new Set([...prev, `${data.fuente.id}:${data.fuente.origen}`]))
+        setYtUrl('')
+      }
       else { setErrorSubida(data.error || 'Error al agregar el video.'); setTimeout(() => setErrorSubida(''), 6000) }
     } catch { setErrorSubida('Error de conexión.'); setTimeout(() => setErrorSubida(''), 6000) }
     setAgregandoYt(false)
@@ -1339,8 +1350,25 @@ export default function CuadernoIA() {
 
   async function eliminarFuente(id) {
     setFuentes(prev => prev.filter(f => f.id !== id || f.origen !== 'user'))
+    setFuentesSeleccionadas(prev => { const s = new Set(prev); s.delete(`${id}:user`); return s })
     const h = await hdrs()
     await fetch(`${BASE}/api/cuaderno/${packageId}/fuentes/${id}`, { method: 'DELETE', headers: h })
+  }
+
+  function toggleFuente(id, origen) {
+    const key = `${id}:${origen}`
+    setFuentesSeleccionadas(prev => {
+      const s = new Set(prev)
+      if (s.has(key)) s.delete(key); else s.add(key)
+      return s
+    })
+  }
+
+  function getSelectedFuenteIds() {
+    return [...fuentesSeleccionadas].map(k => {
+      const [id, origen] = k.split(':')
+      return { id: Number(id), origen }
+    })
   }
 
   // ── Notas ──
@@ -1651,7 +1679,7 @@ export default function CuadernoIA() {
 
           {/* Botón agregar fuentes */}
           <div className="px-3 pt-3 pb-2 flex-shrink-0">
-            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp" className="hidden"
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.gif" className="hidden"
               onChange={e => e.target.files?.[0] && subirPDF(e.target.files[0])} />
             <button onClick={() => fileRef.current?.click()} disabled={subiendo}
               className="w-full flex items-center justify-center gap-2 bg-[#2d2e34] hover:bg-[#35363d] text-[#e3e4e8] font-semibold text-sm py-2.5 rounded-full transition-all disabled:opacity-50 border border-[#4a4b52]">
@@ -1694,17 +1722,24 @@ export default function CuadernoIA() {
             {fuentesAdmin.length > 0 && (
               <div data-tour="fuentes-admin">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e9099] px-2 py-2">Del paquete</p>
-                {fuentesAdmin.map(f => (
-                  <button key={f.id} onClick={() => setModalFuente(f)}
-                    className="w-full flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors group">
-                    <span className="material-symbols-outlined text-red-500 text-base flex-shrink-0"
-                          style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
-                    <span className="truncate flex-1 text-[13px] text-[#e3e4e8]">{f.title}</span>
-                    <span className="w-4 h-4 rounded-sm border border-[#81c995] flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-[#81c995]" style={{ fontSize: '12px', fontVariationSettings: "'FILL' 1" }}>check</span>
-                    </span>
-                  </button>
-                ))}
+                {fuentesAdmin.map(f => {
+                  const sel = fuentesSeleccionadas.has(`${f.id}:admin`)
+                  return (
+                    <div key={f.id} className="flex items-center gap-1.5">
+                      <button onClick={() => setModalFuente(f)}
+                        className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
+                        <span className="material-symbols-outlined text-red-500 text-base flex-shrink-0"
+                              style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
+                        <span className="truncate text-[13px] text-[#e3e4e8]">{f.title || f.nombre}</span>
+                      </button>
+                      <button onClick={() => toggleFuente(f.id, 'admin')}
+                        className={`w-5 h-5 rounded flex-shrink-0 border flex items-center justify-center transition-all ${sel ? 'bg-[#81c995] border-[#81c995]' : 'border-[#4a4b52] bg-transparent hover:border-[#81c995]'}`}
+                        title={sel ? 'Quitar del contexto' : 'Incluir en contexto'}>
+                        {sel && <span className="material-symbols-outlined text-[#1a1b1e]" style={{ fontSize: '12px', fontVariationSettings: "'FILL' 1" }}>check</span>}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
@@ -1715,22 +1750,30 @@ export default function CuadernoIA() {
                 {fuentesUser.length === 0 && (
                   <p className="text-[11px] text-[#8e9099] italic px-2 py-1">Sube un archivo o pega un video de YouTube.</p>
                 )}
-                {fuentesUser.map(f => (
-                  <div key={f.id} className="flex items-center gap-1.5 group">
-                    <button onClick={() => setModalFuente(f)}
-                      className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
-                      <span className={`material-symbols-outlined text-base flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-400'}`}
-                            style={{ fontVariationSettings: "'FILL' 1" }}>
-                        {f.tipo === 'youtube' ? 'smart_display' : 'description'}
-                      </span>
-                      <span className="truncate text-[13px] text-[#e3e4e8]">{f.nombre}</span>
-                    </button>
-                    <button onClick={() => eliminarFuente(f.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-red-400 hover:bg-red-900/20 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                    </button>
-                  </div>
-                ))}
+                {fuentesUser.map(f => {
+                  const sel = fuentesSeleccionadas.has(`${f.id}:user`)
+                  return (
+                    <div key={f.id} className="flex items-center gap-1.5 group">
+                      <button onClick={() => setModalFuente(f)}
+                        className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
+                        <span className={`material-symbols-outlined text-base flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-400'}`}
+                              style={{ fontVariationSettings: "'FILL' 1" }}>
+                          {f.tipo === 'youtube' ? 'smart_display' : 'description'}
+                        </span>
+                        <span className="truncate text-[13px] text-[#e3e4e8]">{f.nombre}</span>
+                      </button>
+                      <button onClick={() => toggleFuente(f.id, 'user')}
+                        className={`w-5 h-5 rounded flex-shrink-0 border flex items-center justify-center transition-all ${sel ? 'bg-[#81c995] border-[#81c995]' : 'border-[#4a4b52] bg-transparent hover:border-[#81c995]'}`}
+                        title={sel ? 'Quitar del contexto' : 'Incluir en contexto'}>
+                        {sel && <span className="material-symbols-outlined text-[#1a1b1e]" style={{ fontSize: '12px', fontVariationSettings: "'FILL' 1" }}>check</span>}
+                      </button>
+                      <button onClick={() => eliminarFuente(f.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-[#8e9099] hover:text-red-400 hover:bg-red-900/20 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
+                        <span className="material-symbols-outlined text-sm">close</span>
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
