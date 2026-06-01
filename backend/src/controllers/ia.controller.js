@@ -2182,61 +2182,62 @@ export async function generarModoPractica(req, res) {
   setImmediate(async () => {
     console.log('[Práctica-BG] iniciando generación para simulacro:', nuevoId)
     try {
-      // 10. Dos llamadas secuenciales de 30 preguntas = 60 total (~60s cada una)
+      // 10. Mismo patrón que generarSimulacroPersonal: BATCH=20, PARALLEL=3 → 3 lotes de 20 = 60 preguntas
+      const BATCH    = 20
+      const PARALLEL = 3
       const areasStr = areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'
 
-      function buildPrompt(n, lote) {
-        return `${systemPrompt}\n\nCARGO: ${sim.cargo}
-ÁREAS DÉBILES (enfoca el 80% aquí): ${areasStr}
-PREGUNTAS A GENERAR: ${n} (lote ${lote}/2 — no repitas situaciones del lote anterior)
+      const lotes = [
+        { n: 20, idx: 1 },
+        { n: 20, idx: 2 },
+        { n: 20, idx: 3 },
+      ]
+
+      async function generarLotePractica(lote) {
+        const prompt = `${systemPrompt}\n\nCARGO: ${sim.cargo}
+ÁREAS DÉBILES DEL ASPIRANTE (enfoca el 80% de las preguntas aquí): ${areasStr}
+PREGUNTAS A GENERAR: ${lote.n}
 RESULTADO ORIGINAL: ${pctError}% de error
 ${ctxAnalisis}
 
-Devuelve ÚNICAMENTE el JSON array con exactamente ${n} preguntas.`
+Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas. No repitas situaciones de otros lotes.`
+        return geminiGenerar(prompt)
       }
 
-      function parsearRespuesta(texto) {
-        const cleaned = (texto || '').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-        let parsed = null
-        try { parsed = JSON.parse(cleaned) } catch {}
-        if (!parsed) {
-          const match = cleaned.match(/\[[\s\S]*\]/)
-          if (match) { try { parsed = JSON.parse(match[0]) } catch {} }
-        }
-        if (!parsed) {
-          const rescued = []
-          let depth = 0, start = -1
-          for (let i = 0; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') { if (depth === 0) start = i; depth++ }
-            else if (cleaned[i] === '}') {
-              depth--
-              if (depth === 0 && start !== -1) {
-                try { rescued.push(JSON.parse(cleaned.slice(start, i + 1))) } catch {}
-                start = -1
+      const allPreguntas = []
+      let totalTIn = 0, totalTOut = 0
+
+      for (let i = 0; i < lotes.length; i += PARALLEL) {
+        const wave = lotes.slice(i, i + PARALLEL)
+        console.log('[P-DEBUG] BG wave', Math.floor(i / PARALLEL) + 1, '— lotes:', wave.map(l => l.idx))
+        const resultados = await Promise.allSettled(wave.map(l => generarLotePractica(l)))
+        for (const r of resultados) {
+          if (r.status === 'fulfilled') {
+            try {
+              const texto   = r.value.texto || ''
+              const cleaned = texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+              let parsed = null
+              try { parsed = JSON.parse(cleaned) } catch {}
+              if (!parsed) { const m = cleaned.match(/\[[\s\S]*\]/); if (m) try { parsed = JSON.parse(m[0]) } catch {} }
+              if (!parsed) {
+                const rescued = []; let depth = 0, start = -1
+                for (let j = 0; j < cleaned.length; j++) {
+                  if (cleaned[j] === '{') { if (depth === 0) start = j; depth++ }
+                  else if (cleaned[j] === '}') { depth--; if (depth === 0 && start !== -1) { try { rescued.push(JSON.parse(cleaned.slice(start, j + 1))) } catch {} start = -1 } }
+                }
+                if (rescued.length) parsed = rescued
               }
-            }
+              const arr = Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
+              allPreguntas.push(...arr)
+              totalTIn  += r.value.tokensIn  || 0
+              totalTOut += r.value.tokensOut || 0
+              console.log('[P-DEBUG] BG lote ok, preguntas acumuladas:', allPreguntas.length)
+            } catch (pe) { console.error('[P-DEBUG] BG parse error:', pe.message) }
+          } else {
+            console.error('[P-DEBUG] BG lote falló:', r.reason?.message)
           }
-          if (rescued.length) parsed = rescued
         }
-        return Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
       }
-
-      const TIMEOUT_MS = 100_000
-      const race = (fn) => Promise.race([fn(), new Promise((_, r) => setTimeout(() => r(new Error('Gemini timeout 100s')), TIMEOUT_MS))])
-
-      console.log('[P-DEBUG] BG lote 1/2...')
-      const r1 = await race(() => geminiGenerar(buildPrompt(30, 1), null, 'gemini-2.5-flash'))
-      const p1 = parsearRespuesta(r1.texto)
-      console.log('[P-DEBUG] BG lote 1 preguntas:', p1.length)
-
-      console.log('[P-DEBUG] BG lote 2/2...')
-      const r2 = await race(() => geminiGenerar(buildPrompt(30, 2), null, 'gemini-2.5-flash'))
-      const p2 = parsearRespuesta(r2.texto)
-      console.log('[P-DEBUG] BG lote 2 preguntas:', p2.length)
-
-      const allPreguntas = [...p1, ...p2]
-      const totalTIn  = (r1.tokensIn  || 0) + (r2.tokensIn  || 0)
-      const totalTOut = (r1.tokensOut || 0) + (r2.tokensOut || 0)
 
       if (!allPreguntas.length) {
         await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
