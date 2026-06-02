@@ -10,6 +10,18 @@ import { analizarResultadoSimulacro } from '../utils/gemini'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function shuffleOpciones(pregunta) {
+  const letras = ['A', 'B', 'C', 'D']
+  const shuffled = [...letras].sort(() => Math.random() - 0.5)
+  const mapaNuevo = {}
+  let nuevaCorrecta = pregunta.correcta
+  letras.forEach((letra, i) => {
+    mapaNuevo[letra] = pregunta[shuffled[i]]
+    if (shuffled[i] === pregunta.correcta) nuevaCorrecta = letra
+  })
+  return { ...pregunta, A: mapaNuevo['A'], B: mapaNuevo['B'], C: mapaNuevo['C'], D: mapaNuevo['D'], correcta: nuevaCorrecta }
+}
+
 function shuffleArray(arr) {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -528,8 +540,8 @@ export default function SimulacroIA() {
       setTiempoPorPregunta(tpp)
 
       let lista = modoExamen
-        ? data.preguntas.map((p, i) => parsearPregunta(p, i))   // examen: orden original
-        : shuffleArray(data.preguntas.map((p, i) => parsearPregunta(p, i)))
+        ? data.preguntas.map((p, i) => parsearPregunta(shuffleOpciones(p), i))
+        : shuffleArray(data.preguntas.map((p, i) => parsearPregunta(shuffleOpciones(p), i)))
       if (preStart?.cantidad > 0 && preStart.cantidad < lista.length) {
         lista = lista.slice(0, preStart.cantidad)
       }

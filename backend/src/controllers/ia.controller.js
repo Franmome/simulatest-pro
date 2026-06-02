@@ -2285,7 +2285,7 @@ Genera exactamente ${POR_LOTE} preguntas siguiendo el formato JSON del prompt.`
         B:                p.opciones?.B       || p.B               || '',
         C:                p.opciones?.C       || p.C               || '',
         D:                p.opciones?.D       || p.D               || '',
-        correcta:         p.respuesta_correcta || p.correcta       || 'A',
+        correcta:         p.respuesta_correcta || p.correcta || p.respuesta || p.answer || p.opciones?.correcta || 'A',
         justificacion:    p.justificacion     || p.explicacion     || '',
         area:             p.trazabilidad?.tema || p.area           || areasStr,
         dificultad:       p.base?.dificultad  || p.dificultad      || 'medio',
@@ -2298,11 +2298,13 @@ Genera exactamente ${POR_LOTE} preguntas siguiendo el formato JSON del prompt.`
         analisis_D:       p.analisis_D        || p.opciones_analisis?.D || '',
       })).filter(p => p.enunciado && p.A && p.B)
 
+      const limited = normalized.slice(0, 150)
+
       await supabase.from('user_simulacros')
-        .update({ preguntas: normalized, cantidad_preguntas: normalized.length, status: 'listo' })
+        .update({ preguntas: limited, cantidad_preguntas: limited.length, status: 'listo' })
         .eq('id', nuevoId)
 
-      console.log('[Práctica-BG] completado:', normalized.length, 'preguntas')
+      console.log('[Práctica-BG] completado:', limited.length, 'preguntas')
       await recordTokenUsage({ userId, purchaseId: compra?.id || null, tokensIn: 0, tokensOut: 0, endpoint: 'modo_practica', modelo: 'gemini' })
 
     } catch (err) {
