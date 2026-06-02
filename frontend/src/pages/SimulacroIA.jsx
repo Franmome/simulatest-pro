@@ -13,13 +13,14 @@ import { analizarResultadoSimulacro } from '../utils/gemini'
 function shuffleOpciones(pregunta) {
   const letras = ['A', 'B', 'C', 'D']
   const shuffled = [...letras].sort(() => Math.random() - 0.5)
-  const mapaNuevo = {}
+  const nuevasOpciones = {}
   let nuevaCorrecta = pregunta.correcta
-  letras.forEach((letra, i) => {
-    mapaNuevo[letra] = pregunta[shuffled[i]]
-    if (shuffled[i] === pregunta.correcta) nuevaCorrecta = letra
+  shuffled.forEach((letraOriginal, i) => {
+    const letraNueva = letras[i]
+    nuevasOpciones[letraNueva] = pregunta[letraOriginal]
+    if (letraOriginal === pregunta.correcta) nuevaCorrecta = letraNueva
   })
-  return { ...pregunta, A: mapaNuevo['A'], B: mapaNuevo['B'], C: mapaNuevo['C'], D: mapaNuevo['D'], correcta: nuevaCorrecta }
+  return { ...pregunta, ...nuevasOpciones, correcta: nuevaCorrecta }
 }
 
 function shuffleArray(arr) {
@@ -323,11 +324,10 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
 
   const [verDetalle, setVerDetalle] = useState(false)
   const [analisis,   setAnalisis]   = useState(null)
-  const [cargandoIA, setCargandoIA] = useState(!esPractica)
+  const [cargandoIA, setCargandoIA] = useState(true)
   const [errorIA,    setErrorIA]    = useState(null)
 
   useEffect(() => {
-    if (esPractica) return  // práctica tiene retro por pregunta — no lanzar análisis global
     const pregParaAnalisis = preguntas.map((p, i) => ({
       area:           p.area || 'General',
       tipo:           p.tipo || 'funcional',
