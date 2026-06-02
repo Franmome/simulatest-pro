@@ -2542,17 +2542,42 @@ export default function DetallePrueba() {
                   </div>
                 </div>
               ) : pollingPractica ? (
-                /* ── Generando en background ── */
-                <div className="flex flex-col items-center justify-center py-10 gap-4">
-                  <div className="relative w-14 h-14">
-                    <div className="absolute inset-0 rounded-full border-4 border-secondary/20" />
-                    <div className="absolute inset-0 rounded-full border-4 border-secondary border-t-transparent animate-spin" />
+                /* ── Generando en background — diseño prominente ── */
+                <div className="flex flex-col items-center justify-center py-8 gap-5 px-2">
+                  {/* Spinner grande con ícono IA */}
+                  <div className="relative w-20 h-20">
+                    <div className="absolute inset-0 rounded-full border-[5px] border-secondary/15" />
+                    <div className="absolute inset-0 rounded-full border-[5px] border-secondary border-t-transparent animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-secondary text-2xl animate-pulse"
+                        style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="font-bold text-sm text-on-surface">Generando tu práctica personalizada...</p>
-                    <p className="text-xs text-on-surface-variant mt-1">Praxia está analizando tus errores. Esto puede tomar 1-2 minutos.</p>
-                    <p className="text-xs text-on-surface-variant mt-1">Puedes cerrar este modal — te notificaremos cuando esté lista.</p>
+
+                  {/* Texto */}
+                  <div className="text-center space-y-1">
+                    <p className="font-extrabold text-base text-on-surface">Praxia está creando tu práctica</p>
+                    <p className="text-xs text-on-surface-variant">Analizando tus errores y generando preguntas personalizadas</p>
                   </div>
+
+                  {/* Barra de progreso continua */}
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-secondary/40 via-secondary to-secondary/40 animate-[shimmer_2s_ease-in-out_infinite]"
+                      style={{ width: '60%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                  </div>
+
+                  <p className="text-[11px] text-on-surface-variant text-center leading-relaxed max-w-xs">
+                    Este proceso toma entre <strong>5 y 10 minutos</strong>.<br/>
+                    Puedes cerrar esta ventana y seguir navegando.
+                  </p>
+
+                  {/* Botón principal */}
+                  <button
+                    onClick={() => setShowPracticaModal(false)}
+                    className="w-full py-3 rounded-full bg-secondary text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary/90 active:scale-95 transition-all">
+                    <span className="material-symbols-outlined text-sm">picture_in_picture</span>
+                    Trabajar en segundo plano
+                  </button>
                 </div>
               ) : practicaGenerada ? (
                 /* ── Pantalla de configuración post-generación ── */
@@ -2732,22 +2757,14 @@ export default function DetallePrueba() {
             {/* Footer */}
             {!loadingPreflight && !generandoPractica && (practicaPreflight || practicaGenerada || pollingPractica) && (
               <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-                <button onClick={() => { setShowPracticaModal(false); setPracticaGenerada(null) }}
-                  className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
-                  {practicaGenerada ? 'Cancelar' : 'Cancelar'}
-                </button>
-                {pollingPractica ? (
-                  <div className="flex-1 px-4 py-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3.5 h-3.5 border-2 border-secondary border-t-transparent rounded-full animate-spin shrink-0" />
-                      <p className="text-xs font-bold text-secondary">Praxia está generando tu práctica personalizada...</p>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full w-full bg-gradient-to-r from-secondary via-secondary/70 to-secondary rounded-full animate-pulse" />
-                    </div>
-                    <p className="text-[10px] text-on-surface-variant text-center">Puedes navegar libremente, te notificaremos cuando esté lista.</p>
-                  </div>
-                ) : practicaGenerada?.total > 0 ? (
+                {pollingPractica ? null : (
+                  <button onClick={() => { setShowPracticaModal(false); setPracticaGenerada(null) }}
+                    className="flex-1 py-2.5 rounded-full border-2 border-slate-200 text-sm font-bold text-on-surface-variant hover:bg-slate-50 transition-all">
+                    Cancelar
+                  </button>
+                )}
+                {pollingPractica ? null
+                : practicaGenerada?.total > 0 ? (
                   <button onClick={iniciarPractica}
                     className="flex-1 py-2.5 rounded-full bg-gradient-to-r from-secondary to-secondary/80 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30">
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>

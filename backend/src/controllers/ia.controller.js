@@ -2279,16 +2279,23 @@ Genera exactamente ${POR_LOTE} preguntas siguiendo el formato JSON del prompt.`
       }
 
       const normalized = allPreguntas.map(p => ({
-        enunciado:       p.pregunta       || p.enunciado      || p.enunciado_completo || '',
-        A:               p.opciones?.A    || p.A              || '',
-        B:               p.opciones?.B    || p.B              || '',
-        C:               p.opciones?.C    || p.C              || '',
-        D:               p.opciones?.D    || p.D              || '',
-        correcta:        p.respuesta_correcta || p.correcta   || 'A',
-        justificacion:   p.justificacion  || p.explicacion    || '',
-        area:            p.trazabilidad?.tema || p.area       || areasStr,
-        dificultad:      p.base?.dificultad  || p.dificultad  || 'medio',
-        tipo_competencia: p.tipo_competencia || 'funcional',
+        enunciado:        p.pregunta          || p.enunciado       || p.enunciado_completo || '',
+        contexto:         p.contexto          || null,
+        A:                p.opciones?.A       || p.A               || '',
+        B:                p.opciones?.B       || p.B               || '',
+        C:                p.opciones?.C       || p.C               || '',
+        D:                p.opciones?.D       || p.D               || '',
+        correcta:         p.respuesta_correcta || p.correcta       || 'A',
+        justificacion:    p.justificacion     || p.explicacion     || '',
+        area:             p.trazabilidad?.tema || p.area           || areasStr,
+        dificultad:       p.base?.dificultad  || p.dificultad      || 'medio',
+        tipo_competencia: p.tipo_competencia  || 'funcional',
+        tip:              p.tip               || '',
+        repasar:          p.repasar           || '',
+        analisis_A:       p.analisis_A        || p.opciones_analisis?.A || '',
+        analisis_B:       p.analisis_B        || p.opciones_analisis?.B || '',
+        analisis_C:       p.analisis_C        || p.opciones_analisis?.C || '',
+        analisis_D:       p.analisis_D        || p.opciones_analisis?.D || '',
       })).filter(p => p.enunciado && p.A && p.B)
 
       await supabase.from('user_simulacros')
