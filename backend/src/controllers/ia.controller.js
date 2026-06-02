@@ -2176,6 +2176,7 @@ export async function generarModoPractica(req, res) {
   const nuevoId = simulacroPrevio.id
 
   const areasStr = areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'
+  const answers  = respuestas  // alias para el closure del setImmediate
 
   // Responder inmediatamente al frontend
   res.json({ simulacro_id: nuevoId, total: 0, areas_cubiertas: [], status: 'generando' })
