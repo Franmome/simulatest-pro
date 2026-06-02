@@ -311,25 +311,35 @@ async function deepseekGenerar(prompt, maxTokens = 8192) {
   return { texto: r.choices[0].message.content, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
 }
 
-// Si el proveedor principal da 429/rate-limit, cambia al otro automáticamente
+// Si el proveedor principal da 429/rate-limit, cambia al otro automáticamente.
+// Reintenta hasta 3 veces con delay exponencial en 503/alta demanda.
 async function conFallback(modelo, deepFn, gemFn) {
-  const esPrimarioDeep = modelo === 'deepseek'
-  try {
-    const r = await (esPrimarioDeep ? deepFn() : gemFn())
-    return { ...r, proveedor_real: modelo }
-  } catch (err) {
-    const saturado = err?.status === 429
-      || err?.status === 402
-      || String(err?.message).includes('429')
-      || String(err?.message).includes('402')
-      || String(err?.message).toLowerCase().includes('rate limit')
-      || String(err?.message).toLowerCase().includes('too many')
-      || String(err?.message).toLowerCase().includes('insufficient')
-    if (!saturado) throw err
-    const fallbackNombre = esPrimarioDeep ? 'gemini' : 'deepseek'
-    console.warn(`[IA] ${modelo} saturado → cambiando a ${fallbackNombre}`)
-    const r = await (esPrimarioDeep ? gemFn() : deepFn())
-    return { ...r, proveedor_real: fallbackNombre }
+  const fn         = modelo === 'deepseek' ? deepFn : gemFn
+  const fallbackFn = modelo === 'deepseek' ? gemFn  : null
+
+  for (let intento = 1; intento <= 3; intento++) {
+    try {
+      const r = await fn()
+      return { ...r, proveedor_real: modelo }
+    } catch (err) {
+      const msg   = String(err?.message || '')
+      const is503 = msg.includes('503') || msg.toLowerCase().includes('high demand') || msg.toLowerCase().includes('fetch failed')
+      const is402 = err?.status === 402 || msg.includes('402') || msg.toLowerCase().includes('insufficient')
+
+      if (is402 && fallbackFn) {
+        console.warn(`[conFallback] ${modelo} falló (402), usando Gemini como fallback`)
+        const r = await fallbackFn()
+        return { ...r, proveedor_real: 'gemini' }
+      }
+
+      if (is503 && intento < 3) {
+        console.warn(`[conFallback] Gemini 503 — intento ${intento}/3, esperando ${intento * 5}s...`)
+        await new Promise(r => setTimeout(r, intento * 5000))
+        continue
+      }
+
+      throw err
+    }
   }
 }
 
