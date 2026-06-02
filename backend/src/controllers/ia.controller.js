@@ -2182,60 +2182,77 @@ export async function generarModoPractica(req, res) {
   setImmediate(async () => {
     console.log('[Práctica-BG] iniciando generación para simulacro:', nuevoId)
     try {
-      // 10. Mismo patrón que generarSimulacroPersonal: BATCH=20, PARALLEL=3 → 3 lotes de 20 = 60 preguntas
-      const BATCH    = 20
-      const PARALLEL = 3
-      const areasStr = areasDebiles.length > 0 ? areasDebiles.join(', ') : 'General'
+      const TOTAL    = 150
+      const LOTES    = 5
+      const POR_LOTE = 30
 
-      const lotes = [
-        { n: 20, idx: 1 },
-        { n: 20, idx: 2 },
-        { n: 20, idx: 3 },
-      ]
+      const allPreguntas = []
+      let acumFunc = 0, acumComp = 0
+      let acumA = 0, acumB = 0, acumC = 0, acumD = 0
 
-      async function generarLotePractica(lote) {
-        const prompt = `${systemPrompt}\n\nCARGO: ${sim.cargo}
-ÁREAS DÉBILES DEL ASPIRANTE (enfoca el 80% de las preguntas aquí): ${areasStr}
-PREGUNTAS A GENERAR: ${lote.n}
+      for (let i = 1; i <= LOTES; i++) {
+        const faltanFunc = Math.ceil(TOTAL / 2) - acumFunc
+        const faltanComp = Math.ceil(TOTAL / 2) - acumComp
+        const funcEste   = Math.min(POR_LOTE / 2, faltanFunc)
+        const compEste   = Math.min(POR_LOTE / 2, faltanComp)
+
+        const mensaje = `numero_lote: ${i}
+total_lotes: ${LOTES}
+preguntas_por_lote: ${POR_LOTE}
+funcionales_a_generar_en_este_lote: ${funcEste}
+comportamentales_a_generar_en_este_lote: ${compEste}
+acumulado_funcionales: ${acumFunc}
+acumulado_comportamentales: ${acumComp}
+faltantes_funcionales: ${faltanFunc}
+faltantes_comportamentales: ${faltanComp}
+distribucion_claves_preferida: A:${acumA}, B:${acumB}, C:${acumC}, D:${acumD}
+dificultad_objetivo: adaptativa
+temas_prioritarios: ${areasStr}
+competencias_debiles: ${areasStr}
+preguntas_falladas_disponibles: ${answers?.length || 0}
+preguntas_acertadas_disponibles: 0
+
+CARGO: ${sim.cargo}
 RESULTADO ORIGINAL: ${pctError}% de error
 ${ctxAnalisis}
 
-Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas. No repitas situaciones de otros lotes.`
-        return geminiGenerar(prompt)
-      }
+Genera exactamente ${POR_LOTE} preguntas siguiendo el formato JSON del prompt.`
 
-      const allPreguntas = []
-      let totalTIn = 0, totalTOut = 0
+        try {
+          const respuesta = await geminiGenerar(mensaje, systemPrompt)
+          const textoRaw  = respuesta.texto || ''
 
-      for (let i = 0; i < lotes.length; i += PARALLEL) {
-        const wave = lotes.slice(i, i + PARALLEL)
-        console.log('[P-DEBUG] BG wave', Math.floor(i / PARALLEL) + 1, '— lotes:', wave.map(l => l.idx))
-        const resultados = await Promise.allSettled(wave.map(l => generarLotePractica(l)))
-        for (const r of resultados) {
-          if (r.status === 'fulfilled') {
-            try {
-              const texto   = r.value.texto || ''
-              const cleaned = texto.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-              let parsed = null
-              try { parsed = JSON.parse(cleaned) } catch {}
-              if (!parsed) { const m = cleaned.match(/\[[\s\S]*\]/); if (m) try { parsed = JSON.parse(m[0]) } catch {} }
-              if (!parsed) {
-                const rescued = []; let depth = 0, start = -1
-                for (let j = 0; j < cleaned.length; j++) {
-                  if (cleaned[j] === '{') { if (depth === 0) start = j; depth++ }
-                  else if (cleaned[j] === '}') { depth--; if (depth === 0 && start !== -1) { try { rescued.push(JSON.parse(cleaned.slice(start, j + 1))) } catch {} start = -1 } }
-                }
-                if (rescued.length) parsed = rescued
-              }
-              const arr = Array.isArray(parsed) ? parsed : (parsed?.preguntas || parsed?.questions || [])
-              allPreguntas.push(...arr)
-              totalTIn  += r.value.tokensIn  || 0
-              totalTOut += r.value.tokensOut || 0
-              console.log('[P-DEBUG] BG lote ok, preguntas acumuladas:', allPreguntas.length)
-            } catch (pe) { console.error('[P-DEBUG] BG parse error:', pe.message) }
-          } else {
-            console.error('[P-DEBUG] BG lote falló:', r.reason?.message)
+          let parsed = []
+          try {
+            const clean = textoRaw.replace(/```json|```/g, '').trim()
+            const obj   = JSON.parse(clean)
+            parsed = obj.preguntas_practica || obj
+          } catch {
+            const match = textoRaw.match(/\[[\s\S]*\]/)
+            if (match) { try { parsed = JSON.parse(match[0]) } catch {} }
           }
+
+          if (Array.isArray(parsed) && parsed.length) {
+            allPreguntas.push(...parsed)
+            parsed.forEach(p => {
+              if (p.tipo_competencia === 'funcional') acumFunc++
+              else acumComp++
+              const c = (p.respuesta_correcta || '').toUpperCase()
+              if (c === 'A') acumA++
+              else if (c === 'B') acumB++
+              else if (c === 'C') acumC++
+              else if (c === 'D') acumD++
+            })
+          }
+
+          // UPDATE parcial después de cada lote
+          await supabase.from('user_simulacros')
+            .update({ preguntas: allPreguntas, cantidad_preguntas: allPreguntas.length, status: 'generando' })
+            .eq('id', nuevoId)
+
+          console.log(`[Práctica-BG] lote ${i}/${LOTES} ok — total: ${allPreguntas.length} preguntas`)
+        } catch (errLote) {
+          console.error(`[Práctica-BG] lote ${i} falló:`, errLote.message)
         }
       }
 
@@ -2244,45 +2261,25 @@ Devuelve ÚNICAMENTE el JSON array con exactamente ${lote.n} preguntas. No repit
         return
       }
 
-      // 10b. Normalizar campos
-      const normalized = allPreguntas.map(p => {
-        const getOpt = k => p[k] || p[k.toLowerCase()] || ''
-        const correcta = (p.correcta || p.respuesta_correcta || 'A').toUpperCase()
-        return {
-          area:        p.area        || 'General',
-          tipo:        p.tipo        || 'funcional',
-          dificultad:  p.dificultad  || 'medio',
-          bloom:       p.bloom       || null,
-          estado:      p.estado      || null,
-          contexto:    p.contexto    || null,
-          enunciado:   p.enunciado   || p.pregunta || p.question || '',
-          A:           getOpt('A'),
-          B:           getOpt('B'),
-          C:           getOpt('C'),
-          D:           getOpt('D'),
-          correcta,
-          justificacion:   p.justificacion   || p.justification || p.explicacion || '',
-          analisis_A:      p.analisis_A      || p.analisis_a    || null,
-          analisis_B:      p.analisis_B      || p.analisis_b    || null,
-          analisis_C:      p.analisis_C      || p.analisis_c    || null,
-          analisis_D:      p.analisis_D      || p.analisis_d    || null,
-        }
-      }).filter(p => p.enunciado && p.A && p.B)
+      const normalized = allPreguntas.map(p => ({
+        enunciado:       p.pregunta       || p.enunciado      || p.enunciado_completo || '',
+        A:               p.opciones?.A    || p.A              || '',
+        B:               p.opciones?.B    || p.B              || '',
+        C:               p.opciones?.C    || p.C              || '',
+        D:               p.opciones?.D    || p.D              || '',
+        correcta:        p.respuesta_correcta || p.correcta   || 'A',
+        justificacion:   p.justificacion  || p.explicacion    || '',
+        area:            p.trazabilidad?.tema || p.area       || areasStr,
+        dificultad:      p.base?.dificultad  || p.dificultad  || 'medio',
+        tipo_competencia: p.tipo_competencia || 'funcional',
+      })).filter(p => p.enunciado && p.A && p.B)
 
-      if (!normalized.length) {
-        await supabase.from('user_simulacros').update({ status: 'error' }).eq('id', nuevoId)
-        return
-      }
+      await supabase.from('user_simulacros')
+        .update({ preguntas: normalized, cantidad_preguntas: normalized.length, status: 'listo' })
+        .eq('id', nuevoId)
 
-      // 11. UPDATE con preguntas generadas
-      await supabase.from('user_simulacros').update({
-        preguntas:          normalized,
-        cantidad_preguntas: normalized.length,
-        status:             'listo',
-      }).eq('id', nuevoId)
-
-      // 12. Registrar tokens
-      await recordTokenUsage({ userId, purchaseId: compra.id, tokensIn: totalTIn, tokensOut: totalTOut, endpoint: 'modo_practica', modelo: 'gemini' })
+      console.log('[Práctica-BG] completado:', normalized.length, 'preguntas')
+      await recordTokenUsage({ userId, purchaseId: compra?.id || null, tokensIn: 0, tokensOut: 0, endpoint: 'modo_practica', modelo: 'gemini' })
 
     } catch (err) {
       console.error('[Práctica-BG] falló:', err.message)
