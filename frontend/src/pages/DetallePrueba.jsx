@@ -197,6 +197,10 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
       {ultimoAnalisis && (() => {
         const an = ultimoAnalisis.analisis || {}
         const ok = ultimoAnalisis.score_pct >= 70
+        const resumenTexto = an.resumen || an.fortalezas?.[0] || ''
+        const textoMostrar = typeof resumenTexto === 'object'
+          ? (resumenTexto.fortaleza || resumenTexto.texto || resumenTexto.descripcion || JSON.stringify(resumenTexto))
+          : String(resumenTexto || '')
         return (
           <div className="mb-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white">
             {/* Barra de color superior */}
@@ -251,16 +255,26 @@ function TabSimulacrosIA({ evaluacionId, userId, recargar, generandoEnFondo = fa
                 </div>
               )}
 
-              {/* Fortalezas */}
-              {an.fortalezas?.length > 0 && (
+              {/* Fortalezas / Resumen */}
+              {(an.fortalezas?.length > 0 || textoMostrar) && (
                 <div className="mt-2">
-                  <div className="flex flex-wrap gap-1">
-                    {an.fortalezas.slice(0, 2).map((f, i) => (
-                      <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">
-                        {toStr(f)}
-                      </span>
-                    ))}
-                  </div>
+                  {textoMostrar && !an.fortalezas?.length && (
+                    <p className="text-[11px] text-emerald-700 leading-relaxed line-clamp-2">{textoMostrar}</p>
+                  )}
+                  {an.fortalezas?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {an.fortalezas.slice(0, 2).map((f, i) => {
+                        const txt = typeof f === 'object'
+                          ? (f.fortaleza || f.texto || f.descripcion || f.nombre || JSON.stringify(f))
+                          : String(f || '')
+                        return (
+                          <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">
+                            {txt}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1237,16 +1251,26 @@ export default function DetallePrueba() {
   }
 
   async function enviarAnalisisCuaderno(ultimoAn) {
-    const an = ultimoAn?.analisis || {}
-    const { data: compras } = await supabase
-      .from('purchases')
-      .select('package_id, packages(id, name, herramientas)')
-      .eq('user_id', user.id)
-      .in('status', ['active', 'manual'])
+    if (!user) { navigate('/login'); return }
 
-    const paquetes = (compras || [])
-      .map(c => c.packages)
-      .filter(p => p?.herramientas?.cuaderno?.activo)
+    let paquetes = []
+
+    if (user.role === 'admin') {
+      const { data: pkgs } = await supabase
+        .from('packages')
+        .select('id, name, herramientas')
+        .eq('is_active', true)
+      paquetes = (pkgs || []).filter(p => p?.herramientas?.cuaderno?.activo)
+    } else {
+      const { data: compras } = await supabase
+        .from('purchases')
+        .select('package_id, packages(id, name, herramientas)')
+        .eq('user_id', user.id)
+        .in('status', ['active', 'manual'])
+      paquetes = (compras || [])
+        .map(c => c.packages)
+        .filter(p => p?.herramientas?.cuaderno?.activo)
+    }
 
     setModalCuaderno({ paquetes, enviando: false, enviado: false, analisis: ultimoAn })
   }
