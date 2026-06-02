@@ -704,6 +704,8 @@ export default function DetallePrueba() {
   const [practicaCantidad,  setPracticaCantidad]  = useState(0)
   const [practicaTiempo,    setPracticaTiempo]    = useState(90)
   const [pollingPractica,   setPollingPractica]   = useState(false)
+  const [toastPractica,     setToastPractica]     = useState(null)  // { simulacro_id, total }
+  const pollingIntervalRef = useRef(null)
 
   const PRACTICA_STEPS = [
     { icon: 'psychology',    text: 'Leyendo tu último simulacro…' },
@@ -1313,20 +1315,26 @@ export default function DetallePrueba() {
         const data = await res.json()
         if (data.status === 'listo') {
           clearInterval(interval)
+          pollingIntervalRef.current = null
           setPollingPractica(false)
-          setPracticaGenerada({ simulacro_id: simulacroId, total: data.cantidad_preguntas })
+          const practica = { simulacro_id: simulacroId, total: data.cantidad_preguntas }
+          setPracticaGenerada(practica)
           setPracticaCantidad(data.cantidad_preguntas)
+          setToastPractica(practica)
         } else if (data.status === 'error') {
           clearInterval(interval)
+          pollingIntervalRef.current = null
           setPollingPractica(false)
           setErrorPractica('No fue posible generar la práctica. Intenta de nuevo.')
         }
       } catch (e) {
         clearInterval(interval)
+        pollingIntervalRef.current = null
         setPollingPractica(false)
         setErrorPractica('Error verificando el estado de la práctica.')
       }
     }, 5000)
+    pollingIntervalRef.current = interval
   }
 
   function iniciarPractica() {
@@ -2729,9 +2737,15 @@ export default function DetallePrueba() {
                   {practicaGenerada ? 'Cancelar' : 'Cancelar'}
                 </button>
                 {pollingPractica ? (
-                  <div className="flex items-center justify-center gap-3 py-4 flex-1">
-                    <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-gray-600">Generando práctica personalizada...</p>
+                  <div className="flex-1 px-4 py-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3.5 h-3.5 border-2 border-secondary border-t-transparent rounded-full animate-spin shrink-0" />
+                      <p className="text-xs font-bold text-secondary">Praxia está generando tu práctica personalizada...</p>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full w-full bg-gradient-to-r from-secondary via-secondary/70 to-secondary rounded-full animate-pulse" />
+                    </div>
+                    <p className="text-[10px] text-on-surface-variant text-center">Puedes navegar libremente, te notificaremos cuando esté lista.</p>
                   </div>
                 ) : practicaGenerada?.total > 0 ? (
                   <button onClick={iniciarPractica}
@@ -2885,6 +2899,31 @@ export default function DetallePrueba() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Toast: práctica lista ── */}
+      {toastPractica && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-3 bg-secondary text-white px-5 py-3.5 rounded-2xl shadow-2xl shadow-secondary/30 animate-fade-in max-w-sm w-full mx-4">
+          <span className="material-symbols-outlined text-xl shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>fitness_center</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm">¡Tu práctica está lista!</p>
+            <p className="text-xs text-white/80">{toastPractica.total} preguntas personalizadas</p>
+          </div>
+          <button
+            onClick={() => {
+              setToastPractica(null)
+              setPracticaCantidad(toastPractica.total)
+              setShowPracticaModal(true)
+            }}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-xs font-bold transition-colors shrink-0 active:scale-95"
+          >
+            Iniciar →
+          </button>
+          <button onClick={() => setToastPractica(null)}
+            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors shrink-0">
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
         </div>
       )}
     </div>

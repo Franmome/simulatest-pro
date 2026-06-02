@@ -2222,7 +2222,21 @@ ${ctxAnalisis}
 Genera exactamente ${POR_LOTE} preguntas siguiendo el formato JSON del prompt.`
 
         try {
-          const respuesta = await geminiGenerar(mensaje, systemPrompt)
+          if (i > 1) await new Promise(r => setTimeout(r, 3000))
+
+          let respuesta = null
+          for (let intento = 1; intento <= 3; intento++) {
+            try {
+              respuesta = await geminiGenerar(mensaje, systemPrompt)
+              break
+            } catch (e) {
+              if (intento < 3) {
+                console.log(`[Práctica-BG] lote ${i} intento ${intento} falló, reintentando en 5s...`)
+                await new Promise(r => setTimeout(r, 5000))
+              } else throw e
+            }
+          }
+
           const textoRaw  = respuesta.texto || ''
 
           let parsed = []
