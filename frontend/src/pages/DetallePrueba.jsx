@@ -704,6 +704,7 @@ export default function DetallePrueba() {
   const [practicaCantidad,  setPracticaCantidad]  = useState(0)
   const [practicaTiempo,    setPracticaTiempo]    = useState(90)
   const [pollingPractica,   setPollingPractica]   = useState(false)
+  const [pollingCantidad,   setPollingCantidad]   = useState(0)     // preguntas generadas hasta ahora
   const [toastPractica,     setToastPractica]     = useState(null)  // { simulacro_id, total }
   const pollingIntervalRef = useRef(null)
 
@@ -1313,10 +1314,12 @@ export default function DetallePrueba() {
           { headers: { Authorization: `Bearer ${session?.access_token || ''}` } }
         )
         const data = await res.json()
+        if (data.cantidad_preguntas > 0) setPollingCantidad(data.cantidad_preguntas)
         if (data.status === 'listo') {
           clearInterval(interval)
           pollingIntervalRef.current = null
           setPollingPractica(false)
+          setPollingCantidad(0)
           const practica = { simulacro_id: simulacroId, total: data.cantidad_preguntas }
           setPracticaGenerada(practica)
           setPracticaCantidad(data.cantidad_preguntas)
@@ -2554,16 +2557,22 @@ export default function DetallePrueba() {
                     </div>
                   </div>
 
-                  {/* Texto */}
+                  {/* Texto con progreso real */}
                   <div className="text-center space-y-1">
                     <p className="font-extrabold text-base text-on-surface">Praxia está creando tu práctica</p>
-                    <p className="text-xs text-on-surface-variant">Analizando tus errores y generando preguntas personalizadas</p>
+                    <p className="text-xs text-secondary font-bold">
+                      {pollingCantidad <= 30  ? `Generando lote 1/5... ✦ ${pollingCantidad} preguntas`
+                      : pollingCantidad <= 60  ? `Generando lote 2/5... ✦ ${pollingCantidad} preguntas`
+                      : pollingCantidad <= 90  ? `Generando lote 3/5... ✦ ${pollingCantidad} preguntas`
+                      : pollingCantidad <= 120 ? `Generando lote 4/5... ✦ ${pollingCantidad} preguntas`
+                      : `Generando lote 5/5... ¡casi listo! ✦ ${pollingCantidad} preguntas`}
+                    </p>
                   </div>
 
-                  {/* Barra de progreso continua */}
+                  {/* Barra de progreso basada en cantidad real */}
                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-secondary/40 via-secondary to-secondary/40 animate-[shimmer_2s_ease-in-out_infinite]"
-                      style={{ width: '60%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                    <div className="h-full rounded-full bg-secondary transition-all duration-700 ease-out"
+                      style={{ width: `${Math.min(95, Math.max(5, (pollingCantidad / 150) * 100))}%` }} />
                   </div>
 
                   <p className="text-[11px] text-on-surface-variant text-center leading-relaxed max-w-xs">

@@ -268,6 +268,42 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
     if (typeof v === 'object') return v.texto || v.text || v.descripcion || v.nombre || JSON.stringify(v)
     return String(v)
   }
+
+  function renderCampoIA(value) {
+    if (value === null || value === undefined || value === '') return null
+    if (Array.isArray(value)) {
+      if (!value.length) return null
+      return (
+        <ul className="space-y-1.5">
+          {value.map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs text-on-surface leading-relaxed">
+              <span className="w-4 h-4 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+              {typeof item === 'object' ? renderCampoIA(item) : toStr(item)}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+    if (typeof value === 'object') {
+      return (
+        <div className="space-y-1.5">
+          {Object.entries(value).map(([k, v]) => {
+            if (v === null || v === undefined || v === '') return null
+            const sub = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            return (
+              <div key={k}>
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mb-0.5">{sub}</p>
+                <div className="text-xs text-on-surface leading-relaxed pl-2 border-l-2 border-primary/20">
+                  {renderCampoIA(v)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )
+    }
+    return <span className="text-sm text-on-surface leading-relaxed">{toStr(value)}</span>
+  }
   const total     = preguntas.length
   const correctas = preguntas.filter((p, i) => seleccion[i] === p.correcta).length
   const score     = total > 0 ? Math.round((correctas / total) * 100) : 0
@@ -349,36 +385,19 @@ function ResultadosIA({ preguntas, seleccion, tiempos, cargo, modelo, simulacroI
           <div className="space-y-3">
             {Object.entries(analisis).map(([key, value]) => {
               if (value === null || value === undefined || value === '') return null
+              if (Array.isArray(value) && !value.length) return null
 
               const titulo = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-
-              if (Array.isArray(value)) {
-                if (!value.length) return null
-                return (
-                  <div key={key} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-primary">list</span>
-                      {titulo}
-                    </p>
-                    <ul className="space-y-1.5">
-                      {value.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-on-surface leading-relaxed">
-                          <span className="w-4 h-4 rounded-full bg-primary/10 text-primary font-extrabold text-[10px] flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
-                          {toStr(item)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )
-              }
+              const isComplex = typeof value === 'object'
+              const icon = Array.isArray(value) ? 'list' : isComplex ? 'data_object' : 'info'
 
               return (
                 <div key={key} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-2 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm text-primary">info</span>
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-primary">{icon}</span>
                     {titulo}
                   </p>
-                  <p className="text-sm text-on-surface leading-relaxed">{toStr(value)}</p>
+                  {renderCampoIA(value)}
                 </div>
               )
             })}
