@@ -2656,3 +2656,65 @@ export async function getMisAnalisisSimulacros(req, res) {
   }
   return res.json({ analisis: data || [] })
 }
+
+// ── Sistema de tickets de análisis de perfil ──────────────────────────────────
+
+export async function getTicketBalance(req, res) {
+  try {
+    const { data, error } = await supabase
+      .from('user_analisis_tickets')
+      .select('tickets')
+      .eq('user_id', req.user.id)
+      .maybeSingle()
+    if (error) return res.json({ balance: 0 }) // tabla aún no existe → modo libre
+    return res.json({ balance: data?.tickets ?? 0 })
+  } catch { return res.json({ balance: 0 }) }
+}
+
+export async function generateWompiTicketCheckout(req, res) {
+  const userId = req.user.id
+  const cantidad = 1
+  const amountCents = 200000 // 2.000 COP
+  const ref = `${userId}-TICKET-${cantidad}-${Date.now()}`
+  const integrity = crypto.createHash('sha256')
+    .update(`${ref}${amountCents}COP${process.env.WOMPI_INTEGRITY_SECRET}`)
+    .digest('hex')
+  const publicKey = process.env.WOMPI_PUBLIC_KEY
+  const redirectUrl = encodeURIComponent(`${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-perfil`)
+  const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&integrity=${integrity}&redirect-url=${redirectUrl}`
+  return res.json({ url })
+}
+
+export async function getAdminTickets(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  try {
+    const { data } = await supabase
+      .from('user_analisis_tickets')
+      .select('user_id, tickets, updated_at')
+      .order('tickets', { ascending: false })
+      .limit(100)
+    return res.json({ tickets: data || [] })
+  } catch { return res.json({ tickets: [] }) }
+}
+
+export async function adminAddTickets(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  const { user_id, cantidad = 1 } = req.body
+  if (!user_id || cantidad < 1) return res.status(400).json({ error: 'user_id y cantidad requeridos' })
+  try {
+    const { data: existing } = await supabase
+      .from('user_analisis_tickets')
+      .select('tickets')
+      .eq('user_id', user_id)
+      .maybeSingle()
+    if (existing) {
+      await supabase.from('user_analisis_tickets')
+        .update({ tickets: (existing.tickets || 0) + cantidad, updated_at: new Date().toISOString() })
+        .eq('user_id', user_id)
+    } else {
+      await supabase.from('user_analisis_tickets')
+        .insert({ user_id, tickets: cantidad })
+    }
+    return res.json({ ok: true })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}

@@ -27,13 +27,40 @@ export const webhookWompi = async (req, res) => {
     if (tx?.status !== 'APPROVED')       return res.sendStatus(200)
 
     // 3. Parsear referencia
-    // Formato nuevo:  {uuid}-{package_id}-{herramienta}-{dias}-{timestamp}  (9+ partes)
-    // Formato legado: {uuid}-{package_id}-{timestamp}                        (7 partes)
+    // Formato tickets: {uuid}-TICKET-{cantidad}-{timestamp}
+    // Formato nuevo:   {uuid}-{package_id}-{herramienta}-{dias}-{timestamp}  (9+ partes)
+    // Formato legado:  {uuid}-{package_id}-{timestamp}                        (7 partes)
     const reference = tx.reference || ''
     const partes    = reference.split('-')
     const user_id   = partes.slice(0, 5).join('-')
+    if (!user_id) return res.sendStatus(200)
+
+    // ── Manejo de tickets de análisis de perfil ──────────────────────────────
+    if (partes[5] === 'TICKET') {
+      const cantidad = parseInt(partes[6]) || 1
+      console.log(`🎟️ Ticket comprado: user=${user_id} cantidad=${cantidad}`)
+      const { data: existing } = await supabase
+        .from('user_analisis_tickets')
+        .select('tickets')
+        .eq('user_id', user_id)
+        .maybeSingle()
+      if (existing) {
+        await supabase.from('user_analisis_tickets')
+          .update({ tickets: (existing.tickets || 0) + cantidad, updated_at: new Date().toISOString() })
+          .eq('user_id', user_id)
+      } else {
+        await supabase.from('user_analisis_tickets').insert({ user_id, tickets: cantidad })
+      }
+      await supabase.from('transactions').insert({
+        user_id, package_id: null, amount: tx.amount_in_cents / 100,
+        status: 'approved', wompi_transaction_id: tx.id, created_at: new Date().toISOString(),
+      })
+      console.log(`✅ ${cantidad} ticket(s) asignados a ${user_id}`)
+      return res.sendStatus(200)
+    }
+
     const package_id = parseInt(partes[5])
-    if (!user_id || !package_id) return res.sendStatus(200)
+    if (!package_id) return res.sendStatus(200)
 
     const isNuevoFormato = partes.length >= 9
     const herramienta    = isNuevoFormato ? partes[6] : 'paquete_completo'

@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -55,5 +55,11 @@ router.get('/modo-practica/:id/status',  authMiddleware, async (req, res) => {
   res.json(data || { status: 'error' })
 })
 router.get('/cerebros-health',           authMiddleware, cerebrosHealth)
+
+// ── Tickets de análisis de perfil ─────────────────────────────────────────────
+router.get('/tickets/balance',           authMiddleware, getTicketBalance)
+router.post('/tickets/checkout',         authMiddleware, generateWompiTicketCheckout)
+router.get('/admin/tickets',             authMiddleware, getAdminTickets)
+router.post('/admin/tickets/add',        authMiddleware, adminAddTickets)
 
 export default router
