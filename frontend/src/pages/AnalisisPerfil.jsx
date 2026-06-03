@@ -1255,6 +1255,8 @@ export default function AnalisisPerfil() {
   const [showTicketConfirm, setShowTicketConfirm] = useState(false)
   const [ticketBalance, setTicketBalance] = useState(null)
   const [comprando, setComprando] = useState(false)
+  const comprandoRef   = useRef(false)
+  const analizandoRef  = useRef(false)
   const [ticketPrice, setTicketPrice] = useState(2000)
   const [preferencias, setPreferencias] = useState({
     objetivo_principal: 'estabilidad',
@@ -1362,19 +1364,25 @@ export default function AnalisisPerfil() {
   }
 
   async function comprarTickets() {
+    if (comprandoRef.current) return   // bloqueo inmediato, no espera re-render
+    comprandoRef.current = true
     setComprando(true)
     try {
       const h = await authHeaders()
       const r = await fetch(`${BASE}/api/ia/tickets/checkout`, { method: 'POST', headers: h })
-      if (!r.ok) throw new Error('Error generando checkout')
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Error generando checkout') }
       const { url } = await r.json()
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (e) {
-      alert('No se pudo abrir el pago. Intenta de nuevo.')
-    } finally { setComprando(false) }
+      alert(e.message || 'No se pudo abrir el pago. Intenta de nuevo.')
+    } finally {
+      comprandoRef.current = false
+      setComprando(false)
+    }
   }
 
   function solicitarAnalisis() {
+    if (analizandoRef.current || analizando) return  // bloqueo inmediato
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
     setError(null)
@@ -1412,8 +1420,10 @@ export default function AnalisisPerfil() {
   ]
 
   async function analizar() {
+    if (analizandoRef.current) return   // bloqueo inmediato
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
+    analizandoRef.current = true
     setAnalizando(true); setLoadStep(0); setError(null); setAnalisis(null); setActiveHistId(null); setAnalisisId(null)
     setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null); setGuardadoOk(false)
 
@@ -1442,6 +1452,7 @@ export default function AnalisisPerfil() {
     })
 
     clearInterval(stepTimer)
+    analizandoRef.current = false
     setAnalizando(false)
     setLoadStep(0)
   }

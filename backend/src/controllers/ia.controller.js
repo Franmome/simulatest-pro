@@ -2715,10 +2715,18 @@ export async function getTicketBalance(req, res) {
 }
 
 export async function generateWompiTicketCheckout(req, res) {
-  const userId = req.user.id
+  const integritySecret = process.env.WOMPI_INTEGRITY_SECRET
+  const publicKey       = process.env.WOMPI_PUBLIC_KEY
+
+  if (!integritySecret || !publicKey) {
+    console.error('[Wompi] WOMPI_INTEGRITY_SECRET o WOMPI_PUBLIC_KEY no configurados en env')
+    return res.status(500).json({ error: 'Pasarela de pago no configurada. Contacta al administrador.' })
+  }
+
+  const userId  = req.user.id
   const cantidad = 1
 
-  // Leer precio desde app_config; fallback a 2000 COP si tabla no existe
+  // Leer precio desde app_config; fallback a 2000 COP
   let precioCOP = 2000
   try {
     const { data: cfg } = await supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle()
@@ -2726,13 +2734,20 @@ export async function generateWompiTicketCheckout(req, res) {
   } catch { /* tabla no existe aún */ }
 
   const amountCents = precioCOP * 100
-  const ref = `${userId}-TICKET-${cantidad}-${Date.now()}`
+  // Referencia simple sin guiones extra para que el webhook no falle al parsear
+  const ts  = Date.now()
+  const ref = `${userId}-TICKET-${cantidad}-${ts}`
+
   const integrity = crypto.createHash('sha256')
-    .update(`${ref}${amountCents}COP${process.env.WOMPI_INTEGRITY_SECRET}`)
+    .update(`${ref}${amountCents}COP${integritySecret}`)
     .digest('hex')
-  const publicKey = process.env.WOMPI_PUBLIC_KEY
-  const redirectUrl = encodeURIComponent(`${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-perfil`)
+
+  const redirectUrl = encodeURIComponent(
+    `${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-perfil`
+  )
   const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&integrity=${integrity}&redirect-url=${redirectUrl}`
+
+  console.log(`[Wompi] checkout generado: user=${userId} ref=${ref} amount=${amountCents} integrity=${integrity.slice(0,12)}...`)
   return res.json({ url, precio_cop: precioCOP })
 }
 
