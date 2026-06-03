@@ -338,6 +338,16 @@ async function conFallback(modelo, deepFn, gemFn) {
         continue
       }
 
+      if (is503) {
+        supabase.from('system_errors').insert({
+          severity:    'warning',
+          error_code:  'GEMINI_503',
+          description: 'Gemini 2.5 Flash reportó alta demanda — 3 intentos fallidos',
+          status:      'open',
+        }).catch(e => console.error('[conFallback] system_errors insert:', e.message))
+        throw new Error('El servicio de IA está experimentando alta demanda. Por favor intenta de nuevo en unos minutos.')
+      }
+
       throw err
     }
   }

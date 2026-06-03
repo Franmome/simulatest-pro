@@ -720,7 +720,10 @@ export default function DetallePrueba() {
   const [pollingPractica,   setPollingPractica]   = useState(false)
   const [pollingCantidad,   setPollingCantidad]   = useState(0)     // preguntas generadas hasta ahora
   const [toastPractica,     setToastPractica]     = useState(null)  // { simulacro_id, total }
-  const pollingIntervalRef = useRef(null)
+  const [practicaProgress,  setPracticaProgress]  = useState(0)
+  const [practicaMsg,       setPracticaMsg]       = useState('Iniciando generación...')
+  const pollingIntervalRef  = useRef(null)
+  const practicaIntervalRef = useRef(null)
 
   const PRACTICA_STEPS = [
     { icon: 'psychology',    text: 'Leyendo tu último simulacro…' },
@@ -737,6 +740,38 @@ export default function DetallePrueba() {
     const iv = setInterval(() => setPracticaStep(s => Math.min(s + 1, PRACTICA_STEPS.length - 1)), 3500)
     return () => clearInterval(iv)
   }, [generandoPractica]) // eslint-disable-line
+
+  useEffect(() => {
+    if (!pollingPractica) {
+      setPracticaProgress(0)
+      if (practicaIntervalRef.current) clearInterval(practicaIntervalRef.current)
+      return
+    }
+    const expectedMs = 600000
+    const startTime = Date.now()
+    const stages = [
+      { pct: 5,  msg: 'Analizando tus errores y áreas débiles...' },
+      { pct: 15, msg: 'Preparando lote 1/5 — preguntas funcionales...' },
+      { pct: 30, msg: 'Generando lote 1/5 — casuística real del cargo...' },
+      { pct: 40, msg: 'Lote 1/5 completado ✓ — iniciando lote 2/5...' },
+      { pct: 50, msg: 'Generando lote 2/5 — competencias comportamentales...' },
+      { pct: 60, msg: 'Lote 2/5 completado ✓ — iniciando lote 3/5...' },
+      { pct: 70, msg: 'Generando lote 3/5 — reforzando áreas críticas...' },
+      { pct: 80, msg: 'Lote 4/5 completado ✓ — últimas preguntas...' },
+      { pct: 90, msg: 'Revisando calidad psicométrica y coherencia...' },
+      { pct: 95, msg: 'Finalizando tu práctica personalizada...' },
+    ]
+    practicaIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const rawPct = Math.min(95, (elapsed / expectedMs) * 100)
+      const realPct = (pollingCantidad / 150) * 100
+      const pct = Math.max(rawPct, realPct)
+      setPracticaProgress(Math.round(pct))
+      const stage = [...stages].reverse().find(s => pct >= s.pct)
+      if (stage) setPracticaMsg(stage.msg)
+    }, 250)
+    return () => clearInterval(practicaIntervalRef.current)
+  }, [pollingPractica]) // eslint-disable-line
 
   // Carga la práctica pre-generada (si existe) cuando vuelven a esta página
   useEffect(() => {
@@ -2485,10 +2520,32 @@ export default function DetallePrueba() {
 
                 {/* Error */}
                 {errorIA && (
-                  <div className="flex items-center gap-2 text-error text-xs bg-error-container/30 px-3 py-2 rounded-xl mb-4">
-                    <span className="material-symbols-outlined text-sm">error</span>
-                    {errorIA}
-                  </div>
+                  (() => {
+                    const isAltaDemanda = errorIA.includes('503') || errorIA.includes('alta demanda') || errorIA.toLowerCase().includes('high demand')
+                    return isAltaDemanda ? (
+                      <div className="flex flex-col gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                        <div className="flex items-center gap-2 text-amber-700 text-sm font-medium">
+                          <span className="material-symbols-outlined text-base">schedule</span>
+                          Servicio temporalmente ocupado
+                        </div>
+                        <p className="text-xs text-amber-600">
+                          Los servidores de IA están con alta demanda en este momento.
+                          Espera 1-2 minutos e intenta de nuevo.
+                        </p>
+                        <button
+                          onClick={() => { setErrorIA(null); lanzarSimulacroIA() }}
+                          className="text-xs text-amber-700 underline text-left"
+                        >
+                          Intentar de nuevo
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-error text-xs bg-error-container/30 px-3 py-2 rounded-xl mb-4">
+                        <span className="material-symbols-outlined text-sm">error</span>
+                        {errorIA}
+                      </div>
+                    )
+                  })()
                 )}
 
                 {/* Botones */}
@@ -2569,48 +2626,66 @@ export default function DetallePrueba() {
                   </div>
                 </div>
               ) : pollingPractica ? (
-                /* ── Generando en background — diseño prominente ── */
-                <div className="flex flex-col items-center justify-center py-8 gap-5 px-2">
-                  {/* Spinner grande con ícono IA */}
-                  <div className="relative w-20 h-20">
-                    <div className="absolute inset-0 rounded-full border-[5px] border-secondary/15" />
-                    <div className="absolute inset-0 rounded-full border-[5px] border-secondary border-t-transparent animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-secondary text-2xl animate-pulse"
-                        style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                /* ── Generando en background — diseño igual al examen ── */
+                <div>
+                  {/* Header oscuro */}
+                  <div className="bg-slate-800 rounded-t-xl p-4 text-white">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <span className="material-symbols-outlined text-emerald-400 text-2xl">psychology</span>
+                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-ping" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">Praxia está generando tu práctica</p>
+                        <p className="text-xs text-slate-300">{practicaPreflight?.cargo || 'profesional universitario'}</p>
+                      </div>
+                      <span className="ml-auto text-emerald-400 font-bold text-lg">{practicaProgress}%</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2">{practicaMsg}</p>
+                    <div className="mt-3 h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                        style={{ width: `${practicaProgress}%` }}
+                      />
                     </div>
                   </div>
 
-                  {/* Texto con progreso real */}
-                  <div className="text-center space-y-1">
-                    <p className="font-extrabold text-base text-on-surface">Praxia está creando tu práctica</p>
-                    <p className="text-xs text-secondary font-bold">
-                      {pollingCantidad <= 30  ? `Generando lote 1/5... ✦ ${pollingCantidad} preguntas`
-                      : pollingCantidad <= 60  ? `Generando lote 2/5... ✦ ${pollingCantidad} preguntas`
-                      : pollingCantidad <= 90  ? `Generando lote 3/5... ✦ ${pollingCantidad} preguntas`
-                      : pollingCantidad <= 120 ? `Generando lote 4/5... ✦ ${pollingCantidad} preguntas`
-                      : `Generando lote 5/5... ¡casi listo! ✦ ${pollingCantidad} preguntas`}
+                  {/* Milestones */}
+                  <div className="p-4 space-y-2">
+                    {[
+                      { pct: 20, label: 'Análisis de errores completado' },
+                      { pct: 50, label: `${Math.min(pollingCantidad, 75)} preguntas funcionales generadas` },
+                      { pct: 80, label: `${Math.min(Math.max(pollingCantidad - 75, 0), 75)} preguntas comportamentales generadas` },
+                      { pct: 98, label: 'Revisión de calidad psicométrica' },
+                    ].map((m, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        {practicaProgress >= m.pct + 5 ? (
+                          <span className="material-symbols-outlined text-emerald-500 text-lg">check_circle</span>
+                        ) : practicaProgress >= m.pct ? (
+                          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
+                        )}
+                        <span className={`text-sm ${practicaProgress >= m.pct ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>
+                          {m.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-4 pb-4">
+                    <p className="text-xs text-center text-gray-400 mb-3">
+                      150 preguntas personalizadas · ~5-10 minutos estimados
                     </p>
+                    <button
+                      onClick={() => setShowPracticaModal(false)}
+                      className="w-full py-2.5 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700 flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">notifications</span>
+                      Ejecutar en segundo plano
+                    </button>
                   </div>
-
-                  {/* Barra de progreso basada en cantidad real */}
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-secondary transition-all duration-700 ease-out"
-                      style={{ width: `${Math.min(95, Math.max(5, (pollingCantidad / 150) * 100))}%` }} />
-                  </div>
-
-                  <p className="text-[11px] text-on-surface-variant text-center leading-relaxed max-w-xs">
-                    Este proceso toma entre <strong>5 y 10 minutos</strong>.<br/>
-                    Puedes cerrar esta ventana y seguir navegando.
-                  </p>
-
-                  {/* Botón principal */}
-                  <button
-                    onClick={() => setShowPracticaModal(false)}
-                    className="w-full py-3 rounded-full bg-secondary text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary/90 active:scale-95 transition-all">
-                    <span className="material-symbols-outlined text-sm">picture_in_picture</span>
-                    Trabajar en segundo plano
-                  </button>
                 </div>
               ) : practicaGenerada ? (
                 /* ── Pantalla de configuración post-generación ── */
