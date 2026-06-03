@@ -1499,9 +1499,22 @@ export async function analizarPerfilCV(req, res) {
   try {
     const userId = req.user.id
     const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw, modelo = 'deepseek' } = req.body
-    const analizarConIA = (sp, up) => modelo === 'gemini'
-      ? geminiAnalisisPerfil(sp, up)
-      : deepseekAnalisisPerfil(sp, up, 8192)
+    const analizarConIA = async (sp, up) => {
+      for (let intento = 1; intento <= 3; intento++) {
+        try {
+          return await geminiAnalisisPerfil(sp, up)
+        } catch (e) {
+          const is503 = String(e?.message || '').includes('503') || String(e?.message || '').toLowerCase().includes('high demand') || String(e?.message || '').toLowerCase().includes('fetch failed')
+          if (is503 && intento < 3) {
+            console.warn(`[IA] pass2a Gemini 503 — intento ${intento}/3, esperando ${intento * 8}s...`)
+            await new Promise(r => setTimeout(r, intento * 8000))
+            continue
+          }
+          console.warn(`[IA] pass2a Gemini falló (${String(e?.message || '').slice(0, 80)}), usando DeepSeek como fallback`)
+          return await deepseekAnalisisPerfil(sp, up, 8192)
+        }
+      }
+    }
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
     const file = req.file
     const cvText = await extractCvText(file)
