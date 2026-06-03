@@ -79,10 +79,10 @@ export default function Sidebar({ expanded, setExpanded }) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-3.5 mb-5 flex-shrink-0">
-        <div className="w-10 h-10 rounded-2xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/20">
+        <div className="w-10 h-10 rounded-2xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/20 bg-[#0f2864]">
           {APP.logo
-            ? <img src={APP.logo} alt={APP.name} className="w-full h-full object-cover" />
-            : <div className="w-full h-full bg-primary flex items-center justify-center text-white">
+            ? <img src={APP.logo} alt={APP.name} className="w-full h-full object-contain" />
+            : <div className="w-full h-full flex items-center justify-center text-white">
                 <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>{APP.icon}</span>
               </div>
           }
