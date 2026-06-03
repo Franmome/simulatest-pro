@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { Component, useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
@@ -14,6 +14,29 @@ const generarAnalisisPDF = async (...args) => {
 }
 
 const BASE = import.meta.env.VITE_API_URL || ''
+
+// Convierte cualquier valor a string legible — evita React error #31 cuando
+// la IA devuelve un objeto donde se espera un string
+function safeStr(v) {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  if (typeof v === 'object') {
+    const s = v.accion || v.texto || v.value || v.denominacion || v.nombre || JSON.stringify(v)
+    return typeof s === 'string' ? s : JSON.stringify(v)
+  }
+  return String(v)
+}
+
+// Captura errores de render en componentes hijos sin crashear toda la página
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  render() {
+    if (this.state.err) return this.props.fallback ?? null
+    return this.props.children
+  }
+}
 
 async function authHeaders() {
   const { data: { session } } = await supabase.auth.getSession()
@@ -94,7 +117,7 @@ function CargoCardOld({ cargo, index }) {
                 {cargo.fortalezas.map((f, j) => (
                   <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
                     <span className="material-symbols-outlined text-green-500 text-sm mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                    {f}
+                    {safeStr(f)}
                   </li>
                 ))}
               </ul>
@@ -342,7 +365,7 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
                     {guia.acciones_antes_de_postularse.map((a, j) => (
                       <li key={j} className="text-xs text-on-surface flex items-start gap-2 bg-surface-container rounded-lg p-2">
                         <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">{j + 1}</span>
-                        {a}
+                        {safeStr(a)}
                       </li>
                     ))}
                   </ol>
@@ -359,7 +382,7 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
                     {guia.documentos_prioritarios.map((d, j) => (
                       <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
                         <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>folder</span>
-                        {d}
+                        {safeStr(d)}
                       </li>
                     ))}
                   </ul>
@@ -374,7 +397,7 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {guia.funciones_que_debe_evidenciar.map((f, j) => (
-                      <span key={j} className="text-xs bg-surface-container text-on-surface px-2 py-0.5 rounded-full">{f}</span>
+                      <span key={j} className="text-xs bg-surface-container text-on-surface px-2 py-0.5 rounded-full">{safeStr(f)}</span>
                     ))}
                   </div>
                 </div>
@@ -388,7 +411,7 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {guia.palabras_clave_sugeridas.map((p, j) => (
-                      <span key={j} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{p}</span>
+                      <span key={j} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{safeStr(p)}</span>
                     ))}
                   </div>
                 </div>
@@ -512,7 +535,7 @@ function CargoCard({ opec, index, plataformaUrl, plataformaNombre }) {
                     {guia.que_debe_corregir_en_hoja_de_vida.map((c, j) => (
                       <li key={j} className="text-xs text-on-surface flex items-start gap-1.5">
                         <span className="material-symbols-outlined text-primary text-xs mt-0.5 flex-shrink-0">edit</span>
-                        {c}
+                        {safeStr(c)}
                       </li>
                     ))}
                   </ul>
@@ -707,7 +730,7 @@ function RutaCard({ rutaKey, ruta, plataformaUrl, plataformaNombre }) {
                 {accionesItems.map((a, j) => (
                   <li key={j} className="text-xs text-on-surface flex items-start gap-2 bg-surface-container rounded-lg p-2">
                     <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 mt-0.5">{j + 1}</span>
-                    {a}
+                    {safeStr(a)}
                   </li>
                 ))}
               </ol>
@@ -951,7 +974,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
               {perfil.alertas_validacion.map((a, i) => (
                 <p key={i} className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1">
                   <span className="material-symbols-outlined text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                  {a}
+                  {safeStr(a)}
                 </p>
               ))}
             </div>
@@ -974,7 +997,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
                   {diag.fortalezas_principales.map((f, i) => (
                     <li key={i} className="text-xs text-on-surface flex items-start gap-1.5">
                       <span className="material-symbols-outlined text-green-500 text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                      {f}
+                      {safeStr(f)}
                     </li>
                   ))}
                 </ul>
@@ -987,7 +1010,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
                   {diag.debilidades_principales.map((d, i) => (
                     <li key={i} className="text-xs text-on-surface flex items-start gap-1.5">
                       <span className="material-symbols-outlined text-amber-500 text-xs mt-0.5 flex-shrink-0">arrow_forward</span>
-                      {d}
+                      {safeStr(d)}
                     </li>
                   ))}
                 </ul>
@@ -1994,9 +2017,20 @@ export default function AnalisisPerfil() {
 
             {/* Results */}
             {analisis && (
-              isNewFormat(analisis)
-                ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} onGuardar={guardarAnalisis} guardando={guardando} guardadoOk={guardadoOk} />
-                : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />
+              <ErrorBoundary fallback={
+                <div className="card p-6 text-center space-y-4 animate-fade-in">
+                  <span className="material-symbols-outlined text-4xl text-on-surface-variant opacity-40">broken_image</span>
+                  <p className="font-bold text-on-surface">No se pudo mostrar este análisis</p>
+                  <p className="text-xs text-on-surface-variant">El análisis tiene un formato incompatible con esta versión. Genera uno nuevo para ver los resultados actualizados.</p>
+                  <button onClick={resetForm} className="mx-auto flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 transition-all">
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>Volver al formulario
+                  </button>
+                </div>
+              }>
+                {isNewFormat(analisis)
+                  ? <ResultsNew analisis={analisis} onReset={resetForm} navigate={navigate} opecsPendientes={opecsPendientes} cargandoMas={cargandoMas} onVerMas={verMasOpecs} plataformaUrl={plataformaUrl} plataformaNombre={plataformaNombre} onGuardar={guardarAnalisis} guardando={guardando} guardadoOk={guardadoOk} />
+                  : <ResultsOld analisis={analisis} onReset={resetForm} navigate={navigate} />}
+              </ErrorBoundary>
             )}
           </div>
 
