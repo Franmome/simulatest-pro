@@ -6,591 +6,564 @@ const PRIMARY    = [15, 40, 100]
 const PRI_LIGHT  = [235, 240, 255]
 const GRAY       = [30, 41, 59]
 const GRAY_LIGHT = [241, 245, 249]
+const GREEN      = [22, 101, 52]
+const AMBER      = [146, 64, 14]
+const RED        = [185, 28, 28]
 
-const PIN_CFG = {
-  comprar_con_verificacion: { color: [22, 101, 52],  badge: 'COMPRAR CON VERIFICACIÓN' },
-  verificar:                { color: [146, 64, 14],  badge: 'VERIFICAR ANTES DE COMPRAR' },
-  no_comprar:               { color: [185, 28, 28],  badge: 'NO COMPRAR AHORA' },
+// Estados de decisión PIN permitidos (página 7 de la maqueta)
+const PIN_STATES = {
+  VIABLE:       { text: 'COMPRA VIABLE CON REVISIÓN DOCUMENTAL BÁSICA',                 color: GREEN },
+  CONDICIONADA: { text: 'COMPRA CONDICIONADA A COINCIDENCIA DE SOPORTES EN SIMO',       color: AMBER },
+  NO_CRITICO:   { text: 'NO COMPRAR HASTA VALIDAR SOPORTE CRÍTICO',                      color: [180, 80, 0] },
+  NO_COMPRAR:   { text: 'NO COMPRAR ACTUALMENTE',                                        color: RED },
+  FUTURA:       { text: 'OPCIÓN FUTURA O NO PRIORIZADA PARA ESTE PIN',                   color: [80, 80, 80] },
 }
 
+// Mapeo de valores antiguos a nuevos estados
+function resolveEstadoPin(ruta) {
+  if (ruta.estado_decision_pin) return ruta.estado_decision_pin
+  const v = (ruta.decision_pin || '').toLowerCase()
+  if (v === 'comprar_con_verificacion' || v === 'viable') return PIN_STATES.VIABLE.text
+  if (v === 'verificar')   return PIN_STATES.CONDICIONADA.text
+  if (v === 'no_comprar')  return PIN_STATES.NO_COMPRAR.text
+  return PIN_STATES.CONDICIONADA.text
+}
+
+function resolveEstadoColor(estadoText) {
+  const t = (estadoText || '').toUpperCase()
+  if (t.includes('VIABLE CON REVISIÓN'))    return GREEN
+  if (t.includes('CONDICIONADA'))           return AMBER
+  if (t.includes('NO COMPRAR HASTA'))       return [180, 80, 0]
+  if (t.includes('NO COMPRAR ACTUAL'))      return RED
+  if (t.includes('FUTURA'))                 return [80, 80, 80]
+  return AMBER
+}
+
+// Rutas máximo 3 (sin ruta_ambiciosa)
+const RUTAS_ORDEN = ['ruta_principal', 'ruta_segura', 'ruta_estrategica']
 const RUTA_CFG = {
-  ruta_principal:   { num: 1, label: 'Ruta 1 — Opción principal para compra de PIN',  color: [15, 40, 100]  },
-  ruta_segura:      { num: 2, label: 'Ruta 2 — Opción segura',                         color: [22, 101, 52]  },
-  ruta_estrategica: { num: 3, label: 'Ruta 3 — Opción estratégica',                    color: [30, 64, 175]  },
-  ruta_ambiciosa:   { num: 4, label: 'Ruta 4 — Opción ambiciosa',                      color: [88, 28, 135]  },
+  ruta_principal:   { label: 'Ruta 1 — Opción principal', etiqueta: 'Principal',   color: PRIMARY },
+  ruta_segura:      { label: 'Ruta 2 — Opción segura',    etiqueta: 'Segura',      color: GREEN   },
+  ruta_estrategica: { label: 'Ruta 3 — Opción estratégica', etiqueta: 'Estratégica', color: [30, 64, 175] },
 }
 
-const VRM_L = {
-  'viable':                   'Cumple requisitos mínimos. Procede con revisión normal de documentos en SIMO.',
-  'viable con verificacion':  'Cumple la base pero confirma documentos en SIMO antes de pagar el PIN.',
-  'no viable':                'No cumple requisitos mínimos. Alto riesgo de inadmisión si compra el PIN ahora.',
-}
-const VA_L = {
-  'potencial bajo':  'Los antecedentes adicionales no suman significativamente en esta OPEC.',
-  'potencial medio': 'La especialización o experiencia adicional puede ayudar si son adicionales al mínimo exigido.',
-  'potencial alto':  'Los antecedentes son sólidos y fortalecen la posición competitiva en la OPEC.',
-}
-const HAB_L = {
-  'no aplica': 'La profesión o OPEC no exige tarjeta, matrícula ni registro profesional.',
-  'verificar': 'Confirmar si la profesión/OPEC requiere habilitación; cargar soporte en SIMO si aplica.',
-  'cumple':    'Habilitación cubierta. Verificar que el soporte esté cargado y vigente en SIMO.',
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const tr = (str, max = 100) => !str ? '' : String(str).length > max ? String(str).slice(0, max) + '…' : String(str)
+
+function strFromObj(v) {
+  if (!v) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'object') return v.titulo || v.nombre || v.descripcion || v.text || JSON.stringify(v)
+  return String(v)
 }
 
-function tr(str, max = 100) {
-  if (!str) return ''
-  return str.length > max ? str.slice(0, max) + '…' : str
+function fmtMeses(m) {
+  if (!m) return 'N/D'
+  const yrs = Math.floor(m / 12); const mos = m % 12
+  return yrs > 0 ? `${yrs} año${yrs > 1 ? 's' : ''}${mos > 0 ? ` ${mos} mes${mos > 1 ? 'es' : ''}` : ''}` : `${mos} mes${mos > 1 ? 'es' : ''}`
 }
 
 function checkPage(doc, y, needed = 30) {
-  if (y + needed > 275) { doc.addPage(); return 22 }
+  if (y + needed > 272) { doc.addPage(); return 22 }
   return y
+}
+
+function seccion(doc, titulo, y, marginX, color = PRIMARY) {
+  doc.setTextColor(...color)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.text(titulo, marginX, y)
+  return y + 5
+}
+
+function infoBox(doc, texto, y, marginX, W, bgColor = PRI_LIGHT, barColor = PRIMARY) {
+  const lines = doc.splitTextToSize(texto, W - marginX * 2 - 9)
+  const h = lines.length * 4.5 + 8
+  doc.setFillColor(...bgColor)
+  doc.rect(marginX, y, W - marginX * 2, h, 'F')
+  doc.setFillColor(...barColor)
+  doc.rect(marginX, y, 3, h, 'F')
+  doc.setTextColor(...GRAY)
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.text(lines, marginX + 7, y + 5.5)
+  return y + h + 4
 }
 
 function pageHeader(doc, W, marginX, convNombre) {
   doc.setFillColor(...PRIMARY)
-  doc.rect(0, 0, W, 16, 'F')
+  doc.rect(0, 0, W, 14, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(7.5)
   doc.setFont('helvetica', 'bold')
-  doc.text('PRAXIA — Análisis de opciones para compra de PIN', marginX, 10)
-  if (convNombre) {
-    doc.setFont('helvetica', 'normal')
-    doc.text(tr(convNombre, 70), W - marginX, 10, { align: 'right' })
-  }
-}
-
-function leftBox(doc, title, body, y, marginX, W, bgRgb = PRI_LIGHT, titleColor = PRIMARY) {
-  const bodyLines = doc.splitTextToSize(body, W - marginX * 2 - 9)
-  const h = (title ? 6 : 0) + bodyLines.length * 4.2 + 8
-  doc.setFillColor(...bgRgb)
-  doc.rect(marginX, y, W - marginX * 2, h, 'F')
-  doc.setFillColor(...titleColor)
-  doc.rect(marginX, y, 3, h, 'F')
-  let ty = y + 5.5
-  if (title) {
-    doc.setTextColor(...titleColor)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.text(title, marginX + 6, ty)
-    ty += 5.5
-  }
-  doc.setTextColor(...GRAY)
-  doc.setFontSize(8)
+  doc.text('PRAXIA — Análisis de opciones para compra de PIN', marginX, 9)
   doc.setFont('helvetica', 'normal')
-  doc.text(bodyLines, marginX + 6, ty)
-  return y + h + 4
+  doc.text('Maqueta corregida de salida PDF', W - marginX, 9, { align: 'right' })
+  // disclaimer footer top
+  doc.setFontSize(6.5)
+  doc.setTextColor(255, 255, 255)
+  doc.text('Informe orientativo, técnico y preventivo. Validar siempre en SIMO, OPEC oficial, Acuerdo, Anexo Técnico y MEFCL.', marginX, 13)
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 export function generarAnalisisPDF(analisis, convNombre = '') {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const marginX = 14
-  const rutasOrden = ['ruta_principal', 'ruta_segura', 'ruta_estrategica', 'ruta_ambiciosa']
-  const rutasDisp = rutasOrden.filter(k => analisis.rutas?.[k]?.denominacion)
+  const rutasDisp = RUTAS_ORDEN.filter(k => analisis.rutas?.[k]?.denominacion)
   let y = 0
 
   // ═══════════════════════════════════════════════════════════════
-  // PÁGINA 1 — Resumen ejecutivo
+  // PÁGINA 1 — Portada + Perfil + Decisión preliminar
   // ═══════════════════════════════════════════════════════════════
   pageHeader(doc, W, marginX, convNombre)
-  y = 24
+  y = 22
 
-  // Título
+  // Título principal
   doc.setTextColor(...PRIMARY)
-  doc.setFontSize(20)
+  doc.setFontSize(22)
   doc.setFont('helvetica', 'bold')
-  doc.text('PRAXIA', W / 2, y, { align: 'center' })
-  y += 6
+  doc.text('PRAXIA', marginX, y)
+  y += 7
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...GRAY)
-  doc.text('Análisis rápido de opciones para compra de PIN', W / 2, y, { align: 'center' })
-  y += 8
+  doc.text('Análisis de opciones para compra de PIN', marginX, y)
+  y += 3
+  doc.setFontSize(7.5)
+  doc.setTextColor(100, 100, 100)
+  doc.text('Objetivo de esta maqueta', marginX, y + 3)
+  doc.setFont('helvetica', 'normal')
+  const objText = 'Este PDF muestra el informe de análisis: sin [object Object], con máximo tres rutas principales, con evidencia detectada, desglose de afinidad y opciones de alto potencial separadas del ranking principal.'
+  const objLines = doc.splitTextToSize(objText, W - marginX * 2)
+  doc.text(objLines, marginX, y + 7)
+  y += 7 + objLines.length * 4.5 + 4
 
-  // ── Perfil del candidato ──────────────────────────────────────────
-  const pc = analisis.perfil_candidato
-  if (pc) {
-    doc.setTextColor(...PRIMARY)
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Perfil del candidato', marginX, y)
-    y += 4
+  // ── Perfil del candidato ──────────────────────────────────────
+  y = seccion(doc, 'Perfil del candidato', y, marginX)
+  const pc = analisis.perfil_candidato || {}
 
-    const fmtMeses = (m) => {
-      if (!m) return 'N/D'
-      const yrs = Math.floor(m / 12)
-      const mos = m % 12
-      return yrs > 0 ? `${yrs} año${yrs > 1 ? 's' : ''} ${mos > 0 ? `${mos} meses` : ''}`.trim() : `${mos} meses`
-    }
+  const titulosStr = (pc.titulos_identificados || [])
+    .map(t => strFromObj(t)).filter(Boolean).join('; ') || 'N/D'
+  const competitividad = analisis.diagnostico_general?.nivel_competitividad || pc.nivel_competitividad || 'N/D'
 
-    autoTable(doc, {
-      startY: y,
-      margin: { left: marginX, right: marginX },
-      body: [
-        ['Nombre',                pc.nombre || 'N/D'],
-        ['Profesión',             pc.profesion_principal || 'N/D'],
-        ['Nivel de formación',    pc.nivel_formacion || 'N/D'],
-        ['Títulos identificados', (pc.titulos_identificados || []).join(', ') || 'N/D'],
-        ['Experiencia total',     fmtMeses(pc.experiencia_total_estimada_meses)],
-        ['Exp. sector público',   fmtMeses(pc.experiencia_sector_publico_meses)],
-        ['Áreas de experiencia',  (pc.areas_experiencia || []).join(', ') || 'N/D'],
-        ['Tarjeta profesional',   pc.tarjeta_profesional?.estado || 'N/D'],
-      ],
-      theme: 'plain',
-      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: 48, fillColor: GRAY_LIGHT, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
-    })
-    y = doc.lastAutoTable.finalY + 4
-
-    const diag = analisis.diagnostico_general
-    if (diag) {
-      const rows = []
-      if (diag.nivel_competitividad) rows.push(['Competitividad', diag.nivel_competitividad])
-      if (diag.resumen_ejecutivo)    rows.push(['Resumen',        tr(diag.resumen_ejecutivo, 200)])
-      const fort = (diag.fortalezas || []).map(f => `• ${f}`).join('\n')
-      if (fort) rows.push(['Fortalezas', fort])
-      const mej = (diag.areas_de_mejora || []).map(m => `• ${m}`).join('\n')
-      if (mej) rows.push(['Áreas de mejora', mej])
-
-      if (rows.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          margin: { left: marginX, right: marginX },
-          head: [['Diagnóstico general', '']],
-          body: rows,
-          theme: 'plain',
-          headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
-          styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-          columnStyles: { 0: { cellWidth: 48, fillColor: GRAY_LIGHT, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
-        })
-        y = doc.lastAutoTable.finalY + 6
-      }
-    }
-  }
-
-  // Objetivo en una frase
-  const objetivo = analisis.objetivo_frase || analisis.diagnostico_general?.resumen_ejecutivo || ''
-  if (objetivo) {
-    y = leftBox(doc, 'Objetivo en una frase', objetivo, y, marginX, W)
-  }
-
-  // Definiciones VRM / VA / Habilitación
   autoTable(doc, {
     startY: y,
     margin: { left: marginX, right: marginX },
-    head: [['VRM', 'VA', 'Habilitación']],
-    body: [[
-      'Requisitos mínimos: estudio, experiencia y documentos obligatorios. Si falla, hay riesgo de no admisión.',
-      'Antecedentes: estudios o experiencia adicional que podrían sumar después de cumplir VRM.',
-      'Tarjeta, matrícula o registro. Solo aplica si la profesión, OPEC, MEFCL o norma lo exige.',
-    ]],
+    body: [
+      [{ content: 'Nombre',               styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, pc.nombre || 'N/D',
+       { content: 'Profesión',            styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, pc.profesion_principal || 'N/D',
+       { content: 'Nivel de formación',   styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, pc.nivel_formacion || 'N/D'],
+      [{ content: 'Títulos identificados',styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, titulosStr,
+       { content: 'Experiencia total',    styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, fmtMeses(pc.experiencia_total_estimada_meses),
+       { content: 'Exp. sector público',  styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, fmtMeses(pc.experiencia_sector_publico_meses)],
+      [{ content: 'Tarjeta profesional',  styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, strFromObj(pc.tarjeta_profesional?.estado) || 'N/D',
+       { content: 'Competitividad',       styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, competitividad,
+       { content: 'Estrategia',           styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, 'Decisión antes de compra de PIN'],
+    ],
     theme: 'plain',
-    headStyles: { fillColor: GRAY_LIGHT, textColor: GRAY, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
-    bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 3 },
+    styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+    columnStyles: { 0: { cellWidth: 34 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 30 }, 3: { cellWidth: 'auto' }, 4: { cellWidth: 32 }, 5: { cellWidth: 'auto' } },
   })
   y = doc.lastAutoTable.finalY + 6
 
-  // Tabla resumen decisión PIN
-  doc.setTextColor(...PRIMARY)
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.text('Decisión preliminar para compra de PIN', marginX, y)
-  y += 5
-
+  // ── Decisión preliminar para compra de PIN ────────────────────
+  y = seccion(doc, 'Decisión preliminar para compra de PIN', y, marginX)
   autoTable(doc, {
     startY: y,
     margin: { left: marginX, right: marginX },
-    head: [['OPEC', 'Ruta', 'Decisión PIN', 'Motivo claro', 'Acción antes de pagar']],
+    head: [['OPEC', 'Ruta', 'Estado decisión PIN', 'Motivo claro', 'Acción antes de pagar']],
     body: rutasDisp.map(key => {
       const r = analisis.rutas[key]
       const cfg = RUTA_CFG[key]
-      const decTexto = r.decision_pin_texto || PIN_CFG[r.decision_pin]?.badge || ''
-      const rutaLabel = cfg.num === 1 ? 'Principal' : cfg.num === 2 ? 'Segura' : cfg.num === 3 ? 'Estratégica' : 'Ambiciosa'
-      return [
-        `${r.codigo_opec || ''}\n${tr(r.denominacion, 35)}\n${tr(r.entidad, 30)}`,
-        rutaLabel,
-        decTexto,
-        tr(r.motivo_claro || r.justificacion, 80),
-        tr(r.accion_antes_de_pagar || r.antes_de_pagar?.[0] || '', 80),
-      ]
+      const estado = resolveEstadoPin(r)
+      const motivo = tr(r.motivo_claro || r.por_que_conviene || r.justificacion, 90)
+      const accion = tr(r.soporte_critico_antes_de_pagar || r.accion_antes_de_pagar || (r.antes_de_pagar || [])[0] || '', 90)
+      return [r.codigo_opec || r.numero_opec || '', cfg.etiqueta, estado, motivo, accion]
     }),
-    theme: 'striped',
-    headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
+    theme: 'grid',
+    headStyles: { fillColor: GRAY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+    styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
     columnStyles: {
-      0: { cellWidth: 42 },
-      1: { cellWidth: 22 },
-      2: { cellWidth: 36, fontStyle: 'bold' },
+      0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 18, halign: 'center' },
+      2: { cellWidth: 48, fontStyle: 'bold' },
       3: { cellWidth: 'auto' },
       4: { cellWidth: 'auto' },
     },
-    didParseCell: (data) => {
+    didParseCell: data => {
       if (data.section === 'body' && data.column.index === 2) {
         const ruta = analisis.rutas?.[rutasDisp[data.row.index]]
-        const pinColor = PIN_CFG[ruta?.decision_pin]?.color
-        if (pinColor) data.cell.styles.textColor = pinColor
+        if (ruta) data.cell.styles.textColor = resolveEstadoColor(resolveEstadoPin(ruta))
       }
     },
   })
-  y = doc.lastAutoTable.finalY + 6
+  y = doc.lastAutoTable.finalY + 5
 
-  // Recomendación ejecutiva
-  const recEjec = analisis.recomendacion_ejecutiva || ''
-  if (recEjec) {
-    y = checkPage(doc, y, 25)
-    y = leftBox(doc, 'Recomendación ejecutiva', recEjec, y, marginX, W)
-  }
+  // Nota de lectura
+  y = infoBox(doc,
+    'Nota de lectura: La tabla principal solo debe mostrar tres rutas. Las opciones de alto salario o alto potencial que tengan soporte crítico pendiente deben pasar a una sección separada, no a una Ruta 4.',
+    y, marginX, W, [255, 251, 235], AMBER)
 
   // ═══════════════════════════════════════════════════════════════
-  // PÁGINA 2 — Semáforo + Validación técnica + Documentos
+  // PÁGINA 2 — Evidencia detectada + Validación técnica
   // ═══════════════════════════════════════════════════════════════
   doc.addPage()
   pageHeader(doc, W, marginX, convNombre)
-  y = 24
+  y = 22
 
-  // Semáforo
-  const sem = analisis.semaforo
-  if (sem?.verde || sem?.amarillo || sem?.rojo) {
-    doc.setTextColor(...PRIMARY)
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Semáforo antes de pagar el PIN', marginX, y)
-    y += 5
+  // ── Evidencia detectada por Praxia ────────────────────────────
+  y = seccion(doc, 'Evidencia detectada por Praxia', y, marginX)
+  y = infoBox(doc,
+    'Esta tabla es obligatoria porque explica qué encontró la IA y cómo se usa cada soporte. Evita que el informe solo diga "cumple" sin mostrar la base de la decisión.',
+    y, marginX, W, PRI_LIGHT)
+
+  const evidencia = analisis.evidencia_detectada_praxia || []
+  if (evidencia.length > 0) {
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      body: [
-        [{ content: 'Verde — avanzar con revisión normal',   styles: { fontStyle: 'bold', textColor: [22, 101, 52]  } }, sem.verde   || ''],
-        [{ content: 'Amarillo — verificar antes de comprar', styles: { fontStyle: 'bold', textColor: [146, 64, 14]  } }, sem.amarillo || ''],
-        [{ content: 'Rojo — no comprar todavía',             styles: { fontStyle: 'bold', textColor: [185, 28, 28]  } }, sem.rojo    || ''],
-      ],
-      theme: 'plain',
-      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 3 },
-      columnStyles: { 0: { cellWidth: 55, fillColor: GRAY_LIGHT }, 1: { cellWidth: 'auto' } },
+      head: [['Evidencia detectada', 'Tipo', 'Uso en VRM', 'Uso en VA', 'Uso en habilitación', 'Confianza', 'Riesgo si no coincide en SIMO', 'Acción']],
+      body: evidencia.map(e => [
+        tr(strFromObj(e.evidencia || e.titulo), 30),
+        tr(strFromObj(e.tipo), 18),
+        tr(strFromObj(e.uso_vrm), 30),
+        tr(strFromObj(e.uso_va), 25),
+        tr(strFromObj(e.uso_habilitacion), 25),
+        tr(strFromObj(e.confianza), 12),
+        tr(strFromObj(e.riesgo_simo || e.riesgo), 30),
+        tr(strFromObj(e.accion), 30),
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 7, fontStyle: 'bold', cellPadding: 2 },
+      styles: { fontSize: 7, textColor: GRAY, cellPadding: 2 },
     })
     y = doc.lastAutoTable.finalY + 6
+  } else {
+    // Construir evidencia básica desde perfil si no viene del backend
+    const pc2 = analisis.perfil_candidato || {}
+    const evRows = []
+    for (const t of (pc2.titulos_identificados || []).slice(0, 2)) {
+      evRows.push([tr(strFromObj(t), 30), 'Título académico', 'VRM / habilitación si aplica', 'Puede apoyar VA si adicional al mínimo', 'Tarjeta profesional / ejercicio', 'Alta', 'Medio si no está cargado en SIMO', 'Verificar diploma y soporte en SIMO.'])
+    }
+    for (const p of (pc2.posgrados_identificados || []).slice(0, 1)) {
+      evRows.push([tr(strFromObj(p), 30), 'Posgrado', 'VRM si la OPEC lo exige; si no, VA', 'VA potencial si pertinente', 'No aplica directamente', 'Media-alta', 'Medio si no coincide con área exigida', 'Validar relación con funciones y MEFCL.'])
+    }
+    if (pc2.tarjeta_profesional?.estado !== 'no_aplica') {
+      evRows.push(['Tarjeta profesional', 'Habilitación', 'Puede impactar VRM o experiencia', 'No suma por sí sola en VA', 'Acredita habilitación profesional', 'Alta', 'Alto si la OPEC la exige y no está cargada', 'Cargar soporte vigente y verificar fecha.'])
+    }
+    evRows.push(['Certificaciones laborales', 'Experiencia', 'Acredita experiencia mínima con fechas y funciones', 'Puede sumar VA si adicional', 'No aplica', 'Media', 'Alto si faltan funciones, fechas o firma', 'Revisar fechas, cargo, funciones y firma.'])
+    if (evRows.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [['Evidencia detectada', 'Tipo', 'Uso en VRM', 'Uso en VA', 'Uso en habilitación', 'Confianza', 'Riesgo si no coincide en SIMO', 'Acción']],
+        body: evRows,
+        theme: 'striped',
+        headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 7, fontStyle: 'bold', cellPadding: 2 },
+        styles: { fontSize: 6.8, textColor: GRAY, cellPadding: 2 },
+      })
+      y = doc.lastAutoTable.finalY + 6
+    }
   }
 
-  // Validación técnica resumida
-  doc.setTextColor(...PRIMARY)
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.text('Validación técnica resumida', marginX, y)
-  y += 5
+  // ── Validación técnica resumida ───────────────────────────────
+  y = checkPage(doc, y, 60)
+  y = seccion(doc, 'Validación técnica resumida', y, marginX)
   const rp = analisis.rutas?.ruta_principal || {}
   autoTable(doc, {
     startY: y,
     margin: { left: marginX, right: marginX },
     head: [['Aspecto', 'Estado preliminar', 'Qué significa para ti', 'Acción concreta']],
     body: [
-      [{ content: 'VRM\nRequisitos mínimos', styles: { fontStyle: 'bold' } },
-        rp.vrm || 'Cumple / requiere verificación según OPEC',
-        'Puedes avanzar solo si estudio, experiencia y documentos coinciden con la OPEC oficial.',
+      ['VRM — Requisitos mínimos', rp.vrm || 'Viable con verificación',
+        'El aspirante puede avanzar solo si estudio, experiencia y documentos coinciden con la OPEC oficial.',
         'Validar OPEC, MEFCL, soportes y documentos asociados en SIMO.'],
-      [{ content: 'VA\nAntecedentes', styles: { fontStyle: 'bold' } },
-        rp.va || 'Potencial medio',
-        'La especialización y experiencia adicional pueden ayudar si son adicionales al requisito mínimo y relacionadas.',
+      ['VA — Antecedentes', rp.va || 'Potencial alto',
+        'La especialización y experiencia adicional pueden ayudar solo después de cumplir VRM.',
         'No usar VA para compensar incumplimiento de experiencia mínima.'],
-      [{ content: 'Habilitación\nprofesional', styles: { fontStyle: 'bold' } },
-        rp.habilitacion || 'Requiere verificación',
-        'La tarjeta, matrícula o registro no aplica a todas las carreras; se valida según profesión, OPEC y norma.',
+      ['Habilitación profesional', rp.habilitacion || 'Cumple / requiere verificación según OPEC',
+        'La tarjeta, matrícula o registro se valida según profesión, OPEC, MEFCL o norma.',
         'Cargar soporte si aplica y validar fecha para cómputo de experiencia.'],
-      [{ content: 'Experiencia\ndepurada', styles: { fontStyle: 'bold' } },
-        'Pendiente por traslapos',
+      ['Experiencia depurada', 'Pendiente por traslapos',
         'El tiempo simultáneo no se suma doble; puede cambiar el total válido.',
-        'Recalcular experiencia con fechas exactas y certificaciones completas.'],
-      [{ content: 'Equivalencias', styles: { fontStyle: 'bold' } },
-        'No evidenciadas',
+        'Recalcular con fechas exactas y certificaciones completas.'],
+      ['Equivalencias', 'No evidenciadas',
         'No deben aplicarse por suposición.',
-        'Usarlas solo si OPEC/MEFCL/Acuerdo las permite expresamente.'],
+        'Usarlas solo si OPEC, MEFCL, Acuerdo o Anexo Técnico las permite expresamente.'],
     ],
-    theme: 'striped',
-    headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-    columnStyles: { 0: { cellWidth: 28, fontStyle: 'bold' }, 1: { cellWidth: 35 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 45 } },
-  })
-  y = doc.lastAutoTable.finalY + 6
-
-  // Documentos que deciden la compra
-  y = checkPage(doc, y, 45)
-  doc.setTextColor(...PRIMARY)
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.text('Documentos que deciden la compra', marginX, y)
-  y += 5
-  const perfil = analisis.perfil_candidato || {}
-  const docRows = []
-  for (const t of (perfil.titulos_identificados || []).slice(0, 2)) {
-    docRows.push([tr(t, 50), 'VRM — requisito de estudio', 'No admisión si la OPEC exige esa profesión y el soporte no está asociado.'])
-  }
-  for (const p of (perfil.posgrados_identificados || []).slice(0, 1)) {
-    docRows.push([tr(p, 50), 'VRM o VA según OPEC', 'Puede no servir si no se relaciona con propósito y funciones.'])
-  }
-  docRows.push(['Certificaciones laborales', 'VRM/VA — experiencia', 'Riesgo medio/alto si no tienen fechas y funciones.'])
-  if (perfil.tarjeta_profesional?.estado !== 'no_aplica') {
-    docRows.push(['Tarjeta, matrícula o registro', 'Habilitación / cómputo experiencia', 'Solo afecta si aplica por profesión, OPEC, MEFCL o norma.'])
-  }
-  if (docRows.length === 0) {
-    docRows.push(['Título profesional', 'VRM — requisito de estudio', 'No admisión si la OPEC exige esa profesión.'])
-    docRows.push(['Certificaciones laborales', 'VRM/VA — experiencia', 'Riesgo medio/alto si no tienen fechas y funciones.'])
-  }
-  autoTable(doc, {
-    startY: y,
-    margin: { left: marginX, right: marginX },
-    head: [['Documento', 'Uso', 'Riesgo si falta']],
-    body: docRows,
-    theme: 'striped',
-    headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-    columnStyles: { 0: { cellWidth: 55, fontStyle: 'bold' }, 1: { cellWidth: 35 }, 2: { cellWidth: 'auto' } },
+    theme: 'grid',
+    headStyles: { fillColor: GRAY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+    styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+    columnStyles: { 0: { cellWidth: 40, fontStyle: 'bold', fillColor: GRAY_LIGHT }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 50 } },
   })
 
   // ═══════════════════════════════════════════════════════════════
-  // PÁGINAS 3+ — Detalle por ruta
+  // PÁGINAS 3-5 — Detalle de cada ruta (máx 3)
   // ═══════════════════════════════════════════════════════════════
-  for (const key of rutasOrden) {
-    const ruta = analisis.rutas?.[key]
-    if (!ruta?.denominacion) continue
+  for (const key of rutasDisp) {
+    const ruta = analisis.rutas[key]
+    const cfg  = RUTA_CFG[key]
 
     doc.addPage()
     pageHeader(doc, W, marginX, convNombre)
-    y = 24
+    y = 22
 
-    const cfg = RUTA_CFG[key]
-    const pinKey = ruta.decision_pin || 'verificar'
-    const pinCfg = PIN_CFG[pinKey] || PIN_CFG.verificar
-    const decTexto = ruta.decision_pin_texto || pinCfg.badge
-
-    // Banda título de ruta
-    doc.setFillColor(...cfg.color)
-    doc.rect(marginX, y, W - marginX * 2, 10, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(10)
+    // Título de ruta
+    doc.setFontSize(14)
     doc.setFont('helvetica', 'bold')
-    doc.text(cfg.label, marginX + 3, y + 7)
-    y += 13
+    doc.setTextColor(...cfg.color)
+    doc.text(cfg.label, marginX, y)
+    y += 8
 
-    // Badges: DECISIÓN | AFINIDAD | RIESGO
-    const bW = (W - marginX * 2) / 3
-    const riesgoColor = ruta.riesgo_nivel === 'bajo' ? [22, 101, 52] : ruta.riesgo_nivel === 'alto' ? [185, 28, 28] : [146, 64, 14]
-    const badges = [
-      { text: `DECISIÓN: ${decTexto}`, color: pinCfg.color, x: marginX },
-      { text: `AFINIDAD ${ruta.afinidad_porcentaje ?? 0}%`,   color: PRIMARY,      x: marginX + bW },
-      { text: `RIESGO ${(ruta.riesgo_nivel || 'MEDIO').toUpperCase()}`, color: riesgoColor, x: marginX + bW * 2 },
-    ]
-    for (const b of badges) {
-      doc.setFillColor(...b.color)
-      doc.rect(b.x, y, bW - 1, 9, 'F')
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(7.5)
-      doc.setFont('helvetica', 'bold')
-      const bLines = doc.splitTextToSize(b.text, bW - 4)
-      doc.text(bLines[0], b.x + 2, y + 6)
-    }
-    y += 13
+    const estado      = resolveEstadoPin(ruta)
+    const estadoColor = resolveEstadoColor(estado)
+    const soporte     = tr(ruta.soporte_critico_antes_de_pagar || ruta.punto_critico || ruta.riesgo_explica || '', 120)
+    const riesgo      = ruta.riesgo_nivel || (ruta.decision_pin === 'no_comprar' ? 'Alto' : ruta.decision_pin === 'verificar' ? 'Medio' : 'Bajo')
 
-    // Tabla de datos de la OPEC
-    const dataRows = [
-      ['OPEC', ruta.codigo_opec || '', 'Entidad', tr(ruta.entidad, 45)],
-      ['Cargo', `${ruta.denominacion} ${ruta.nivel || ''} ${ruta.grado ? `G${ruta.grado}` : ''}`.trim(), 'Ciudad', ruta.ciudad || tr(ruta.ubicaciones_norm?.[0]?.ciudad, 30) || ''],
-      ['Salario', ruta.salario || '', 'Vacantes', String(ruta.vacantes || 1)],
-    ]
-    const porQueTxt = ruta.por_que_conviene || ruta.por_que_esta_ruta || ''
-    const puntoCrit  = ruta.punto_critico   || ruta.riesgo_explica   || ''
-    if (porQueTxt || puntoCrit) {
-      dataRows.push(['Por qué conviene', tr(porQueTxt, 80), 'Punto crítico', tr(puntoCrit, 80)])
-    }
+    // Tabla de datos básicos de la OPEC
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      body: dataRows,
+      body: [
+        [{ content: 'Campo',    styles: { fontStyle: 'bold', fillColor: GRAY } },
+         { content: 'Dato',     styles: { fontStyle: 'bold', fillColor: GRAY, textColor: [255,255,255] } },
+         { content: 'Campo',    styles: { fontStyle: 'bold', fillColor: GRAY } },
+         { content: 'Dato',     styles: { fontStyle: 'bold', fillColor: GRAY, textColor: [255,255,255] } }],
+        [{ content: 'OPEC',     styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, ruta.codigo_opec || ruta.numero_opec || '',
+         { content: 'Entidad',  styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, tr(ruta.entidad, 45)],
+        [{ content: 'Cargo',    styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, tr(ruta.denominacion, 45),
+         { content: 'Ciudad',   styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, tr(ruta.ciudad || '', 30)],
+        [{ content: 'Nivel / grado', styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, `${ruta.nivel || ''} ${ruta.grado ? `G${ruta.grado}` : ''}`.trim(),
+         { content: 'Salario',  styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, tr(ruta.salario || '', 20)],
+        [{ content: 'Vacantes', styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, String(ruta.vacantes || 1),
+         { content: 'Riesgo',   styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, riesgo],
+      ],
       theme: 'plain',
       styles: { fontSize: 8, textColor: GRAY, cellPadding: 2.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 28, fillColor: GRAY_LIGHT },
-        1: { cellWidth: 'auto' },
-        2: { fontStyle: 'bold', cellWidth: 25, fillColor: GRAY_LIGHT },
-        3: { cellWidth: 'auto' },
-      },
+      columnStyles: { 0: { cellWidth: 32 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 25 }, 3: { cellWidth: 'auto' } },
     })
-    y = doc.lastAutoTable.finalY + 4
+    y = doc.lastAutoTable.finalY + 3
 
-    // Tabla de control VRM/VA/Habilitación/Equivalencias
-    const vrmE = ruta.vrm || (ruta.cumplimiento?.experiencia === 'cumple' ? 'viable' : 'viable con verificacion')
-    const vaE  = ruta.va  || 'potencial medio'
-    const habE = ruta.habilitacion || (ruta.cumplimiento?.tarjeta_profesional === 'no aplica' ? 'no aplica' : 'verificar')
+    // Banda: Estado decisión PIN + Soporte crítico
+    const bandH = soporte ? 14 : 10
+    doc.setFillColor(...estadoColor)
+    doc.rect(marginX, y, (W - marginX * 2) * 0.55, bandH, 'F')
+    doc.setFillColor(...GRAY)
+    doc.rect(marginX + (W - marginX * 2) * 0.55 + 1, y, (W - marginX * 2) * 0.44, bandH, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Estado decisión PIN', marginX + 2, y + 4)
+    const estadoLines = doc.splitTextToSize(estado, (W - marginX * 2) * 0.5)
+    doc.setFontSize(6.5)
+    doc.text(estadoLines[0] || '', marginX + 2, y + 9)
+    const cx = marginX + (W - marginX * 2) * 0.55 + 3
+    doc.setFontSize(7)
+    doc.text('Soporte crítico antes de pagar', cx, y + 4)
+    if (soporte) {
+      const sLines = doc.splitTextToSize(soporte, (W - marginX * 2) * 0.42)
+      doc.setFontSize(6.5)
+      doc.text(sLines[0] || '', cx, y + 9)
+    }
+    y += bandH + 5
+
+    // Validación técnica
+    y = checkPage(doc, y, 40)
+    y = seccion(doc, 'Validación técnica', y, marginX, cfg.color)
+    const vrmE = ruta.vrm || 'Viable'
+    const vaE  = ruta.va  || 'Potencial medio'
+    const habE = ruta.habilitacion || 'Requiere verificación'
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
       head: [['Control', 'Resultado', 'Lectura para el aspirante']],
       body: [
-        [{ content: 'VRM\nRequisitos mínimos', styles: { fontStyle: 'bold' } }, vrmE, VRM_L[vrmE] || VRM_L['viable con verificacion']],
-        [{ content: 'VA\nAntecedentes',        styles: { fontStyle: 'bold' } }, vaE,  VA_L[vaE]  || VA_L['potencial medio']],
-        [{ content: 'Habilitación',            styles: { fontStyle: 'bold' } }, habE, HAB_L[habE] || HAB_L['no aplica']],
-        [{ content: 'Equivalencias',           styles: { fontStyle: 'bold' } }, 'No necesarias preliminarmente', 'No aplicar si no están expresamente previstas por OPEC/MEFCL/Acuerdo.'],
+        ['VRM', vrmE, tr(ruta.vrm_lectura || '', 120) || 'Cumple la base; la compra queda condicionada a que los documentos en SIMO coincidan con lo analizado por Praxia.'],
+        ['VA', vaE, tr(ruta.va_lectura || '', 120) || 'La especialización y experiencia adicional pueden fortalecer la competitividad si no fueron usadas como requisito mínimo.'],
+        ['Habilitación', habE, tr(ruta.habilitacion_lectura || '', 120) || 'Validar si la OPEC o MEFCL la exige para experiencia, ejercicio o posesión.'],
+        ['Equivalencias', 'No evidenciadas', 'No aplicar equivalencias si no están expresamente previstas en OPEC, MEFCL, Acuerdo o Anexo Técnico.'],
       ],
-      theme: 'striped',
-      headStyles: { fillColor: cfg.color, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
-      columnStyles: { 0: { cellWidth: 32, fontStyle: 'bold' }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } },
+      theme: 'grid',
+      headStyles: { fillColor: cfg.color, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 25, fontStyle: 'bold', fillColor: GRAY_LIGHT }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } },
     })
     y = doc.lastAutoTable.finalY + 5
 
-    // Antes de pagar el PIN
-    const antesItems = ruta.antes_de_pagar?.length > 0 ? ruta.antes_de_pagar : (ruta.acciones_clave || [])
-    if (antesItems.length > 0) {
-      y = checkPage(doc, y, 20)
-      doc.setTextColor(...PRIMARY)
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Antes de pagar el PIN', marginX, y)
-      y += 4
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(8)
-      doc.setTextColor(...GRAY)
-      for (const item of antesItems.slice(0, 3)) {
-        y = checkPage(doc, y, 8)
-        const lines = doc.splitTextToSize(`— ${item}`, W - marginX * 2 - 5)
-        doc.text(lines, marginX + 3, y)
-        y += lines.length * 4.5
-      }
-      y += 3
-    }
+    // Desglose de afinidad total para PIN
+    y = checkPage(doc, y, 50)
+    y = seccion(doc, 'Desglose de afinidad total para PIN', y, marginX, cfg.color)
 
-    // Decisión sugerida
-    const decSugerida = ruta.decision_sugerida || ruta.justificacion || ''
-    if (decSugerida) {
-      y = checkPage(doc, y, 22)
-      y = leftBox(doc, 'Decisión sugerida', decSugerida, y, marginX, W, [240, 253, 244], [22, 101, 52])
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // ÚLTIMA PÁGINA — Descartadas + Checklist + Decisión final
-  // ═══════════════════════════════════════════════════════════════
-  const descartados = analisis.cargos_descartados_relevantes || []
-  const decFinal    = analisis.decision_final_resumida || ''
-  const tieneExtra  = descartados.length > 0 || decFinal
-
-  if (tieneExtra) {
-    doc.addPage()
-    pageHeader(doc, W, marginX, convNombre)
-    y = 24
-
-    if (descartados.length > 0) {
-      doc.setTextColor(...PRIMARY)
-      doc.setFontSize(11)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Opción no recomendada para comprar ahora', marginX, y)
-      y += 5
+    const desglose = ruta.desglose_afinidad_total_para_pin || ruta.desglose_afinidad || []
+    if (desglose.length > 0) {
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
-        head: [['OPEC', 'Cargo', 'Motivo de descarte', 'Decisión']],
-        body: descartados.map(d => [
-          d.codigo_opec || '',
-          tr(`${d.denominacion || ''} — ${d.entidad || ''}`, 50),
-          tr(d.motivo_descarte || d.brecha_principal, 80),
-          d.decision || 'No pagar PIN actualmente. Revisar como opción futura.',
-        ]),
-        theme: 'striped',
-        headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-        bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-        columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 45 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 42, fontStyle: 'bold', textColor: [185, 28, 28] } },
+        head: [['Factor ponderado', 'Resultado']],
+        body: [
+          ...desglose.map(d => [tr(strFromObj(d.factor), 60), tr(strFromObj(d.resultado || d.valor), 100)]),
+          [{ content: 'Afinidad total para PIN', styles: { fontStyle: 'bold' } },
+           { content: `${ruta.afinidad_porcentaje ?? 0}/100`, styles: { fontStyle: 'bold' } }],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: GRAY_LIGHT, textColor: GRAY, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+        styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+        columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
       })
-      y = doc.lastAutoTable.finalY + 6
+    } else {
+      // Construir desglose aproximado con datos existentes
+      const afinidad = ruta.afinidad_porcentaje ?? 0
+      const rows = [
+        ['Formación requerida 25%',      `${Math.round(afinidad * 0.25)}/25 — validar título y nivel según OPEC.`],
+        ['Experiencia requerida 25%',    `${Math.round(afinidad * 0.25)}/25 — validar meses y funciones relacionadas.`],
+        ['Funciones relacionadas 20%',   `${Math.round(afinidad * 0.20)}/20 — relación con propósito y funciones de la OPEC.`],
+        ['Riesgo documental 15%',        `${Math.round(afinidad * 0.15)}/15 — condicionado a soportes en SIMO.`],
+        ['Vacantes / ubicación 10%',     `${Math.round(afinidad * 0.10)}/10 — número de vacantes y ciudad.`],
+        ['Retorno estratégico 5%',       `${Math.round(afinidad * 0.05)}/5 — salario y coherencia profesional.`],
+        [{ content: 'Afinidad total para PIN', styles: { fontStyle: 'bold' } },
+         { content: `${afinidad}/100`, styles: { fontStyle: 'bold' } }],
+      ]
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [['Factor ponderado', 'Resultado']],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor: GRAY_LIGHT, textColor: GRAY, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+        styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+        columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', fillColor: [248, 249, 250] }, 1: { cellWidth: 'auto' } },
+      })
     }
+    y = doc.lastAutoTable.finalY + 5
 
-    // Checklist final
-    y = checkPage(doc, y, 55)
-    doc.setTextColor(...PRIMARY)
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Checklist final antes de comprar cualquier PIN', marginX, y)
-    y += 5
+    // Justificación y acciones
+    y = checkPage(doc, y, 40)
+    y = seccion(doc, 'Justificación y acciones', y, marginX, cfg.color)
+    const porQue    = tr(ruta.por_que_conviene || ruta.por_que_esta_ruta || '', 180)
+    const riesgos   = tr(ruta.riesgos || ruta.punto_critico || ruta.riesgo_explica || '', 180)
+    const docs      = tr((ruta.documentos_a_verificar || ruta.antes_de_pagar || []).join('; '), 180)
+    const observ    = tr(ruta.observacion_pago_pin || ruta.decision_sugerida || ruta.justificacion || '', 180)
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['No.', 'Verificación', 'Resultado esperado']],
+      head: [['Aspecto', 'Detalle']],
       body: [
-        ['1', 'Código OPEC, entidad, municipio, grado y salario.',     'Coinciden con la opción seleccionada.'],
-        ['2', 'Título profesional y posgrado.',                         'Legibles y asociados en SIMO.'],
-        ['3', 'Tarjeta, matrícula o registro.',                         'Cargado solo si aplica por profesión/OPEC/norma.'],
-        ['4', 'Certificaciones laborales.',                             'Incluyen fechas, cargo y funciones.'],
-        ['5', 'Experiencia traslapada.',                                'No se suma doble.'],
-        ['6', 'Equivalencias.',                                         'Solo se usan si están expresamente permitidas.'],
-        ['7', 'Funciones relacionadas.',                                'Coinciden con el propósito de la OPEC.'],
-        ['8', 'Decisión de compra.',                                    'Solo comprar si VRM es viable y riesgo documental no es alto.'],
+        [{ content: 'Por qué conviene',       styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, porQue || 'Ver validación técnica.'],
+        [{ content: 'Riesgos',                styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, riesgos || 'Validar documentos en SIMO antes de pagar.'],
+        [{ content: 'Documentos a verificar', styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, docs || 'Título; certificaciones laborales; tarjeta profesional si aplica.'],
+        [{ content: 'Observación de pago PIN',styles: { fontStyle: 'bold', fillColor: GRAY_LIGHT } }, observ || 'Proceder solo si soportes en SIMO coinciden con la evidencia detectada.'],
       ],
-      theme: 'striped',
-      headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 80 }, 2: { cellWidth: 'auto' } },
+      theme: 'plain',
+      headStyles: { fillColor: cfg.color, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 3 },
+      columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 'auto' } },
     })
-    y = doc.lastAutoTable.finalY + 6
-
-    if (decFinal) {
-      y = checkPage(doc, y, 22)
-      y = leftBox(doc, 'Decisión final resumida', decFinal, y, marginX, W, PRI_LIGHT)
-    }
-
-    // Disclaimer
-    y = checkPage(doc, y, 12)
-    doc.setTextColor(120, 120, 120)
-    doc.setFontSize(7)
-    doc.setFont('helvetica', 'italic')
-    const disc = 'Advertencia: este informe es orientativo, técnico y preventivo. La decisión final debe validarse en SIMO, OPEC oficial, Acuerdo de Convocatoria, Anexo Técnico y MEFCL. Praxia no garantiza admisión, puntaje, elegibilidad ni nombramiento.'
-    const dLines = doc.splitTextToSize(disc, W - marginX * 2)
-    doc.text(dLines, marginX, y)
+    y = doc.lastAutoTable.finalY + 3
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // OPECs adicionales exploradas (si las hay)
+  // ÚLTIMA PÁGINA — Alto potencial + Descartadas + Checklist
   // ═══════════════════════════════════════════════════════════════
-  const ranking = analisis.ranking_opec_recomendadas || []
-  if (ranking.length > 0) {
-    doc.addPage()
-    pageHeader(doc, W, marginX, convNombre)
-    y = 24
-    doc.setTextColor(...PRIMARY)
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'bold')
-    doc.text('OPECs adicionales exploradas', marginX, y)
-    y += 5
+  doc.addPage()
+  pageHeader(doc, W, marginX, convNombre)
+  y = 22
 
+  // Opciones de alto potencial no priorizadas
+  const altoPot = analisis.opec_alto_potencial_no_priorizadas || []
+  if (altoPot.length > 0) {
+    y = seccion(doc, 'Opciones de alto potencial no priorizadas para este PIN', y, marginX)
+    y = infoBox(doc,
+      'Estas opciones pueden ser atractivas por salario, nivel o proyección, pero no deben aparecer como Ruta 4 dentro del ranking principal. Se muestran separadas porque requieren validación estricta antes de considerarse.',
+      y, marginX, W, [255, 251, 235], AMBER)
     autoTable(doc, {
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['#', 'Cargo', 'Entidad', 'Nivel', 'Afinidad', 'Decisión recomendada']],
-      body: ranking.map((o, i) => [
-        i + 1,
-        tr(o.denominacion, 40),
-        tr(o.entidad, 30),
-        `${o.nivel || ''} ${o.grado ? `G${o.grado}` : ''}`.trim(),
-        `${o.afinidad_porcentaje ?? 0}%`,
-        tr(o.guia_para_el_usuario?.decision_recomendada || o.guia_para_el_usuario?.mensaje_claro || '', 40),
+      head: [['OPEC', 'Entidad', 'Empleo', 'Ciudad', 'Motivo de potencial', 'Razón de no priorización', 'Condición futura', 'Decisión PIN']],
+      body: altoPot.map(o => [
+        o.codigo_opec || o.numero_opec || '',
+        tr(o.entidad, 25),
+        tr(o.denominacion, 25),
+        tr(o.ciudad, 15),
+        tr(strFromObj(o.motivo_potencial), 35),
+        tr(strFromObj(o.razon_no_priorizacion), 35),
+        tr(strFromObj(o.condicion_futura), 35),
+        { content: tr(o.decision_pin || PIN_STATES.FUTURA.text, 30), styles: { fontStyle: 'bold', textColor: [80,80,80] } },
       ]),
       theme: 'striped',
-      headStyles: { fillColor: PRIMARY, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 50 }, 2: { cellWidth: 35 }, 3: { cellWidth: 22 }, 4: { cellWidth: 16, halign: 'center' }, 5: { cellWidth: 'auto' } },
+      headStyles: { fillColor: GRAY, textColor: 255, fontSize: 7, fontStyle: 'bold', cellPadding: 2 },
+      styles: { fontSize: 6.8, textColor: GRAY, cellPadding: 2 },
     })
+    y = doc.lastAutoTable.finalY + 6
   }
 
+  // OPECs descartadas relevantes
+  const descartados = analisis.cargos_descartados_relevantes || []
+  if (descartados.length > 0) {
+    y = checkPage(doc, y, 35)
+    y = seccion(doc, 'OPEC descartadas relevantes', y, marginX)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      head: [['OPEC', 'Cargo', 'Motivo de descarte', 'Riesgo principal']],
+      body: descartados.map(d => [
+        d.codigo_opec || '',
+        tr(d.denominacion, 40),
+        tr(d.motivo_descarte || d.brecha_principal, 90),
+        { content: tr(d.riesgo_principal || d.decision || 'Riesgo alto de inadmisión.', 40), styles: { fontStyle: 'bold', textColor: RED } },
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: GRAY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+      styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 14, halign: 'center' }, 1: { cellWidth: 45 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 40 } },
+    })
+    y = doc.lastAutoTable.finalY + 6
+  }
+
+  // Checklist final
+  y = checkPage(doc, y, 55)
+  y = seccion(doc, 'Checklist final antes de comprar cualquier PIN', y, marginX)
+  autoTable(doc, {
+    startY: y,
+    margin: { left: marginX, right: marginX },
+    head: [['No.', 'Verificación', 'Resultado esperado']],
+    body: [
+      ['1', 'Código OPEC, entidad, municipio, grado y salario.',     'Coinciden con la opción seleccionada.'],
+      ['2', 'Título profesional y posgrado.',                         'Legibles, correctos y asociados en SIMO.'],
+      ['3', 'Tarjeta, matrícula o registro.',                         'Cargado si aplica por profesión, OPEC, MEFCL o norma.'],
+      ['4', 'Certificaciones laborales.',                             'Incluyen fechas, cargo, funciones, firma y datos verificables.'],
+      ['5', 'Experiencia traslapada.',                                'No se suma doble.'],
+      ['6', 'Equivalencias.',                                         'Solo se usan si están expresamente permitidas.'],
+      ['7', 'Funciones relacionadas.',                                'Coinciden con el propósito y funciones de la OPEC.'],
+      ['8', 'Decisión de compra.',                                    'Solo comprar si VRM es viable y riesgo documental no es alto.'],
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: GRAY, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
+    styles: { fontSize: 7.5, textColor: GRAY, cellPadding: 2.5 },
+    columnStyles: { 0: { cellWidth: 8, halign: 'center', fontStyle: 'bold' }, 1: { cellWidth: 85 }, 2: { cellWidth: 'auto' } },
+  })
+  y = doc.lastAutoTable.finalY + 6
+
+  // Advertencia final
+  y = checkPage(doc, y, 18)
+  y = infoBox(doc,
+    'Advertencia final: Este análisis es orientativo, técnico y preventivo. La decisión final debe validarse en SIMO, OPEC oficial, Acuerdo de Convocatoria, Anexo Técnico y MEFCL. Praxia no garantiza admisión, puntaje, elegibilidad ni nombramiento.',
+    y, marginX, W, [255, 251, 235], AMBER)
+
   // ═══════════════════════════════════════════════════════════════
-  // Footer en todas las páginas
+  // FOOTER en todas las páginas
   // ═══════════════════════════════════════════════════════════════
   const total = doc.internal.getNumberOfPages()
   for (let p = 1; p <= total; p++) {
     doc.setPage(p)
-    doc.setFillColor(...PRIMARY)
-    doc.rect(0, 285, W, 12, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(7)
+    doc.setFillColor(245, 245, 245)
+    doc.rect(0, 283, W, 14, 'F')
+    doc.setTextColor(120, 120, 120)
+    doc.setFontSize(6.5)
+    doc.setFont('helvetica', 'italic')
+    doc.text('Informe orientativo, técnico y preventivo. Validar siempre en SIMO, OPEC oficial, Acuerdo, Anexo Técnico y MEFCL.', marginX, 289)
     doc.setFont('helvetica', 'normal')
-    doc.text('PRAXIA — Análisis de Perfil para Concurso de Méritos', marginX, 291)
-    doc.text(`Página ${p} de ${total}`, W - marginX, 291, { align: 'right' })
+    doc.text(`Página ${p}`, W - marginX, 289, { align: 'right' })
   }
 
   doc.save(`praxia_analisis_pin_${Date.now()}.pdf`)
