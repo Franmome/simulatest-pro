@@ -1252,6 +1252,9 @@ export default function AnalisisPerfil() {
   const [analizando, setAnalizando] = useState(false)
   const [loadStep, setLoadStep] = useState(0)
   const [error, setError] = useState(null)
+  const [showWompiBanner, setShowWompiBanner] = useState(
+    !!(searchParams.get('id') && searchParams.get('env'))
+  )
   const [analisis, setAnalisis] = useState(null)
   const [analisisId, setAnalisisId] = useState(null)
   const [guardando, setGuardando] = useState(false)
@@ -1296,6 +1299,13 @@ export default function AnalisisPerfil() {
     }, 5000)
     return () => clearInterval(poll)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-ocultar el banner de Wompi 6 s después de que se confirman los tickets
+  useEffect(() => {
+    if (!showWompiBanner || ticketBalance === null || ticketBalance === 0) return
+    const t = setTimeout(() => setShowWompiBanner(false), 6000)
+    return () => clearTimeout(t)
+  }, [showWompiBanner, ticketBalance])
 
   // Cuando el análisis termina (aunque el usuario haya navegado fuera y vuelto)
   useEffect(() => {
@@ -1599,17 +1609,48 @@ export default function AnalisisPerfil() {
         </div>
       </div>
 
-      {/* Banner pago recibido — aparece cuando Wompi redirige al usuario */}
-      {searchParams.get('id') && searchParams.get('env') && ticketBalance === 0 && (
+      {/* Banner pago Wompi — dos estados: verificando / exitoso */}
+      {showWompiBanner && (
         <div className="max-w-7xl mx-auto px-4 pt-3">
-          <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-green-50 border border-green-300 animate-fade-in">
-            <span className="material-symbols-outlined text-green-600 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-green-800">¡Pago recibido! Confirmando tu ticket...</p>
-              <p className="text-xs text-green-700 mt-0.5">Estamos verificando el pago con Wompi. El saldo se actualiza en unos segundos.</p>
+          {ticketBalance !== null && ticketBalance > 0 ? (
+            /* ── Estado exitoso ─────────────────────────────────────── */
+            <div className="relative overflow-hidden flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/25 animate-fade-in">
+              {/* Fondo decorativo */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-10">
+                <span className="material-symbols-outlined text-[80px]" style={{ fontVariationSettings: "'FILL' 1" }}>confirmation_number</span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>confirmation_number</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-extrabold text-base leading-tight">¡Pago exitoso! Tu ticket está listo</p>
+                <p className="text-sm opacity-90 mt-0.5">
+                  Tienes <strong>{ticketBalance}</strong> ticket{ticketBalance !== 1 ? 's' : ''} disponible{ticketBalance !== 1 ? 's' : ''} — ya puedes analizar tu perfil
+                </p>
+              </div>
+              <span className="material-symbols-outlined text-3xl flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+              <button
+                onClick={() => setShowWompiBanner(false)}
+                className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
             </div>
-            <span className="w-4 h-4 border-2 border-green-400 border-t-green-600 rounded-full animate-spin flex-shrink-0" />
-          </div>
+          ) : (
+            /* ── Estado verificando ─────────────────────────────────── */
+            <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-green-50 border border-green-200 animate-fade-in">
+              <span className="material-symbols-outlined text-green-600 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>confirmation_number</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-green-800">Verificando tu pago con Wompi...</p>
+                <p className="text-xs text-green-600 mt-0.5">El saldo se actualiza automáticamente en unos segundos.</p>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                {[0,1,2].map(i => (
+                  <span key={i} className="w-1.5 h-1.5 rounded-full bg-green-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
