@@ -1284,6 +1284,18 @@ export default function AnalisisPerfil() {
 
   const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
 
+  // Si el usuario llega desde un redirect de Wompi (?id=...&env=...) refrescar tickets
+  // cada 5 s hasta 5 intentos para capturar el webhook que puede demorar un poco
+  useEffect(() => {
+    if (!searchParams.get('id') || !searchParams.get('env')) return
+    let attempts = 0
+    const poll = setInterval(() => {
+      attempts++
+      fetchTickets()
+      if (attempts >= 5) clearInterval(poll)
+    }, 5000)
+    return () => clearInterval(poll)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cuando el análisis termina (aunque el usuario haya navegado fuera y vuelto)
   useEffect(() => {
@@ -1303,7 +1315,15 @@ export default function AnalisisPerfil() {
       fetchTickets()   // actualizar saldo tras consumir ticket
       clearAnalysis()
     } else if (jobStatus === 'error' && jobError) {
-      setError(jobError)
+      const raw = jobError || ''
+      const esRed = raw.toLowerCase().includes('failed to fetch')
+        || raw.toLowerCase().includes('networkerror')
+        || raw.toLowerCase().includes('load failed')
+        || raw.toLowerCase().includes('fetch failed')
+      const friendly = esRed
+        ? 'No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo en un momento.'
+        : raw
+      setError(friendly)
       fetchTickets()   // refrescar saldo (puede haber cambiado)
       clearAnalysis()
     }
@@ -1579,6 +1599,20 @@ export default function AnalisisPerfil() {
         </div>
       </div>
 
+      {/* Banner pago recibido — aparece cuando Wompi redirige al usuario */}
+      {searchParams.get('id') && searchParams.get('env') && ticketBalance === 0 && (
+        <div className="max-w-7xl mx-auto px-4 pt-3">
+          <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-green-50 border border-green-300 animate-fade-in">
+            <span className="material-symbols-outlined text-green-600 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-green-800">¡Pago recibido! Confirmando tu ticket...</p>
+              <p className="text-xs text-green-700 mt-0.5">Estamos verificando el pago con Wompi. El saldo se actualiza en unos segundos.</p>
+            </div>
+            <span className="w-4 h-4 border-2 border-green-400 border-t-green-600 rounded-full animate-spin flex-shrink-0" />
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto p-4 pb-28">
         <div className="lg:grid lg:grid-cols-[1fr_300px] lg:gap-6 lg:items-start">
 
@@ -1780,9 +1814,19 @@ export default function AnalisisPerfil() {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-error-container text-error rounded-xl text-sm font-semibold flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sm">error</span>
-                    {error}
+                  <div className="p-3 bg-error-container text-error rounded-xl text-sm flex items-start gap-2">
+                    <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold leading-snug">{error}</p>
+                      {(error.includes('conectar') || error.includes('conexión')) && (
+                        <button
+                          onClick={() => { setError(null); solicitarAnalisis() }}
+                          className="mt-1.5 text-xs font-bold underline hover:no-underline"
+                        >
+                          Reintentar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -1854,9 +1898,16 @@ export default function AnalisisPerfil() {
                       <span className="material-symbols-outlined text-primary text-lg flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>confirmation_number</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Tickets de análisis</p>
-                        <p className="text-sm font-extrabold text-primary leading-tight">
+                        <p className="text-sm font-extrabold text-primary leading-tight flex items-center gap-1 flex-wrap">
                           {ticketBalance === null ? '...' : ticketBalance} ticket{ticketBalance !== 1 ? 's' : ''} disponibles
                           <Tip text="Cada análisis de perfil cuesta 1 ticket. Los tickets se compran por separado con Wompi. Un ticket te da acceso a 1 análisis completo con 4 rutas estratégicas personalizadas." />
+                          <button
+                            onClick={fetchTickets}
+                            title="Actualizar saldo"
+                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20 transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-primary" style={{ fontSize: '13px' }}>refresh</span>
+                          </button>
                         </p>
                       </div>
                       <button

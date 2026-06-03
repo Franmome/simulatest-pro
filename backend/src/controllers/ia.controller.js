@@ -1547,8 +1547,9 @@ export async function analizarPerfilCV(req, res) {
     }
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
     const file = req.file
+    console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0}`)
     const cvText = await extractCvText(file)
-    console.log('[IA] cvText extraido:', cvText.length, 'chars')
+    console.log(`[IA] cvText extraido: ${cvText.length} chars (archivo: ${file?.originalname || 'ninguno'})`)
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
@@ -1827,8 +1828,12 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
       motor: 'rutas_v1',
     })
   } catch (err) {
-    console.error('[IA] analizarPerfilCV:', err)
-    return res.status(500).json({ error: err.message })
+    console.error(`[IA] analizarPerfilCV ERROR: user=${req.user?.id} msg="${err.message}" stack=${err.stack?.split('\n')[1]?.trim() || ''}`)
+    const esTimeout = err.message?.toLowerCase().includes('timeout')
+    const msg = esTimeout
+      ? 'El análisis tardó demasiado. Intenta de nuevo — la IA puede estar cargada en este momento.'
+      : err.message
+    return res.status(500).json({ error: msg })
   }
 }
 
