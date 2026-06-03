@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useBlocker } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAnalysis } from '../context/AnalysisContext'
 const generarAnalisisPDF = async (...args) => {
@@ -1255,6 +1255,7 @@ export default function AnalisisPerfil() {
   const [showTicketConfirm, setShowTicketConfirm] = useState(false)
   const [ticketBalance, setTicketBalance] = useState(null)
   const [comprando, setComprando] = useState(false)
+  const [ticketPrice, setTicketPrice] = useState(2000)
   const [preferencias, setPreferencias] = useState({
     objetivo_principal: 'estabilidad',
     acepta_nivel_inferior: 'true',
@@ -1264,6 +1265,12 @@ export default function AnalisisPerfil() {
 
   const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
 
+  // Blocker: avisa antes de salir si hay análisis activo no visto
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      analisis !== null && currentLocation.pathname !== nextLocation.pathname
+  )
+
   // Cuando el análisis termina (aunque el usuario haya navegado fuera y vuelto)
   useEffect(() => {
     if (jobStatus === 'done' && jobResult) {
@@ -1271,16 +1278,19 @@ export default function AnalisisPerfil() {
       setAnalisis({ ...json.analisis, _convNombre: json._convNombre || '' })
       setOpecsPendientes(json.opecs_pendientes || [])
       if (json.analisis_id) { setAnalisisId(json.analisis_id); setActiveHistId(json.analisis_id) }
-      setGuardadoOk(false)
+      // El backend ya guardó el análisis automáticamente → marcar como guardado
+      setGuardadoOk(true)
       if (json.pocas_opec_local) setPocasOpecLocal(true)
       if (json.plataforma_url) { setPlataformaUrl(json.plataforma_url); setPlataformaNombre(json.plataforma_nombre || null) }
       const entry = { analisis: json.analisis, convNombre: json._convNombre || '', ts: Date.now() }
       try { localStorage.setItem('praxia_last_analisis', JSON.stringify(entry)) } catch {}
       setLocalAnalisis(entry)
       fetchHistory()
+      fetchTickets()   // actualizar saldo tras consumir ticket
       clearAnalysis()
     } else if (jobStatus === 'error' && jobError) {
       setError(jobError)
+      fetchTickets()   // refrescar saldo (puede haber cambiado)
       clearAnalysis()
     }
   }, [jobStatus]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1290,11 +1300,20 @@ export default function AnalisisPerfil() {
     if (jobStatus === 'processing') setAnalizando(true)
   }, [jobStatus])
 
+  // Advertir si el usuario cierra/recarga la pestaña con análisis activo
+  useEffect(() => {
+    if (!analisis) return
+    const handler = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [analisis])
+
   useEffect(() => {
     supabase.from('convocatorias').select('id, nombre, entidad, departamento, ciudad, plataforma_nombre, plataforma_url').eq('is_active', true).order('nombre')
       .then(({ data }) => setConvocatorias(data || []))
     fetchHistory()
     fetchTickets()
+    fetchTicketPrice()
     try {
       const raw = localStorage.getItem('praxia_last_analisis')
       if (raw) setLocalAnalisis(JSON.parse(raw))
@@ -1337,6 +1356,14 @@ export default function AnalisisPerfil() {
       const r = await fetch(`${BASE}/api/ia/tickets/balance`, { headers: h })
       if (r.ok) { const d = await r.json(); setTicketBalance(d.balance ?? 0) }
     } catch { setTicketBalance(0) }
+  }
+
+  async function fetchTicketPrice() {
+    try {
+      const h = await authHeaders()
+      const r = await fetch(`${BASE}/api/ia/tickets/precio`, { headers: h })
+      if (r.ok) { const d = await r.json(); setTicketPrice(d.precio_cop || 2000) }
+    } catch { /* usa default 2000 */ }
   }
 
   async function comprarTickets() {
@@ -1815,7 +1842,7 @@ export default function AnalisisPerfil() {
                         className="text-xs font-bold text-white bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-full transition-all disabled:opacity-50 whitespace-nowrap flex items-center gap-1"
                       >
                         {comprando ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : null}
-                        Comprar — $2.000
+                        Comprar — ${ticketPrice.toLocaleString('es-CO')}
                       </button>
                     </div>
 
@@ -1939,7 +1966,7 @@ export default function AnalisisPerfil() {
             </div>
             {ticketBalance === 0 && (
               <p className="text-xs text-center text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-                No tienes tickets disponibles. Compra 1 ticket por $2.000 COP con Wompi para continuar.
+                No tienes tickets disponibles. Compra 1 ticket por <strong>${ticketPrice.toLocaleString('es-CO')} COP</strong> con Wompi para continuar.
               </p>
             )}
             <div className="flex gap-3">
@@ -2045,6 +2072,40 @@ export default function AnalisisPerfil() {
               <div className="p-4 bg-slate-50 rounded-xl text-center">
                 <p className="text-xs text-on-surface-variant">¿Tienes dudas? Escríbele a <strong>Praxia</strong> desde el chat en el panel lateral.</p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Navegación con análisis activo ── */}
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600 text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>cloud_done</span>
+              </div>
+              <div>
+                <h3 className="font-extrabold text-on-surface">¿Salir del análisis?</h3>
+                <p className="text-xs text-on-surface-variant mt-0.5">Tu análisis ya está guardado automáticamente</p>
+              </div>
+            </div>
+            <p className="text-sm text-on-surface-variant leading-relaxed mb-5">
+              Puedes volver a verlo en cualquier momento desde <strong>Mis análisis guardados</strong> en el panel derecho. No perderás nada.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => blocker.reset()}
+                className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-sm font-bold hover:bg-slate-50 transition-colors"
+              >
+                Quedarme
+              </button>
+              <button
+                onClick={() => blocker.proceed()}
+                className="flex-1 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors"
+              >
+                Salir igual
+              </button>
             </div>
           </div>
         </div>
