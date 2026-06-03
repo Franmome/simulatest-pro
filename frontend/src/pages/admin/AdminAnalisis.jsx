@@ -21,13 +21,15 @@ export default function AdminAnalisis() {
 
   async function cargar() {
     setLoading(true)
-    const [{ data: usrs }, { tickets: tks }] = await Promise.all([
-      supabase.from('users').select('id, email, full_name').order('full_name'),
-      fetchTickets(),
-    ])
-    setUsuarios(usrs || [])
-    setTickets(tks)
-    setLoading(false)
+    try {
+      const [usrsResult, ticketsResult] = await Promise.all([
+        supabase.from('users').select('*').order('created_at', { ascending: false }),
+        fetchTickets(),
+      ])
+      setUsuarios(usrsResult.data || [])
+      setTickets(ticketsResult.tickets)
+    } catch { /* no crítico */ }
+    finally { setLoading(false) }
   }
 
   async function fetchTickets() {
@@ -40,8 +42,8 @@ export default function AdminAnalisis() {
   }
 
   async function recargarTickets() {
-    const { tickets: tks } = await fetchTickets()
-    setTickets(tks)
+    const res = await fetchTickets()
+    setTickets(res.tickets)
   }
 
   async function agregar(userId, cantidad) {
