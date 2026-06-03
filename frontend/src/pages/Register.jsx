@@ -66,13 +66,11 @@ export default function Register() {
       <main className="flex-grow flex flex-col items-center justify-center px-6 py-12">
         {/* Marca / Logo */}
         <div className="w-full max-w-md text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-container rounded-2xl mb-4 shadow-lg">
-            <span
-              className="material-symbols-outlined text-white text-3xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              {APP.icon}
-            </span>
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-[#0f2864] rounded-2xl mb-4 shadow-lg overflow-hidden">
+            {APP.logo
+              ? <img src={APP.logo} alt={APP.name} className="w-full h-full object-contain" />
+              : <span className="material-symbols-outlined text-white text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>{APP.icon}</span>
+            }
           </div>
           <h1 className="font-headline font-extrabold text-2xl tracking-tighter text-primary mb-1">
             {APP.name}

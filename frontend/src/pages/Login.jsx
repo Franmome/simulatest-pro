@@ -54,13 +54,11 @@ export default function Login() {
       <main className="flex-grow flex flex-col items-center justify-center px-6 py-12">
         {/* Marca / Logo */}
         <div className="w-full max-w-md text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-container rounded-2xl mb-6 shadow-xl shadow-primary/10">
-            <span
-              className="material-symbols-outlined text-white text-4xl"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              {APP.icon}
-            </span>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#0f2864] rounded-2xl mb-6 shadow-xl shadow-primary/10 overflow-hidden">
+            {APP.logo
+              ? <img src={APP.logo} alt={APP.name} className="w-full h-full object-contain" />
+              : <span className="material-symbols-outlined text-white text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>{APP.icon}</span>
+            }
           </div>
           <h1 className="font-headline font-extrabold text-3xl tracking-tighter text-primary mb-2">
             {APP.name}
