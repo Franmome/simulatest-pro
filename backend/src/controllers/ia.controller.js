@@ -253,12 +253,18 @@ function formatError(err) {
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
-async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-2.5-flash') {
+async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-2.5-flash', timeoutMs = 90_000) {
   const modelConfig = systemInstruction
     ? { model: modelId, systemInstruction }
     : { model: modelId }
   const model  = genAI.getGenerativeModel(modelConfig)
-  const result = await model.generateContent(Array.isArray(parts) ? parts : [parts])
+  const timeoutP = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Gemini timeout (${timeoutMs / 1000}s)`)), timeoutMs)
+  )
+  const result = await Promise.race([
+    model.generateContent(Array.isArray(parts) ? parts : [parts]),
+    timeoutP,
+  ])
   const usage  = result.response.usageMetadata
   return {
     texto:     result.response.text(),
@@ -380,7 +386,13 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
 
 async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
   const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
+  const timeoutP = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Gemini análisis timeout (100s)')), 100_000)
+  )
+  const result = await Promise.race([
+    model.generateContent(`${systemPrompt}\n\n${userPrompt}`),
+    timeoutP,
+  ])
   const usage  = result.response.usageMetadata
   return { texto: result.response.text(), tokensIn: usage?.promptTokenCount || 0, tokensOut: usage?.candidatesTokenCount || 0 }
 }
@@ -1501,7 +1513,7 @@ export async function analizarPerfilCV(req, res) {
     const isAdmin = req.user.role === 'admin'
     const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw, modelo = 'deepseek' } = req.body
 
-    // ── Verificar y consumir ticket (skip para admin) ─────────────────────────
+    // ── Verificar saldo de ticket (sin consumir aún — se descuenta solo si el análisis exitoso) ──
     if (!isAdmin) {
       const { data: ticketRow, error: ticketErr } = await supabase
         .from('user_analisis_tickets')
@@ -1512,19 +1524,7 @@ export async function analizarPerfilCV(req, res) {
       if (ticketErr || !ticketRow || ticketRow.tickets < 1) {
         return res.status(402).json({ error: 'Sin tickets disponibles. Compra un ticket para continuar.', tickets_agotados: true })
       }
-
-      // Decremento atómico con optimistic lock
-      const { error: decrErr } = await supabase
-        .from('user_analisis_tickets')
-        .update({ tickets: ticketRow.tickets - 1, updated_at: new Date().toISOString() })
-        .eq('user_id', userId)
-        .eq('tickets', ticketRow.tickets)
-
-      if (decrErr) {
-        console.error('[IA] error decrementando ticket:', decrErr.message)
-        return res.status(500).json({ error: 'Error procesando el ticket. Intenta de nuevo.' })
-      }
-      console.log(`[IA] ticket consumido: user=${userId} tickets_restantes=${ticketRow.tickets - 1}`)
+      console.log(`[IA] ticket verificado: user=${userId} saldo=${ticketRow.tickets} (se consume al terminar)`)
     } else {
       console.log('[IA] admin bypass — sin consumo de ticket')
     }
@@ -1793,6 +1793,30 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
       .select('id')
       .single()
     if (saveErr) console.error('[IA] guardar analisis_perfil:', saveErr.message)
+
+    // ── Consumir ticket DESPUÉS de éxito (no se pierde si la IA falla) ───────
+    if (!isAdmin) {
+      try {
+        const { data: ticketActual } = await supabase
+          .from('user_analisis_tickets')
+          .select('tickets')
+          .eq('user_id', userId)
+          .maybeSingle()
+        if (ticketActual && ticketActual.tickets >= 1) {
+          const { error: decrErr } = await supabase
+            .from('user_analisis_tickets')
+            .update({ tickets: ticketActual.tickets - 1, updated_at: new Date().toISOString() })
+            .eq('user_id', userId)
+            .eq('tickets', ticketActual.tickets)
+          if (decrErr) console.error('[IA] error decrementando ticket post-análisis:', decrErr.message)
+          else console.log(`[IA] ticket consumido: user=${userId} tickets_restantes=${ticketActual.tickets - 1}`)
+        } else {
+          console.warn(`[IA] ticket no consumido al commit — saldo insuficiente: user=${userId}`)
+        }
+      } catch (ticketErr) {
+        console.error('[IA] excepción al consumir ticket post-análisis:', ticketErr.message)
+      }
+    }
 
     return res.json({
       analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,

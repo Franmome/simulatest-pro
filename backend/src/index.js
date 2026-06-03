@@ -48,7 +48,17 @@ app.get('/api/version', (_req, res) => {
 })
 
 // ─── Manejo de errores global ─────────────────────────────
-app.use((err, _req, res, _next) => {
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://simulatest-pro-production.up.railway.app',
+]
+app.use((err, req, res, _next) => {
+  // Garantizar CORS headers incluso en respuestas de error
+  const origin = req.headers.origin
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
   console.error(err.stack)
   res.status(500).json({ error: err.message || 'Error interno del servidor' })
 })

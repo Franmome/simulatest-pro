@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { useAnalysis } from '../context/AnalysisContext'
@@ -1205,14 +1206,30 @@ function ResultsOld({ analisis, onReset, navigate }) {
   )
 }
 
-// ── Tooltip helper ────────────────────────────────────────────────────────────
+// ── Tooltip helper (portal — escapa overflow:hidden de cualquier contenedor) ──
 function Tip({ text }) {
+  const btnRef = useRef()
+  const [pos, setPos] = useState(null)
+
+  const show = () => {
+    if (!btnRef.current) return
+    const r = btnRef.current.getBoundingClientRect()
+    setPos({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - 240) })
+  }
+  const hide = () => setPos(null)
+
   return (
-    <span className="relative group inline-flex items-center ml-1 cursor-help">
-      <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center hover:bg-primary/20 hover:text-primary transition-colors select-none">?</span>
-      <span className="absolute bottom-5 left-0 z-[200] w-60 bg-slate-800 text-white text-[11px] rounded-xl px-3 py-2 leading-relaxed opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 shadow-xl whitespace-normal font-normal normal-case tracking-normal">
-        {text}
-      </span>
+    <span className="inline-flex items-center ml-1 cursor-help" onMouseEnter={show} onMouseLeave={hide}>
+      <span ref={btnRef} className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center hover:bg-primary/20 hover:text-primary transition-colors select-none">?</span>
+      {pos && createPortal(
+        <span
+          className="fixed z-[9999] w-56 bg-slate-800 text-white text-[11px] rounded-xl px-3 py-2 leading-relaxed shadow-xl pointer-events-none whitespace-normal font-normal"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          {text}
+        </span>,
+        document.body
+      )}
     </span>
   )
 }
