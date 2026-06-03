@@ -2745,7 +2745,7 @@ export async function generateWompiTicketCheckout(req, res) {
   const redirectUrl = encodeURIComponent(
     `${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-perfil`
   )
-  const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&integrity=${integrity}&redirect-url=${redirectUrl}`
+  const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&signature:integrity=${integrity}&redirect-url=${redirectUrl}`
 
   console.log(`[Wompi] checkout generado: user=${userId} ref=${ref} amount=${amountCents} integrity=${integrity.slice(0,12)}...`)
   return res.json({ url, precio_cop: precioCOP })
