@@ -11,13 +11,17 @@ async function authHeaders() {
 
 export default function AdminAnalisis() {
   const [usuarios, setUsuarios]     = useState([])
-  const [tickets, setTickets]       = useState([])   // [{ user_id, tickets }]
+  const [tickets, setTickets]       = useState([])
   const [loading, setLoading]       = useState(true)
   const [busqueda, setBusqueda]     = useState('')
-  const [adding, setAdding]         = useState(null) // user_id en proceso
+  const [adding, setAdding]         = useState(null)
   const [msg, setMsg]               = useState(null)
+  const [precio, setPrecio]         = useState(2000)
+  const [precioEdit, setPrecioEdit] = useState('')
+  const [savingPrecio, setSavingPrecio] = useState(false)
+  const [msgPrecio, setMsgPrecio]   = useState(null)
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar(); fetchPrecio() }, [])
 
   async function cargar() {
     setLoading(true)
@@ -44,6 +48,31 @@ export default function AdminAnalisis() {
   async function recargarTickets() {
     const res = await fetchTickets()
     setTickets(res.tickets)
+  }
+
+  async function fetchPrecio() {
+    try {
+      const h = await authHeaders()
+      const r = await fetch(`${BASE}/api/ia/tickets/precio`, { headers: h })
+      if (r.ok) { const d = await r.json(); setPrecio(d.precio_cop || 2000); setPrecioEdit(String(d.precio_cop || 2000)) }
+    } catch { setPrecioEdit('2000') }
+  }
+
+  async function guardarPrecio() {
+    const val = parseInt(precioEdit)
+    if (!val || val < 100) { setMsgPrecio({ type: 'err', text: 'Precio mínimo: 100 COP' }); return }
+    setSavingPrecio(true); setMsgPrecio(null)
+    try {
+      const h = await authHeaders()
+      const r = await fetch(`${BASE}/api/ia/admin/tickets/precio`, {
+        method: 'POST',
+        headers: { ...h, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ precio_cop: val }),
+      })
+      if (r.ok) { setPrecio(val); setMsgPrecio({ type: 'ok', text: `✓ Precio actualizado a $${val.toLocaleString('es-CO')} COP` }) }
+      else { const d = await r.json(); setMsgPrecio({ type: 'err', text: d.error || 'Error' }) }
+    } catch (e) { setMsgPrecio({ type: 'err', text: e.message }) }
+    finally { setSavingPrecio(false) }
   }
 
   async function agregar(userId, cantidad) {
@@ -92,16 +121,48 @@ export default function AdminAnalisis() {
       <div>
         <h2 className="text-2xl font-black text-on-surface">Análisis de Perfil — Tickets</h2>
         <p className="text-sm text-on-surface-variant mt-1">
-          1 ticket = 1 análisis completo · Precio público: <strong>$2.000 COP</strong> (Wompi)
+          1 ticket = 1 análisis completo · Precio actual: <strong>${precio.toLocaleString('es-CO')} COP</strong> (Wompi)
         </p>
+      </div>
+
+      {/* Editor de precio */}
+      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-5">
+        <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+          Precio del ticket (COP)
+        </h3>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-on-surface-variant">$</span>
+          <input
+            type="number" min={100} max={1000000} step={100}
+            value={precioEdit}
+            onChange={e => setPrecioEdit(e.target.value)}
+            className="w-36 bg-surface-container-low border border-outline-variant/30 rounded-xl py-2.5 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/30"
+          />
+          <span className="text-sm text-on-surface-variant">COP</span>
+          <button
+            onClick={guardarPrecio}
+            disabled={savingPrecio || !precioEdit}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40"
+          >
+            {savingPrecio ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : null}
+            Guardar
+          </button>
+          <span className="text-xs text-on-surface-variant">Precio actual: <strong>${precio.toLocaleString('es-CO')} COP</strong></span>
+        </div>
+        {msgPrecio && (
+          <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg ${msgPrecio.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            {msgPrecio.text}
+          </p>
+        )}
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Usuarios con tickets', value: conTickets,      icon: 'group',               color: 'bg-primary/10 text-primary' },
-          { label: 'Tickets en circulación', value: totalTickets,  icon: 'confirmation_number',  color: 'bg-emerald-100 text-emerald-700' },
-          { label: 'Precio por ticket',     value: '$2.000 COP',   icon: 'payments',             color: 'bg-amber-100 text-amber-700' },
+          { label: 'Usuarios con tickets',   value: conTickets,                              icon: 'group',              color: 'bg-primary/10 text-primary' },
+          { label: 'Tickets en circulación', value: totalTickets,                            icon: 'confirmation_number', color: 'bg-emerald-100 text-emerald-700' },
+          { label: 'Precio por ticket',      value: `$${precio.toLocaleString('es-CO')} COP`, icon: 'payments',           color: 'bg-amber-100 text-amber-700' },
         ].map((s, i) => (
           <div key={i} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-4">
             <div className={`w-9 h-9 rounded-xl ${s.color} flex items-center justify-center mb-3`}>

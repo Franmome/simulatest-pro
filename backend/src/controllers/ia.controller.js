@@ -1497,8 +1497,38 @@ Responde UNICAMENTE con JSON valido, sin texto antes ni despues, sin markdown, s
 
 export async function analizarPerfilCV(req, res) {
   try {
-    const userId = req.user.id
+    const userId  = req.user.id
+    const isAdmin = req.user.role === 'admin'
     const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw, modelo = 'deepseek' } = req.body
+
+    // ── Verificar y consumir ticket (skip para admin) ─────────────────────────
+    if (!isAdmin) {
+      const { data: ticketRow, error: ticketErr } = await supabase
+        .from('user_analisis_tickets')
+        .select('tickets')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (ticketErr || !ticketRow || ticketRow.tickets < 1) {
+        return res.status(402).json({ error: 'Sin tickets disponibles. Compra un ticket para continuar.', tickets_agotados: true })
+      }
+
+      // Decremento atómico con optimistic lock
+      const { error: decrErr } = await supabase
+        .from('user_analisis_tickets')
+        .update({ tickets: ticketRow.tickets - 1, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('tickets', ticketRow.tickets)
+
+      if (decrErr) {
+        console.error('[IA] error decrementando ticket:', decrErr.message)
+        return res.status(500).json({ error: 'Error procesando el ticket. Intenta de nuevo.' })
+      }
+      console.log(`[IA] ticket consumido: user=${userId} tickets_restantes=${ticketRow.tickets - 1}`)
+    } else {
+      console.log('[IA] admin bypass — sin consumo de ticket')
+    }
+
     const analizarConIA = async (sp, up) => {
       for (let intento = 1; intento <= 3; intento++) {
         try {
@@ -2687,7 +2717,15 @@ export async function getTicketBalance(req, res) {
 export async function generateWompiTicketCheckout(req, res) {
   const userId = req.user.id
   const cantidad = 1
-  const amountCents = 200000 // 2.000 COP
+
+  // Leer precio desde app_config; fallback a 2000 COP si tabla no existe
+  let precioCOP = 2000
+  try {
+    const { data: cfg } = await supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle()
+    if (cfg?.value) precioCOP = parseInt(cfg.value) || 2000
+  } catch { /* tabla no existe aún */ }
+
+  const amountCents = precioCOP * 100
   const ref = `${userId}-TICKET-${cantidad}-${Date.now()}`
   const integrity = crypto.createHash('sha256')
     .update(`${ref}${amountCents}COP${process.env.WOMPI_INTEGRITY_SECRET}`)
@@ -2695,7 +2733,7 @@ export async function generateWompiTicketCheckout(req, res) {
   const publicKey = process.env.WOMPI_PUBLIC_KEY
   const redirectUrl = encodeURIComponent(`${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-perfil`)
   const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&integrity=${integrity}&redirect-url=${redirectUrl}`
-  return res.json({ url })
+  return res.json({ url, precio_cop: precioCOP })
 }
 
 export async function getAdminTickets(req, res) {
@@ -2729,5 +2767,22 @@ export async function adminAddTickets(req, res) {
         .insert({ user_id, tickets: cantidad })
     }
     return res.json({ ok: true })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+export async function getPrecioTicket(req, res) {
+  try {
+    const { data } = await supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle()
+    return res.json({ precio_cop: parseInt(data?.value) || 2000 })
+  } catch { return res.json({ precio_cop: 2000 }) }
+}
+
+export async function setPrecioTicket(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  const precio = parseInt(req.body.precio_cop)
+  if (!precio || precio < 100 || precio > 1000000) return res.status(400).json({ error: 'Precio inválido (100–1.000.000 COP)' })
+  try {
+    await supabase.from('app_config').upsert({ key: 'ticket_analisis_precio_cop', value: String(precio), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    return res.json({ ok: true, precio_cop: precio })
   } catch (e) { return res.status(500).json({ error: e.message }) }
 }
