@@ -1300,7 +1300,8 @@ export default function AnalisisPerfil() {
   const [comprando, setComprando] = useState(false)
   const comprandoRef   = useRef(false)
   const analizandoRef  = useRef(false)
-  const [ticketPrice, setTicketPrice] = useState(2000)
+  const [ticketPrice, setTicketPrice]       = useState(2000)
+  const [ticketCantidad, setTicketCantidad] = useState(1)
   const [preferencias, setPreferencias] = useState({
     objetivo_principal: 'estabilidad',
     acepta_nivel_inferior: 'true',
@@ -1429,8 +1430,12 @@ export default function AnalisisPerfil() {
     try {
       const h = await authHeaders()
       const r = await fetch(`${BASE}/api/ia/tickets/precio`, { headers: h })
-      if (r.ok) { const d = await r.json(); setTicketPrice(d.precio_cop || 2000) }
-    } catch { /* usa default 2000 */ }
+      if (r.ok) {
+        const d = await r.json()
+        setTicketPrice(d.precio_cop || 2000)
+        setTicketCantidad(Math.max(1, d.cantidad_tickets || 1))
+      }
+    } catch { /* usa defaults */ }
   }
 
   async function comprarTickets() {
@@ -1980,7 +1985,7 @@ export default function AnalisisPerfil() {
                         className="text-xs font-bold text-white bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-full transition-all disabled:opacity-50 whitespace-nowrap flex items-center gap-1"
                       >
                         {comprando ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : null}
-                        Comprar — ${ticketPrice.toLocaleString('es-CO')}
+                        {ticketCantidad > 1 ? `Comprar ${ticketCantidad} tickets` : 'Comprar'} — ${ticketPrice.toLocaleString('es-CO')}
                       </button>
                     </div>
 
@@ -2097,6 +2102,9 @@ export default function AnalisisPerfil() {
               </div>
               <h3 className="font-extrabold text-lg text-on-surface">¿Iniciar análisis?</h3>
               <p className="text-sm text-on-surface-variant mt-1">Esta acción consumirá <strong>1 ticket</strong> de análisis de perfil</p>
+              {ticketCantidad > 1 && (
+                <p className="text-xs text-primary font-semibold mt-1">💡 Recuerda que comprando obtienes {ticketCantidad} tickets</p>
+              )}
             </div>
             <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl mb-5 border border-primary/15">
               <span className="material-symbols-outlined text-primary text-lg flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>confirmation_number</span>
@@ -2130,6 +2138,7 @@ export default function AnalisisPerfil() {
               >
                 <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>person_search</span>
                 Analizar — 1 ticket
+                {ticketCantidad > 1 && <span className="text-xs opacity-70 font-normal">({ticketCantidad} disponibles)</span>}
               </button>
             </div>
           </div>

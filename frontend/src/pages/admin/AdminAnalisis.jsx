@@ -16,10 +16,12 @@ export default function AdminAnalisis() {
   const [busqueda, setBusqueda]     = useState('')
   const [adding, setAdding]         = useState(null)
   const [msg, setMsg]               = useState(null)
-  const [precio, setPrecio]         = useState(2000)
-  const [precioEdit, setPrecioEdit] = useState('')
-  const [savingPrecio, setSavingPrecio] = useState(false)
-  const [msgPrecio, setMsgPrecio]   = useState(null)
+  const [precio, setPrecio]               = useState(2000)
+  const [precioEdit, setPrecioEdit]       = useState('')
+  const [cantidadTickets, setCantidadTickets]   = useState(1)
+  const [cantidadEdit, setCantidadEdit]   = useState('1')
+  const [savingPrecio, setSavingPrecio]   = useState(false)
+  const [msgPrecio, setMsgPrecio]         = useState(null)
 
   useEffect(() => { cargar(); fetchPrecio() }, [])
 
@@ -54,23 +56,34 @@ export default function AdminAnalisis() {
     try {
       const h = await authHeaders()
       const r = await fetch(`${BASE}/api/ia/tickets/precio`, { headers: h })
-      if (r.ok) { const d = await r.json(); setPrecio(d.precio_cop || 2000); setPrecioEdit(String(d.precio_cop || 2000)) }
-    } catch { setPrecioEdit('2000') }
+      if (r.ok) {
+        const d = await r.json()
+        setPrecio(d.precio_cop || 2000)
+        setPrecioEdit(String(d.precio_cop || 2000))
+        setCantidadTickets(d.cantidad_tickets || 1)
+        setCantidadEdit(String(d.cantidad_tickets || 1))
+      }
+    } catch { setPrecioEdit('2000'); setCantidadEdit('1') }
   }
 
   async function guardarPrecio() {
-    const val = parseInt(precioEdit)
+    const val  = parseInt(precioEdit)
+    const cant = parseInt(cantidadEdit)
     if (!val || val < 100) { setMsgPrecio({ type: 'err', text: 'Precio mínimo: 100 COP' }); return }
+    if (!cant || cant < 1 || cant > 100) { setMsgPrecio({ type: 'err', text: 'Cantidad inválida (1–100)' }); return }
     setSavingPrecio(true); setMsgPrecio(null)
     try {
       const h = await authHeaders()
       const r = await fetch(`${BASE}/api/ia/admin/tickets/precio`, {
         method: 'POST',
         headers: { ...h, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ precio_cop: val }),
+        body: JSON.stringify({ precio_cop: val, cantidad_tickets: cant }),
       })
-      if (r.ok) { setPrecio(val); setMsgPrecio({ type: 'ok', text: `✓ Precio actualizado a $${val.toLocaleString('es-CO')} COP` }) }
-      else { const d = await r.json(); setMsgPrecio({ type: 'err', text: d.error || 'Error' }) }
+      if (r.ok) {
+        setPrecio(val)
+        setCantidadTickets(cant)
+        setMsgPrecio({ type: 'ok', text: `✓ Guardado: ${cant} ticket${cant !== 1 ? 's' : ''} por $${val.toLocaleString('es-CO')} COP` })
+      } else { const d = await r.json(); setMsgPrecio({ type: 'err', text: d.error || 'Error' }) }
     } catch (e) { setMsgPrecio({ type: 'err', text: e.message }) }
     finally { setSavingPrecio(false) }
   }
@@ -125,31 +138,79 @@ export default function AdminAnalisis() {
         </p>
       </div>
 
-      {/* Editor de precio */}
+      {/* Editor de precio + cantidad */}
       <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-5">
-        <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+        <h3 className="font-bold text-on-surface mb-1 flex items-center gap-2">
           <span className="material-symbols-outlined text-amber-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
           Precio del ticket (COP)
         </h3>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-on-surface-variant">$</span>
-          <input
-            type="number" min={100} max={1000000} step={100}
-            value={precioEdit}
-            onChange={e => setPrecioEdit(e.target.value)}
-            className="w-36 bg-surface-container-low border border-outline-variant/30 rounded-xl py-2.5 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <span className="text-sm text-on-surface-variant">COP</span>
+        <p className="text-xs text-on-surface-variant mb-4">
+          Configura cuánto paga el usuario y cuántos tickets recibe por esa compra.
+          Actualmente: <strong>${precio.toLocaleString('es-CO')} COP → {cantidadTickets} ticket{cantidadTickets !== 1 ? 's' : ''}</strong>
+        </p>
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Precio */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">Precio (COP)</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-on-surface-variant">$</span>
+              <input
+                type="number" min={100} max={1000000} step={1000}
+                value={precioEdit}
+                onChange={e => setPrecioEdit(e.target.value)}
+                className="w-32 bg-surface-container-low border border-outline-variant/30 rounded-xl py-2.5 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-sm text-on-surface-variant">COP</span>
+            </div>
+          </div>
+
+          {/* Flecha */}
+          <span className="material-symbols-outlined text-on-surface-variant pb-2.5">arrow_forward</span>
+
+          {/* Cantidad de tickets */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">Tickets que recibe</label>
+            <div className="flex items-center gap-1 border border-outline-variant/30 rounded-xl overflow-hidden bg-surface-container-low">
+              <button
+                onClick={() => setCantidadEdit(v => String(Math.max(1, parseInt(v || 1) - 1)))}
+                className="w-9 h-10 flex items-center justify-center hover:bg-surface-container font-bold text-on-surface-variant"
+              >−</button>
+              <input
+                type="number" min={1} max={100}
+                value={cantidadEdit}
+                onChange={e => setCantidadEdit(e.target.value)}
+                className="w-12 text-center text-sm font-bold text-on-surface bg-transparent outline-none py-2"
+              />
+              <button
+                onClick={() => setCantidadEdit(v => String(Math.min(100, parseInt(v || 1) + 1)))}
+                className="w-9 h-10 flex items-center justify-center hover:bg-surface-container font-bold text-on-surface-variant"
+              >+</button>
+            </div>
+          </div>
+
+          {/* Guardar */}
           <button
             onClick={guardarPrecio}
-            disabled={savingPrecio || !precioEdit}
+            disabled={savingPrecio || !precioEdit || !cantidadEdit}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40"
           >
             {savingPrecio ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : null}
             Guardar
           </button>
-          <span className="text-xs text-on-surface-variant">Precio actual: <strong>${precio.toLocaleString('es-CO')} COP</strong></span>
         </div>
+
+        {/* Preview de lo que verá el usuario */}
+        {precioEdit && cantidadEdit && (
+          <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+            <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>preview</span>
+            <p className="text-xs text-on-surface">
+              El usuario verá: <strong className="text-primary">
+                Comprar {parseInt(cantidadEdit) > 1 ? `${cantidadEdit} tickets` : '1 ticket'} — ${parseInt(precioEdit || 0).toLocaleString('es-CO')}
+              </strong>
+            </p>
+          </div>
+        )}
+
         {msgPrecio && (
           <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg ${msgPrecio.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
             {msgPrecio.text}

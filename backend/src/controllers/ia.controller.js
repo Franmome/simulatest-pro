@@ -2753,13 +2753,17 @@ export async function generateWompiTicketCheckout(req, res) {
   }
 
   const userId  = req.user.id
-  const cantidad = 1
 
-  // Leer precio desde app_config; fallback a 2000 COP
+  // Leer precio y cantidad desde app_config
   let precioCOP = 2000
+  let cantidad  = 1
   try {
-    const { data: cfg } = await supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle()
-    if (cfg?.value) precioCOP = parseInt(cfg.value) || 2000
+    const [cfgPrecio, cfgCant] = await Promise.all([
+      supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle(),
+      supabase.from('app_config').select('value').eq('key', 'ticket_analisis_cantidad').maybeSingle(),
+    ])
+    if (cfgPrecio.data?.value) precioCOP = parseInt(cfgPrecio.data.value) || 2000
+    if (cfgCant.data?.value)   cantidad  = Math.max(1, parseInt(cfgCant.data.value) || 1)
   } catch { /* tabla no existe aún */ }
 
   const amountCents = precioCOP * 100
@@ -2816,17 +2820,32 @@ export async function adminAddTickets(req, res) {
 
 export async function getPrecioTicket(req, res) {
   try {
-    const { data } = await supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle()
-    return res.json({ precio_cop: parseInt(data?.value) || 2000 })
-  } catch { return res.json({ precio_cop: 2000 }) }
+    const [cfgPrecio, cfgCant] = await Promise.all([
+      supabase.from('app_config').select('value').eq('key', 'ticket_analisis_precio_cop').maybeSingle(),
+      supabase.from('app_config').select('value').eq('key', 'ticket_analisis_cantidad').maybeSingle(),
+    ])
+    return res.json({
+      precio_cop:       parseInt(cfgPrecio.data?.value) || 2000,
+      cantidad_tickets: Math.max(1, parseInt(cfgCant.data?.value) || 1),
+    })
+  } catch { return res.json({ precio_cop: 2000, cantidad_tickets: 1 }) }
 }
 
 export async function setPrecioTicket(req, res) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
-  const precio = parseInt(req.body.precio_cop)
+  const precio   = parseInt(req.body.precio_cop)
+  const cantidad = parseInt(req.body.cantidad_tickets)
   if (!precio || precio < 100 || precio > 1000000) return res.status(400).json({ error: 'Precio inválido (100–1.000.000 COP)' })
+  if (cantidad && (cantidad < 1 || cantidad > 100)) return res.status(400).json({ error: 'Cantidad inválida (1–100 tickets)' })
   try {
-    await supabase.from('app_config').upsert({ key: 'ticket_analisis_precio_cop', value: String(precio), updated_at: new Date().toISOString() }, { onConflict: 'key' })
-    return res.json({ ok: true, precio_cop: precio })
+    const now = new Date().toISOString()
+    const upserts = [
+      supabase.from('app_config').upsert({ key: 'ticket_analisis_precio_cop', value: String(precio), updated_at: now }, { onConflict: 'key' }),
+    ]
+    if (cantidad) {
+      upserts.push(supabase.from('app_config').upsert({ key: 'ticket_analisis_cantidad', value: String(cantidad), updated_at: now }, { onConflict: 'key' }))
+    }
+    await Promise.all(upserts)
+    return res.json({ ok: true, precio_cop: precio, cantidad_tickets: cantidad || 1 })
   } catch (e) { return res.status(500).json({ error: e.message }) }
 }
