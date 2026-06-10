@@ -6,9 +6,10 @@ import authRoutes        from './routes/auth.routes.js'
 import evaluacionRoutes  from './routes/evaluacion.routes.js'
 import paqueteRoutes     from './routes/paquete.routes.js'
 import usuarioRoutes     from './routes/usuario.routes.js'
-import wompiRoutes       from './routes/wompi.routes.js'   // ✅ Agregado
+import wompiRoutes       from './routes/wompi.routes.js'
 import iaRoutes          from './routes/ia.routes.js'
-import cuadernoRoutes   from './routes/cuaderno.routes.js'
+import cuadernoRoutes    from './routes/cuaderno.routes.js'
+import reportesRoutes    from './routes/reportes.routes.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3000
@@ -27,9 +28,10 @@ app.use('/api/auth',        authRoutes)
 app.use('/api/evaluaciones', evaluacionRoutes)
 app.use('/api/paquetes',    paqueteRoutes)
 app.use('/api/usuarios',    usuarioRoutes)
-app.use('/api/wompi',       wompiRoutes)   // ✅ Agregado
+app.use('/api/wompi',       wompiRoutes)
 app.use('/api/ia',         iaRoutes)
-app.use('/api/cuaderno',  cuadernoRoutes)
+app.use('/api/cuaderno',   cuadernoRoutes)
+app.use('/api/reportes',   reportesRoutes)
 
 // ─── Health check ─────────────────────────────────────────
 app.get('/api/health', (_req, res) => {

@@ -45,6 +45,7 @@ const AdminErrores     = lazy(() => import('./pages/admin/AdminErrores'))
 const AdminIATraining  = lazy(() => import('./pages/admin/AdminIATraining'))
 const AdminTokens      = lazy(() => import('./pages/admin/AdminTokens'))
 const AdminAnalisis    = lazy(() => import('./pages/admin/AdminAnalisis'))
+const AdminReportes    = lazy(() => import('./pages/admin/AdminReportes'))
 
 function AdminFallback() {
   return (
@@ -114,6 +115,7 @@ export default function App() {
             <Route path="ia-training"             element={<Suspense fallback={<AdminFallback />}><AdminIATraining /></Suspense>} />
             <Route path="tokens"                  element={<Suspense fallback={<AdminFallback />}><AdminTokens /></Suspense>} />
             <Route path="analisis"                element={<Suspense fallback={<AdminFallback />}><AdminAnalisis /></Suspense>} />
+            <Route path="reportes"                element={<Suspense fallback={<AdminFallback />}><AdminReportes /></Suspense>} />
           </Route>
 
           {/* 🔄 Redirección por defecto (por si acaso) */}

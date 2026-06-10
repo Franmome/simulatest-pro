@@ -22,7 +22,7 @@ function safeStr(v) {
   if (typeof v === 'string') return v
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
   if (typeof v === 'object') {
-    const s = v.accion || v.texto || v.value || v.denominacion || v.nombre || JSON.stringify(v)
+    const s = v.detalle || v.descripcion || v.accion || v.texto || v.value || v.denominacion || v.nombre || v.tipo || JSON.stringify(v)
     return typeof s === 'string' ? s : JSON.stringify(v)
   }
   return String(v)
@@ -970,13 +970,29 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
           </div>
           {diag.resumen && <p className="text-xs text-on-surface leading-relaxed">{diag.resumen}</p>}
           {perfil.alertas_validacion?.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {perfil.alertas_validacion.map((a, i) => (
-                <p key={i} className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1">
-                  <span className="material-symbols-outlined text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                  {safeStr(a)}
-                </p>
-              ))}
+            <div className="mt-3 space-y-1.5">
+              {perfil.alertas_validacion.map((a, i) => {
+                const tipo       = typeof a === 'object' ? (a.tipo        || '') : ''
+                const detalle    = typeof a === 'object' ? (a.detalle     || '') : safeStr(a)
+                const criticidad = typeof a === 'object' ? (a.criticidad  || '') : ''
+                const isAlta     = criticidad.toLowerCase().includes('alta')
+                const isMedia    = criticidad.toLowerCase().includes('media')
+                return (
+                  <div key={i} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs
+                    ${isAlta  ? 'bg-red-50    dark:bg-red-950/30   text-red-700    dark:text-red-400'
+                    : isMedia ? 'bg-amber-50  dark:bg-amber-950/30 text-amber-700  dark:text-amber-400'
+                    :            'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400'}`}>
+                    <span className="material-symbols-outlined text-xs mt-0.5 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {isAlta ? 'error' : 'warning'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      {tipo && <span className="font-bold mr-1">{tipo}:</span>}
+                      <span>{detalle || safeStr(a)}</span>
+                      {criticidad && <span className="ml-1 opacity-60 font-medium">({criticidad})</span>}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -1309,7 +1325,8 @@ export default function AnalisisPerfil() {
     nivel_riesgo_aceptado: 'medio',
   })
 
-  const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis } = useAnalysis()
+  const { status: jobStatus, result: jobResult, jobError, runAnalysis, clearAnalysis,
+          etapa: jobEtapa, mensajeEtapa, setMensajeEtapa, pctEtapa, setPctEtapa } = useAnalysis()
 
   // Si el usuario llega desde un redirect de Wompi (?id=...&env=...) refrescar tickets
   // cada 5 s hasta 5 intentos para capturar el webhook que puede demorar un poco
@@ -1457,9 +1474,13 @@ export default function AnalisisPerfil() {
   }
 
   function solicitarAnalisis() {
-    if (analizandoRef.current || analizando) return  // bloqueo inmediato
+    if (analizandoRef.current || analizando) return
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
+    if (ticketBalance !== null && ticketBalance < 1) {
+      setError('No tienes tickets disponibles. Compra un ticket para continuar.')
+      return
+    }
     setError(null)
     setShowTicketConfirm(true)
   }
@@ -1494,8 +1515,33 @@ export default function AnalisisPerfil() {
     { icon: 'task_alt',          text: 'Armando resultado...' },
   ]
 
+  async function reportarError({ tipo = 'otro', error_msg = '', etapa = null } = {}) {
+    try {
+      const headers = await authHeaders()
+      const file    = files[0]
+      await fetch(`${BASE}/api/reportes/error`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo,
+          analisis_id:    analisisId || null,
+          convocatoria_id: convId   || null,
+          file_name:      file?.name || null,
+          file_size_mb:   file ? +(file.size / (1024 * 1024)).toFixed(2) : null,
+          error_msg,
+          etapa,
+          user_agent: navigator.userAgent,
+        }),
+      })
+      alert('¡Gracias! Tu reporte fue enviado. Lo revisaremos pronto.')
+    } catch { /* no crítico */ }
+  }
+
+  // Mapeo: etapa SSE → índice en LOAD_STEPS
+  const etapaToStep = { 1: 0, 2: 1, 3: 3, 4: 4, 5: 5 }
+
   async function analizar() {
-    if (analizandoRef.current) return   // bloqueo inmediato
+    if (analizandoRef.current) return
     if (!convId) { setError('Selecciona una convocatoria'); return }
     if (files.length === 0) { setError('Adjunta tu hoja de vida (PDF, imagen o Word) para continuar'); return }
     analizandoRef.current = true
@@ -1503,33 +1549,58 @@ export default function AnalisisPerfil() {
     setOpecsPendientes([]); setPocasOpecLocal(false); setPlataformaUrl(null); setPlataformaNombre(null); setGuardadoOk(false)
 
     const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
+    const jobId      = crypto.randomUUID()
 
-    // avanzar pasos ~45s cada uno mientras el servidor trabaja
+    // ── Conectar SSE para progreso en tiempo real ────────────────────────────
+    let evtSource = null
+    try {
+      evtSource = new EventSource(`${BASE}/api/ia/analisis-perfil/progreso/${jobId}`)
+      evtSource.addEventListener('progreso', (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          const step = etapaToStep[data.etapa]
+          if (step !== undefined) setLoadStep(step)
+          if (data.msg) setMensajeEtapa(data.msg)
+          if (data.pct !== undefined) setPctEtapa(data.pct)
+        } catch { /* no crítico */ }
+      })
+      evtSource.addEventListener('listo', () => evtSource?.close())
+      evtSource.addEventListener('error', (e) => {
+        if (e.data) {
+          try { const d = JSON.parse(e.data); if (d.mensaje) setError(d.mensaje) } catch { /* */ }
+        }
+        evtSource?.close()
+      })
+    } catch { /* EventSource no disponible: el timer de fallback sigue andando */ }
+
+    // Timer de fallback (avanza un paso si SSE no conectó o tarda más de lo esperado)
     const stepTimer = setInterval(() => {
       setLoadStep(s => (s < LOAD_STEPS.length - 1 ? s + 1 : s))
-    }, 45000)
+    }, 40_000)
 
-    // runAnalysis vive en el Context global: si el usuario navega, el fetch
-    // sigue en segundo plano y el resultado se aplica cuando vuelva a esta página
     await runAnalysis(async () => {
       const headers = await authHeaders()
       const fd = new FormData()
       fd.append('convocatoria_id', convId)
       fd.append('perfil_texto', perfilTexto)
+      fd.append('jobId', jobId)
       if (ciudadFiltro) fd.append('ciudad_filtro', ciudadFiltro)
       fd.append('preferencias', JSON.stringify(preferencias))
       fd.append('modelo', modeloAnalisis)
       if (files.length > 0) fd.append('pdf', files[0])
-      const res = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
+      const res  = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       return { ...json, _convNombre: convNombre }
     })
 
     clearInterval(stepTimer)
+    evtSource?.close()
     analizandoRef.current = false
     setAnalizando(false)
     setLoadStep(0)
+    setMensajeEtapa('')
+    setPctEtapa(0)
   }
 
   function selectHistItem(item) {
@@ -1887,22 +1958,31 @@ export default function AnalisisPerfil() {
                     <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">error</span>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold leading-snug">{error}</p>
-                      {(error.includes('conectar') || error.includes('conexión')) && (
+                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                        {(error.includes('conectar') || error.includes('conexión') || error.includes('Intenta de nuevo') || error.includes('intenta de nuevo')) && (
+                          <button
+                            onClick={() => { setError(null); solicitarAnalisis() }}
+                            className="text-xs font-bold underline hover:no-underline"
+                          >
+                            Reintentar
+                          </button>
+                        )}
                         <button
-                          onClick={() => { setError(null); solicitarAnalisis() }}
-                          className="mt-1.5 text-xs font-bold underline hover:no-underline"
+                          onClick={() => reportarError({ tipo: 'analisis', error_msg: error })}
+                          className="text-xs font-semibold opacity-70 hover:opacity-100 flex items-center gap-1 underline hover:no-underline"
                         >
-                          Reintentar
+                          <span className="material-symbols-outlined text-xs">flag</span>
+                          Reportar problema
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {analizando ? (
                   <div className="card p-4 sm:p-6 space-y-4 animate-fade-in">
-                    {/* Spinner + texto activo */}
-                    <div className="flex items-center gap-4 pb-2 border-b border-outline-variant/20">
+                    {/* Header: spinner + título activo */}
+                    <div className="flex items-center gap-4 pb-3 border-b border-outline-variant/20">
                       <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
                         <div className="absolute inset-0 rounded-full border-[3px] border-primary/20" />
                         <div className="absolute inset-0 rounded-full border-[3px] border-primary border-t-transparent animate-spin" />
@@ -1911,17 +1991,34 @@ export default function AnalisisPerfil() {
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xs sm:text-sm text-on-surface leading-snug line-clamp-2">{LOAD_STEPS[loadStep]?.text}</p>
+                        <p className="font-bold text-xs sm:text-sm text-on-surface leading-snug line-clamp-2">
+                          {mensajeEtapa || LOAD_STEPS[loadStep]?.text}
+                        </p>
                         <p className="text-xs text-on-surface-variant mt-0.5 hidden sm:block">El Asistente de Praxia está trabajando en tu análisis...</p>
                       </div>
                     </div>
 
+                    {/* Barra de progreso */}
+                    {pctEtapa > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] text-on-surface-variant">
+                          <span>Procesando...</span>
+                          <span className="font-bold text-primary">{pctEtapa}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${pctEtapa}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Lista de pasos */}
                     <div className="space-y-1">
                       {LOAD_STEPS.map((step, i) => {
-                        const done    = i < loadStep
-                        const active  = i === loadStep
-                        const pending = i > loadStep
+                        const done   = i < loadStep
+                        const active = i === loadStep
                         return (
                           <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-500
                             ${active ? 'bg-primary/8' : done ? 'bg-green-50 dark:bg-green-900/10' : ''}`}>
@@ -1940,7 +2037,7 @@ export default function AnalisisPerfil() {
                             )}
                             <p className={`text-xs sm:text-sm leading-snug transition-all line-clamp-2
                               ${done ? 'text-green-700 dark:text-green-400 font-medium' : active ? 'font-bold text-primary' : 'text-on-surface-variant/50'}`}>
-                              {step.text}
+                              {active && mensajeEtapa ? mensajeEtapa : step.text}
                             </p>
                           </div>
                         )

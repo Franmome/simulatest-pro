@@ -6,16 +6,77 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import EventEmitter from 'events'
+import { writeFile, unlink } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { checkTokenBalance, recordTokenUsage, getActivePurchase } from '../utils/tokenTracker.js'
 import { buildUserContext } from '../utils/contextBuilder.js'
 import { getPrompt } from '../utils/promptLoader.js'
+import { recordSuccess, recordFailure, isHealthy, healthSnapshot } from '../utils/modelHealthCache.js'
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-const genAI    = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey:  process.env.DEEPSEEK_API_KEY || '',
-})
+const supabase      = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+const genAI         = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const deepseek      = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY || '' })
+const openaiClient  = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' })
+
+// ── SSE: progreso de análisis en tiempo real ──────────────────────────────────
+const jobEmitters = new Map() // jobId -> EventEmitter
+
+function getOrCreateJobEmitter(jobId) {
+  if (!jobEmitters.has(jobId)) {
+    const em = new EventEmitter()
+    jobEmitters.set(jobId, em)
+    setTimeout(() => jobEmitters.delete(jobId), 15 * 60 * 1000) // limpieza 15 min
+  }
+  return jobEmitters.get(jobId)
+}
+
+function emitJobProgress(jobId, data) {
+  if (!jobId) return
+  const em = jobEmitters.get(jobId)
+  if (em) em.emit('progreso', data)
+}
+
+// Endpoint SSE — el frontend se conecta antes de lanzar el POST de análisis
+export function progresoAnalisis(req, res) {
+  const { jobId } = req.params
+  const ORIGINS   = ['http://localhost:5173', 'https://simulatest-pro-production.up.railway.app']
+  const origin    = req.headers.origin
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no') // Railway nginx
+  if (origin && ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
+
+  const em = getOrCreateJobEmitter(jobId)
+
+  const sendEvent = (tipo, data) => {
+    if (!res.writableEnded) res.write(`event: ${tipo}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  const onProgress = (d) => sendEvent('progreso', d)
+  const onDone     = ()  => { sendEvent('listo', {}); cleanup(); res.end() }
+  const onError    = (m) => { sendEvent('error', { mensaje: m }); cleanup(); res.end() }
+
+  function cleanup() {
+    em.off('progreso', onProgress)
+    em.off('done',     onDone)
+    em.off('jobError', onError)
+    clearInterval(heartbeat)
+  }
+
+  em.on('progreso', onProgress)
+  em.on('done',     onDone)
+  em.on('jobError', onError)
+
+  const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n') }, 20_000)
+  req.on('close', cleanup)
+}
 
 // ── Prompt base ───────────────────────────────────────────────────────────────
 
@@ -115,54 +176,174 @@ CRÍTICO: NUNCA uses comillas dobles dentro de los valores string. El output com
 
 function hashBuffer(b) { return crypto.createHash('sha256').update(b).digest('hex') }
 
-async function extractPdfText(buffer) {
-  try {
-    const { default: pdfParse } = await import('pdf-parse')
-    const data = await pdfParse(buffer)
-    return data.text?.trim() || ''
-  } catch { return '' }
+// ── PDF extraction — todo-terreno ─────────────────────────────────────────────
+
+const CV_PROMPT = 'Extrae y transcribe TODO el contenido visible en este documento (hoja de vida / curriculum vitae). Lee nombres, fechas, cargos, instituciones, titulos academicos, experiencia laboral, certificaciones, idiomas y cualquier otro dato relevante. Si hay imagenes de certificados, diplomas o actas, transcribe tambien su contenido. Solo devuelve el texto extraido, sin comentarios ni explicaciones.'
+const MAX_INLINE = 4 * 1024 * 1024  // 4 MB — por encima usamos Files API
+
+// Estrategia 1a: Gemini Vision inline (PDF pequeño < 4 MB)
+async function geminiVisionInline(buffer, mimeType) {
+  const part = { inlineData: { data: buffer.toString('base64'), mimeType } }
+  const res  = await geminiGenerar([CV_PROMPT, part], null, 'gemini-2.5-flash', 90_000)
+  return res.texto || ''
 }
 
-// Extrae texto de cualquier tipo de archivo — Gemini Vision siempre para PDF e imágenes
-async function extractCvText(file) {
+// Estrategia 1b: Gemini Files API (PDF grande ≥ 4 MB)
+async function geminiVisionFilesApi(buffer, filename) {
+  let tmpPath = null
+  try {
+    const { GoogleAIFileManager } = await import('@google/generative-ai/server')
+    const fm  = new GoogleAIFileManager(process.env.GEMINI_API_KEY)
+    tmpPath   = join(tmpdir(), `praxia_cv_${Date.now()}_${filename}`)
+    await writeFile(tmpPath, buffer)
+    const uploaded = await fm.uploadFile(tmpPath, { mimeType: 'application/pdf', displayName: filename })
+    const model    = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const timeoutP = new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini Files timeout')), 120_000))
+    const result   = await Promise.race([
+      model.generateContent([CV_PROMPT, { fileData: { mimeType: 'application/pdf', fileUri: uploaded.file.uri } }]),
+      timeoutP,
+    ])
+    return result.response.text() || ''
+  } finally {
+    if (tmpPath) unlink(tmpPath).catch(() => {})
+  }
+}
+
+// Estrategia 2: OpenAI Vision con Responses API (fallback si Gemini falla)
+async function openaiVisionPdf(buffer, filename) {
+  const base64 = buffer.toString('base64')
+  // Responses API acepta input_file con file_data base64
+  const response = await openaiClient.responses.create({
+    model: 'gpt-4o-mini',
+    input: [{
+      role: 'user',
+      content: [
+        { type: 'input_file', filename, file_data: `data:application/pdf;base64,${base64}` },
+        { type: 'input_text', text: CV_PROMPT },
+      ],
+    }],
+  }, { signal: AbortSignal.timeout(90_000) })
+  return response.output_text || ''
+}
+
+// Estrategia 3: pdfjs-dist — extrae capa de texto nativa (no lee imágenes escaneadas)
+async function pdfjsExtract(buffer) {
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs').catch(() => null)
+  if (!pdfjsLib) return ''
+  const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise
+  let text = ''
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page    = await pdfDoc.getPage(i)
+    const content = await page.getTextContent()
+    text += content.items.map(item => item.str).join(' ') + '\n'
+  }
+  return text.trim()
+}
+
+// Estrategia 4: pdf-parse (último recurso, texto seleccionable)
+async function pdfParseExtract(buffer) {
+  const { default: pdfParse } = await import('pdf-parse')
+  const data = await pdfParse(buffer)
+  return data.text?.trim() || ''
+}
+
+// Orquestador principal — devuelve texto extraído o '' si todo falla
+async function extractCvText(file, emitProg) {
   if (!file) return ''
   const ext = (file.originalname || '').split('.').pop().toLowerCase()
-  try {
-    if (ext === 'pdf') {
-      // Siempre usar Gemini Vision: lee tanto texto como imágenes incrustadas (certificados, diplomas, firmas)
-      console.log('[IA] PDF recibido, usando Gemini Vision para extracción completa (texto + imágenes internas)')
-      const geminiPrompt = 'Extrae y transcribe TODO el contenido visible en este documento (hoja de vida / curriculum vitae). Debes leer: nombres, fechas, cargos, instituciones, titulos academicos, experiencia laboral, certificaciones, idiomas, y cualquier otro dato relevante. Si hay imagenes de certificados, diplomas o actas, transcribe tambien su contenido. Solo devuelve el texto extraido, sin comentarios ni explicaciones.'
-      const part = { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } }
-      const [geminiRes, pdfText] = await Promise.all([
-        geminiGenerar([geminiPrompt, part]).catch(e => { console.error('[IA] Gemini Vision PDF error:', e.message); return { texto: '' } }),
-        extractPdfText(file.buffer),
-      ])
-      const geminiText = geminiRes.texto || ''
-      // Gemini Vision como fuente primaria; pdf-parse como complemento si Gemini falla
-      if (geminiText && geminiText.replace(/\s/g, '').length > 100) {
-        console.log('[IA] Gemini Vision extrajo', geminiText.length, 'chars del PDF')
-        return geminiText
-      }
-      console.log('[IA] Gemini Vision no devolvio texto, usando pdf-parse como fallback:', pdfText.length, 'chars')
-      return pdfText
-    }
-    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
-      console.log('[IA] Imagen detectada, usando Gemini Vision para extraer texto de HV')
-      const prompt = 'Extrae y transcribe TODO el texto visible en esta imagen (hoja de vida / curriculum). Incluye nombres, fechas, cargos, formacion, experiencia laboral, instituciones y cualquier dato relevante. Solo devuelve el texto extraido, sin comentarios.'
-      const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
-      const part = { inlineData: { data: file.buffer.toString('base64'), mimeType } }
-      const res = await geminiGenerar([prompt, part])
-      return res.texto || ''
-    }
-    if (['doc', 'docx'].includes(ext)) {
-      const { default: mammoth } = await import('mammoth')
-      const result = await mammoth.extractRawText({ buffer: file.buffer })
-      return result.value?.trim() || ''
-    }
-    if (ext === 'txt') return file.buffer.toString('utf8')
-  } catch (e) {
-    console.error('[IA] extractCvText error:', e.message)
+
+  // Formatos sin IA — fiables y directos
+  if (['doc', 'docx'].includes(ext)) {
+    const { default: mammoth } = await import('mammoth')
+    const result = await mammoth.extractRawText({ buffer: file.buffer })
+    return result.value?.trim() || ''
   }
+  if (ext === 'txt') return file.buffer.toString('utf8')
+
+  // Imágenes sueltas (no PDF)
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+    const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
+    try {
+      emitProg?.({ etapa: 1, pct: 5, msg: 'Leyendo imagen con IA...' })
+      const text = await geminiVisionInline(file.buffer, mimeType)
+      if (text.replace(/\s/g, '').length > 100) return text
+    } catch (e) { console.warn('[PDF] Gemini imagen:', e.message) }
+    return ''
+  }
+
+  // PDF — cascada completa
+  const sizeMB   = (file.buffer.length / (1024 * 1024)).toFixed(1)
+  const isLarge  = file.buffer.length >= MAX_INLINE
+  console.log(`[PDF] ${file.originalname} (${sizeMB} MB, ${isLarge ? 'Files API' : 'inline'})`)
+
+  // 1a. Gemini Vision inline (PDFs < 4 MB)
+  if (!isLarge && isHealthy('gemini-2.5-flash')) {
+    try {
+      emitProg?.({ etapa: 1, pct: 5, msg: 'Leyendo hoja de vida con IA...' })
+      const text = await geminiVisionInline(file.buffer, 'application/pdf')
+      if (text.replace(/\s/g, '').length > 200) {
+        recordSuccess('gemini-2.5-flash')
+        console.log('[PDF] Gemini inline:', text.length, 'chars')
+        return text
+      }
+    } catch (e) {
+      recordFailure('gemini-2.5-flash')
+      console.warn('[PDF] Gemini inline falló:', e.message)
+    }
+  }
+
+  // 1b. Gemini Files API (PDFs ≥ 4 MB o fallback del inline)
+  if (isHealthy('gemini-2.5-flash-files')) {
+    try {
+      emitProg?.({ etapa: 1, pct: 10, msg: isLarge ? 'PDF grande detectado, cargando...' : 'Reintentando extracción...' })
+      const text = await geminiVisionFilesApi(file.buffer, file.originalname || 'cv.pdf')
+      if (text.replace(/\s/g, '').length > 200) {
+        recordSuccess('gemini-2.5-flash-files')
+        console.log('[PDF] Gemini Files API:', text.length, 'chars')
+        return text
+      }
+    } catch (e) {
+      recordFailure('gemini-2.5-flash-files')
+      console.warn('[PDF] Gemini Files API falló:', e.message)
+    }
+  }
+
+  // 2. OpenAI Vision (fallback)
+  if (process.env.OPENAI_API_KEY && isHealthy('gpt-4o-mini-vision')) {
+    try {
+      emitProg?.({ etapa: 1, pct: 15, msg: 'Usando IA alternativa para leer el PDF...' })
+      const text = await openaiVisionPdf(file.buffer, file.originalname || 'cv.pdf')
+      if (text.replace(/\s/g, '').length > 200) {
+        recordSuccess('gpt-4o-mini-vision')
+        console.log('[PDF] OpenAI Vision:', text.length, 'chars')
+        return text
+      }
+    } catch (e) {
+      recordFailure('gpt-4o-mini-vision')
+      console.warn('[PDF] OpenAI Vision falló:', e.message)
+    }
+  }
+
+  // 3. pdfjs-dist texto nativo
+  try {
+    emitProg?.({ etapa: 1, pct: 18, msg: 'Extrayendo texto del PDF...' })
+    const text = await pdfjsExtract(file.buffer)
+    if (text.replace(/\s/g, '').length > 100) {
+      console.log('[PDF] pdfjs-dist:', text.length, 'chars')
+      return text
+    }
+  } catch (e) { console.warn('[PDF] pdfjs-dist:', e.message) }
+
+  // 4. pdf-parse
+  try {
+    const text = await pdfParseExtract(file.buffer)
+    if (text.replace(/\s/g, '').length > 100) {
+      console.log('[PDF] pdf-parse:', text.length, 'chars')
+      return text
+    }
+  } catch (e) { console.warn('[PDF] pdf-parse:', e.message) }
+
+  console.error('[PDF] Todas las estrategias fallaron para', file.originalname)
   return ''
 }
 
@@ -274,9 +455,10 @@ async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-
 }
 
 async function geminiTexto(prompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-  const result = await model.generateContent(prompt)
-  const usage  = result.response.usageMetadata
+  const model    = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const timeoutP = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout (90s)')), 90_000))
+  const result   = await Promise.race([model.generateContent(prompt), timeoutP])
+  const usage    = result.response.usageMetadata
   return {
     texto:     result.response.text(),
     tokensIn:  usage?.promptTokenCount     || 0,
@@ -285,7 +467,7 @@ async function geminiTexto(prompt) {
 }
 
 async function geminiChat(systemCtx, historial, mensaje) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
   const chat  = model.startChat({
     history: historial.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -1529,29 +1711,89 @@ export async function analizarPerfilCV(req, res) {
       console.log('[IA] admin bypass — sin consumo de ticket')
     }
 
-    const analizarConIA = async (sp, up) => {
-      for (let intento = 1; intento <= 3; intento++) {
-        try {
-          return await geminiAnalisisPerfil(sp, up)
-        } catch (e) {
-          const is503 = String(e?.message || '').includes('503') || String(e?.message || '').toLowerCase().includes('high demand') || String(e?.message || '').toLowerCase().includes('fetch failed')
-          if (is503 && intento < 3) {
-            console.warn(`[IA] pass2a Gemini 503 — intento ${intento}/3, esperando ${intento * 8}s...`)
-            await new Promise(r => setTimeout(r, intento * 8000))
-            continue
+    // Cascada: Gemini 2.5 Flash → DeepSeek v4-flash (sin límite tokens) → GPT-4o-mini
+    const analizarConIA = async (sp, up, etiqEtapa = 'pass') => {
+      // Intento 1-3: Gemini con reintentos en 503
+      if (isHealthy('gemini-2.5-flash-text')) {
+        for (let intento = 1; intento <= 3; intento++) {
+          try {
+            const res = await geminiAnalisisPerfil(sp, up)
+            recordSuccess('gemini-2.5-flash-text')
+            return res
+          } catch (e) {
+            const msg   = String(e?.message || '').toLowerCase()
+            const is503 = msg.includes('503') || msg.includes('high demand') || msg.includes('fetch failed') || msg.includes('overload')
+            if (is503 && intento < 3) {
+              console.warn(`[IA] ${etiqEtapa} Gemini 503 — intento ${intento}/3, esperando ${intento * 8}s...`)
+              await new Promise(r => setTimeout(r, intento * 8_000))
+              continue
+            }
+            recordFailure('gemini-2.5-flash-text')
+            console.warn(`[IA] ${etiqEtapa} Gemini falló: ${String(e?.message || '').slice(0, 80)}`)
+            break
           }
-          console.warn(`[IA] pass2a Gemini falló (${String(e?.message || '').slice(0, 80)}), usando DeepSeek como fallback`)
-          return await deepseekAnalisisPerfil(sp, up, 8192)
         }
       }
+
+      // Intento 2: DeepSeek v4-flash — SIN max_tokens hardcodeado (soporta 384K)
+      if (isHealthy('deepseek-v4-flash')) {
+        try {
+          console.log(`[IA] ${etiqEtapa} → DeepSeek v4-flash`)
+          const res = await deepseekAnalisisPerfil(sp, up) // sin maxTokens param
+          recordSuccess('deepseek-v4-flash')
+          return res
+        } catch (e) {
+          recordFailure('deepseek-v4-flash')
+          console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
+        }
+      }
+
+      // Intento 3: GPT-4o-mini (último recurso)
+      if (process.env.OPENAI_API_KEY && isHealthy('gpt-4o-mini-text')) {
+        try {
+          console.log(`[IA] ${etiqEtapa} → GPT-4o-mini`)
+          const r = await openaiClient.chat.completions.create({
+            model:    'gpt-4o-mini',
+            messages: [{ role: 'system', content: sp }, { role: 'user', content: up }],
+            temperature: 0.3,
+          }, { signal: AbortSignal.timeout(120_000) })
+          recordSuccess('gpt-4o-mini-text')
+          const text = r.choices[0].message.content
+          return { texto: text, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
+        } catch (e) {
+          recordFailure('gpt-4o-mini-text')
+          console.warn(`[IA] ${etiqEtapa} GPT-4o-mini falló: ${String(e?.message || '').slice(0, 80)}`)
+        }
+      }
+
+      throw new Error(`Todos los modelos de IA fallaron en ${etiqEtapa}.`)
     }
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
-    const file = req.file
-    console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0}`)
-    const cvText = await extractCvText(file)
-    console.log(`[IA] cvText extraido: ${cvText.length} chars (archivo: ${file?.originalname || 'ninguno'})`)
+    const file  = req.file
+    const jobId = req.body.jobId || null
+    const emit  = (data) => emitJobProgress(jobId, data)
+
+    console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0} jobId=${jobId}`)
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
+    if (!file && !perfil_texto?.trim()) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
+
+    // ── Etapa 1: extracción de texto del CV ──────────────────────────────────
+    emit({ etapa: 1, pct: 3, msg: 'Leyendo hoja de vida...' })
+    const cvText = await extractCvText(file, emit)
+    console.log(`[IA] cvText extraido: ${cvText.length} chars`)
+
+    // QC gate — bloquear análisis si no se pudo leer el CV
+    if (file && cvText.replace(/\s/g, '').length < 200) {
+      const em = jobEmitters.get(jobId)
+      if (em) em.emit('jobError', 'No se pudo leer tu hoja de vida. Verifica que el PDF no esté protegido o corrupto, e intenta de nuevo.')
+      return res.status(422).json({
+        error: 'No se pudo extraer texto de tu hoja de vida. Asegúrate de que el archivo no esté protegido, y que tenga texto visible (no solo escáner sin calidad). Intenta de nuevo.',
+        sin_ticket: true, // el frontend NO consume ticket en este caso
+      })
+    }
+
+    emit({ etapa: 1, pct: 20, msg: `Hoja de vida leída — ${Math.round(cvText.length / 1000)}K caracteres` })
     if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
 
     const [allOpec, conv] = await Promise.all([
@@ -1604,13 +1846,19 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     ].filter(Boolean).join('\n')
 
     // ── Paso 1: extraer perfil estructurado del candidato ─────────────────────────
-    console.log(`[IA] pass2a: extrayendo perfil del candidato (modelo: ${modelo})`)
-    const rPerfil = await analizarConIA(SP_PERFIL, promptPerfil)
+    emit({ etapa: 2, pct: 25, msg: 'Identificando tu perfil profesional...' })
+    console.log(`[IA] pass2a: extrayendo perfil del candidato`)
+    const rPerfil = await analizarConIA(SP_PERFIL, promptPerfil, 'pass2a')
       .catch(e => { console.error('[IA] pass2a error:', e.message); return null })
 
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
     let perfilData = rPerfil ? rescueAnalisis(rPerfil.texto) : null
-    if (!perfilData) return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
+    if (!perfilData) {
+      const em = jobEmitters.get(jobId)
+      if (em) em.emit('jobError', 'No se pudo analizar tu perfil. Intenta de nuevo.')
+      return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
+    }
+    emit({ etapa: 2, pct: 45, msg: 'Perfil profesional identificado' })
 
     // ── Paso 2: motor de scoring determinista sobre TODAS las OPECs ──────────────
     // La IA NO decide aquí. Solo matemáticas puras con reglas fijas.
@@ -1626,6 +1874,7 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     const statMotivos = {}
     for (const d of descartadas) statMotivos[d.motivo] = (statMotivos[d.motivo] || 0) + 1
 
+    emit({ etapa: 3, pct: 55, msg: `Evaluando ${todosOpec.length.toLocaleString()} convocatorias...` })
     console.log(`[IA] scoring: ${todosOpec.length} OPECs evaluadas → ${viables.length} viables, ${descartadas.length} descartadas`)
     console.log(`[IA] motivos descarte:`, statMotivos)
 
@@ -1708,9 +1957,12 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
 
     const promptRutas = `CONVOCATORIA: ${convNombre} - ${entidadNombre}\n\n${scoringCtx}\n${prefCtx}\n\n${ciudadLine}PERFIL DEL CANDIDATO:\n${perfilResumen}\n\nCARGOS PRESELECCIONADOS (orden: mayor a menor compatibilidad):\n${buildOpecTexto(candidatosRutas, ciudadKey)}${descartadosTxt}\n\nAsigna las 4 rutas estrategicas para este candidato. Devuelve UNICAMENTE el JSON.`
 
+    emit({ etapa: 3, pct: 65, msg: `${viables.length} cargos compatibles encontrados` })
+    emit({ etapa: 4, pct: 70, msg: 'Construyendo tus 4 rutas estratégicas...' })
+
     let rutasData = null
     try {
-      const rRutas = await analizarConIA(SP_RUTAS, promptRutas)
+      const rRutas = await analizarConIA(SP_RUTAS, promptRutas, 'pass2b')
       console.log('[IA] pass2b (rutas) tokensOut:', rRutas.tokensOut)
       rutasData = rescueAnalisis(rRutas.texto)
     } catch (e) {
@@ -1818,6 +2070,10 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
         console.error('[IA] excepción al consumir ticket post-análisis:', ticketErr.message)
       }
     }
+
+    emit({ etapa: 5, pct: 100, msg: '¡Análisis completado!' })
+    const em = jobEmitters.get(jobId)
+    if (em) em.emit('done')
 
     return res.json({
       analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,
@@ -2462,6 +2718,7 @@ export async function cerebrosHealth(req, res) {
     results.openai = { ok: false, error: e.message }
   }
 
+  results.model_health = healthSnapshot()
   return res.json(results)
 }
 

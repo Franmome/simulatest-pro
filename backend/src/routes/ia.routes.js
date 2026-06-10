@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, progresoAnalisis, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -22,8 +22,9 @@ router.post('/analisis-resultado', authMiddleware, analizarResultadosSimulacro)
 router.post('/test-generador',     authMiddleware, upload.single('pdf'), testGenerador)
 router.post('/generar-paquete',    authMiddleware, generarPaqueteConIA)
 router.post('/practica-desde-ia',  authMiddleware, generarPracticaDesdeIA)
-router.post('/analisis-perfil',    authMiddleware, uploadPerfil.single('pdf'), analizarPerfilCV)
-router.post('/mas-opecs',          authMiddleware, masOpecs)
+router.post('/analisis-perfil',               authMiddleware, uploadPerfil.single('pdf'), analizarPerfilCV)
+router.get('/analisis-perfil/progreso/:jobId', progresoAnalisis) // SSE — sin auth (jobId es el token)
+router.post('/mas-opecs',                     authMiddleware, masOpecs)
 router.get('/mis-analisis',            authMiddleware, getMisAnalisis)
 router.patch('/mis-analisis/:id',     authMiddleware, updateMiAnalisis)
 router.delete('/mis-analisis/:id',    authMiddleware, deleteMiAnalisis)

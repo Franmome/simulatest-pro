@@ -13,6 +13,7 @@ const navItems = [
   { to: '/admin/ia-training',  icon: 'model_training',  label: 'Entrenamiento IA',    hint: 'Prompts y cerebros' },
   { to: '/admin/tokens',       icon: 'monitoring',      label: 'Consumo de Tokens',   hint: 'Gemini · DeepSeek' },
   { to: '/admin/analisis',     icon: 'confirmation_number', label: 'Análisis de Perfil', hint: 'Tickets · Wompi' },
+  { to: '/admin/reportes',     icon: 'flag',               label: 'Reportes de Usuarios', hint: 'Problemas reportados' },
 ]
 
 function QuickChip({ children, tone = 'default' }) {
