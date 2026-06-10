@@ -79,6 +79,28 @@ export function progresoAnalisis(req, res) {
   req.on('close', cleanup)
 }
 
+// ── Cola de análisis — máximo 5 simultáneos (protege la API de Gemini bajo alta demanda) ──
+const MAX_ANALISIS  = 5
+let   analisesActivos = 0
+const colaAnalisis    = []
+
+function waitSlotAnalisis() {
+  if (analisesActivos < MAX_ANALISIS) { analisesActivos++; return Promise.resolve() }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('timeout_cola')), 10 * 60 * 1000)
+    colaAnalisis.push({ resolve, reject, timeout })
+  }).then(() => { analisesActivos++ })
+}
+
+function releaseSlotAnalisis() {
+  analisesActivos = Math.max(0, analisesActivos - 1)
+  if (colaAnalisis.length > 0) {
+    const next = colaAnalisis.shift()
+    clearTimeout(next.timeout)
+    next.resolve()
+  }
+}
+
 // ── Prompt base ───────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Eres un experto psicómetra senior en diseño de pruebas de juicio situado para concursos de méritos del sector público colombiano (CNSC, Contraloría General, Fiscalía, DIAN, Procuraduría, alcaldías, gobernaciones y entidades nacionales y territoriales).
@@ -1715,7 +1737,8 @@ export async function analizarPerfilCV(req, res) {
 
     // Cascada: Gemini 2.5 Flash → DeepSeek v4-flash (sin límite tokens) → GPT-4o-mini
     const analizarConIA = async (sp, up, etiqEtapa = 'pass') => {
-      // Intento 1-3: Gemini con reintentos en 503
+      // Intento 1-3: Gemini con backoff exponencial en 503
+      const BACKOFF_503 = [3_000, 8_000, 20_000]
       if (isHealthy('gemini-2.5-flash-text')) {
         for (let intento = 1; intento <= 3; intento++) {
           try {
@@ -1726,8 +1749,9 @@ export async function analizarPerfilCV(req, res) {
             const msg   = String(e?.message || '').toLowerCase()
             const is503 = msg.includes('503') || msg.includes('high demand') || msg.includes('fetch failed') || msg.includes('overload')
             if (is503 && intento < 3) {
-              console.warn(`[IA] ${etiqEtapa} Gemini 503 — intento ${intento}/3, esperando ${intento * 8}s...`)
-              await new Promise(r => setTimeout(r, intento * 8_000))
+              const wait = BACKOFF_503[intento - 1]
+              console.warn(`[IA] ${etiqEtapa} Gemini 503 — intento ${intento}/3, esperando ${wait / 1000}s...`)
+              await new Promise(r => setTimeout(r, wait))
               continue
             }
             recordFailure('gemini-2.5-flash-text')
@@ -1777,12 +1801,24 @@ export async function analizarPerfilCV(req, res) {
 
     console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0} jobId=${jobId}`)
 
+    // ── Cola de concurrencia — máximo MAX_ANALISIS simultáneos ───────────────
+    if (analisesActivos >= MAX_ANALISIS) {
+      emit({ en_cola: true, msg: 'alta_demanda' })
+      console.log(`[IA] cola: user=${userId} en espera (activos=${analisesActivos})`)
+    }
+    try { await waitSlotAnalisis() } catch {
+      return res.status(503).json({ error: 'Alta demanda en este momento. Por favor intenta de nuevo en un par de minutos.' })
+    }
+
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!file && !perfil_texto?.trim()) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
+
+    try { // ── slot liberado en finally ──────────────────────────────────────
 
     // ── Etapa 1: extracción de texto del CV ──────────────────────────────────
     emit({ etapa: 1, pct: 3, msg: 'Leyendo hoja de vida...' })
     const cvText = await extractCvText(file, emit)
+    if (file?.buffer) file.buffer = null // liberar RAM del PDF inmediatamente
     console.log(`[IA] cvText extraido: ${cvText.length} chars`)
 
     // QC gate — bloquear análisis si no se pudo leer el CV
@@ -2085,6 +2121,8 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
       plataforma_nombre: conv?.plataforma_nombre  || null,
       motor: 'rutas_v1',
     })
+    } finally { releaseSlotAnalisis() } // ── liberar slot siempre ──
+
   } catch (err) {
     console.error(`[IA] analizarPerfilCV ERROR: user=${req.user?.id} msg="${err.message}" stack=${err.stack?.split('\n')[1]?.trim() || ''}`)
     const esTimeout = err.message?.toLowerCase().includes('timeout')

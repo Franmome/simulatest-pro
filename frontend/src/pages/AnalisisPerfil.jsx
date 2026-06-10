@@ -1313,6 +1313,7 @@ export default function AnalisisPerfil() {
   const [showManual, setShowManual] = useState(false)
   const [showTicketConfirm, setShowTicketConfirm] = useState(false)
   const [reportando, setReportando] = useState(false)
+  const [enCola, setEnCola] = useState(false)
   const [ticketBalance, setTicketBalance] = useState(null)
   const [comprando, setComprando] = useState(false)
   const comprandoRef   = useRef(false)
@@ -1562,6 +1563,11 @@ export default function AnalisisPerfil() {
       evtSource.addEventListener('progreso', (e) => {
         try {
           const data = JSON.parse(e.data)
+          if (data.en_cola) {
+            setEnCola(true)
+            return
+          }
+          setEnCola(false)
           const step = etapaToStep[data.etapa]
           if (step !== undefined) setLoadStep(step)
           if (data.msg) setMensajeEtapa(data.msg)
@@ -1602,6 +1608,7 @@ export default function AnalisisPerfil() {
     evtSource?.close()
     analizandoRef.current = false
     setAnalizando(false)
+    setEnCola(false)
     setLoadStep(0)
     setMensajeEtapa('')
     setPctEtapa(0)
@@ -1985,6 +1992,48 @@ export default function AnalisisPerfil() {
                 )}
 
                 {analizando ? (
+                  enCola ? (
+                    /* ── Alta demanda: animación de espera ── */
+                    <div className="card p-6 sm:p-8 flex flex-col items-center text-center gap-5 animate-fade-in">
+                      {/* Ondas animadas */}
+                      <div className="relative w-16 h-16 flex items-center justify-center">
+                        <span className="absolute inset-0 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '1.4s' }} />
+                        <span className="absolute inset-2 rounded-full bg-primary/15 animate-ping" style={{ animationDuration: '1.8s', animationDelay: '0.3s' }} />
+                        <span className="absolute inset-4 rounded-full bg-primary/20 animate-ping" style={{ animationDuration: '2.2s', animationDelay: '0.6s' }} />
+                        <span className="relative w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                          <span className="material-symbols-outlined text-on-primary text-base" style={{ fontVariationSettings: "'FILL' 1" }}>wifi</span>
+                        </span>
+                      </div>
+                      {/* Barras de señal animadas */}
+                      <div className="flex items-end gap-1 h-8">
+                        {[0.4, 0.65, 0.85, 1, 0.85, 0.65, 0.4].map((h, i) => (
+                          <div
+                            key={i}
+                            className="w-1.5 rounded-full bg-primary"
+                            style={{
+                              height: `${h * 100}%`,
+                              animation: `pulse 1.2s ease-in-out infinite`,
+                              animationDelay: `${i * 0.12}s`,
+                              opacity: 0.7,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="font-extrabold text-base text-on-surface">Tenemos alta demanda</p>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">
+                          Tu análisis está en la fila — iniciará pronto.<br />
+                          <span className="text-xs">Por favor no cierres esta ventana.</span>
+                        </p>
+                      </div>
+                      {/* Puntos de espera */}
+                      <div className="flex gap-2">
+                        {[0, 1, 2].map(i => (
+                          <span key={i} className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
                   <div className="card p-4 sm:p-6 space-y-4 animate-fade-in">
                     {/* Header: spinner + título activo */}
                     <div className="flex items-center gap-4 pb-3 border-b border-outline-variant/20">
@@ -2049,6 +2098,7 @@ export default function AnalisisPerfil() {
                       })}
                     </div>
                   </div>
+                  ) /* cierre enCola ternario */
                 ) : (
                   <div className="space-y-3">
                     {!simoConfirmado && (
