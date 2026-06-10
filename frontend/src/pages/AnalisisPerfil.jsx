@@ -1312,6 +1312,7 @@ export default function AnalisisPerfil() {
   const modeloAnalisis = 'gemini'
   const [showManual, setShowManual] = useState(false)
   const [showTicketConfirm, setShowTicketConfirm] = useState(false)
+  const [reportando, setReportando] = useState(false)
   const [ticketBalance, setTicketBalance] = useState(null)
   const [comprando, setComprando] = useState(false)
   const comprandoRef   = useRef(false)
@@ -1516,6 +1517,8 @@ export default function AnalisisPerfil() {
   ]
 
   async function reportarError({ tipo = 'otro', error_msg = '', etapa = null } = {}) {
+    if (reportando) return
+    setReportando(true)
     try {
       const headers = await authHeaders()
       const file    = files[0]
@@ -1535,6 +1538,7 @@ export default function AnalisisPerfil() {
       })
       alert('¡Gracias! Tu reporte fue enviado. Lo revisaremos pronto.')
     } catch { /* no crítico */ }
+    finally { setReportando(false) }
   }
 
   // Mapeo: etapa SSE → índice en LOAD_STEPS
@@ -1969,10 +1973,11 @@ export default function AnalisisPerfil() {
                         )}
                         <button
                           onClick={() => reportarError({ tipo: 'analisis', error_msg: error })}
-                          className="text-xs font-semibold opacity-70 hover:opacity-100 flex items-center gap-1 underline hover:no-underline"
+                          disabled={reportando}
+                          className="text-xs font-semibold opacity-70 hover:opacity-100 flex items-center gap-1 underline hover:no-underline disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <span className="material-symbols-outlined text-xs">flag</span>
-                          Reportar problema
+                          {reportando ? 'Enviando...' : 'Reportar problema'}
                         </button>
                       </div>
                     </div>

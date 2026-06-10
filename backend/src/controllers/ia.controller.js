@@ -68,6 +68,7 @@ export function progresoAnalisis(req, res) {
     em.off('done',     onDone)
     em.off('jobError', onError)
     clearInterval(heartbeat)
+    jobEmitters.delete(jobId)
   }
 
   em.on('progreso', onProgress)
@@ -228,7 +229,8 @@ async function openaiVisionPdf(buffer, filename) {
 
 // Estrategia 3: pdfjs-dist — extrae capa de texto nativa (no lee imágenes escaneadas)
 async function pdfjsExtract(buffer) {
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs').catch(() => null)
+  const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs')
+    .catch(() => import('pdfjs-dist/legacy/build/pdf.mjs').catch(() => null))
   if (!pdfjsLib) return ''
   const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise
   let text = ''
@@ -488,7 +490,7 @@ async function geminiChat(systemCtx, historial, mensaje) {
 
 async function deepseekGenerar(prompt, maxTokens = 8192) {
   const r = await deepseek.chat.completions.create({
-    model:      'deepseek-v4-flash',
+    model:      'deepseek-chat',
     messages:   [
       { role: 'system', content: 'Eres un experto generador de preguntas para el sector público colombiano. Devuelves ÚNICAMENTE JSON válido, sin texto adicional, sin markdown.' },
       { role: 'user',   content: prompt },
@@ -543,7 +545,7 @@ async function conFallback(modelo, deepFn, gemFn) {
 
 async function deepseekTexto(prompt) {
   const r = await deepseek.chat.completions.create({
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-chat',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.6,
   })
@@ -554,7 +556,7 @@ async function deepseekTexto(prompt) {
 // temperatura baja para análisis preciso, system prompt separado desde DB.
 async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
   const params = {
-    model:       'deepseek-v4-flash',
+    model:       'deepseek-chat',
     messages:    [
       { role: 'system', content: systemPrompt },
       { role: 'user',   content: userPrompt },
@@ -581,7 +583,7 @@ async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
 
 async function deepseekChat(systemCtx, historial, mensaje) {
   const r = await deepseek.chat.completions.create({
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-chat',
     messages: [
       { role: 'system', content: systemCtx },
       ...historial.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),
@@ -641,7 +643,7 @@ export async function generarBanco(req, res) {
 
       let result
       if (modelo === 'deepseek') {
-        const pdfText = await extractPdfText(file.buffer)
+        const pdfText = await extractCvText(file)
         const prompt  = `${SP}\n\nCARGO OBJETIVO: ${cargo || 'General'}\n\n${pdfText ? `MATERIAL DE ESTUDIO:\n${pdfText.slice(0, 12000)}\n\n` : ''}Analiza el material y genera el banco de preguntas.`
         result = await deepseekGenerar(prompt)
       } else {
@@ -733,7 +735,7 @@ export async function generarSimulacroPersonal(req, res) {
       const PARALLEL = 3
 
       // Preparar PDF una sola vez
-      const pdfText = file && modelo === 'deepseek' ? await extractPdfText(file.buffer) : null
+      const pdfText = file && modelo === 'deepseek' ? await extractCvText(file) : null
       const pdfPart = file && modelo !== 'deepseek'
         ? { inlineData: { data: file.buffer.toString('base64'), mimeType: 'application/pdf' } } : null
 
@@ -1038,12 +1040,12 @@ export async function testGenerador(req, res) {
 
     let result
     if (modelo === 'deepseek') {
-      const pdfText = file ? await extractPdfText(file.buffer) : null
+      const pdfText = file ? await extractCvText(file) : null
       const userMsg = pdfText
         ? `${instrucciones}\n\nMATERIAL OPEC (PDF adjunto):\n${pdfText.slice(0, 10000)}`
         : instrucciones
       const r = await deepseek.chat.completions.create({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-chat',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userMsg },
@@ -1736,14 +1738,14 @@ export async function analizarPerfilCV(req, res) {
       }
 
       // Intento 2: DeepSeek v4-flash — SIN max_tokens hardcodeado (soporta 384K)
-      if (isHealthy('deepseek-v4-flash')) {
+      if (isHealthy('deepseek-chat')) {
         try {
           console.log(`[IA] ${etiqEtapa} → DeepSeek v4-flash`)
           const res = await deepseekAnalisisPerfil(sp, up) // sin maxTokens param
-          recordSuccess('deepseek-v4-flash')
+          recordSuccess('deepseek-chat')
           return res
         } catch (e) {
-          recordFailure('deepseek-v4-flash')
+          recordFailure('deepseek-chat')
           console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
         }
       }
