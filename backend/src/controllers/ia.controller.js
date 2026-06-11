@@ -80,9 +80,10 @@ export function progresoAnalisis(req, res) {
 }
 
 // ── Cola de análisis — máximo 5 simultáneos (protege la API de Gemini bajo alta demanda) ──
-const MAX_ANALISIS  = 5
+const MAX_ANALISIS    = 5
 let   analisesActivos = 0
 const colaAnalisis    = []
+const analisesEnCurso = new Set() // userId → evita double-spend de ticket
 
 function waitSlotAnalisis() {
   if (analisesActivos < MAX_ANALISIS) { analisesActivos++; return Promise.resolve() }
@@ -1684,6 +1685,64 @@ function rescueAnalisis(texto) {
   return { ranking_opec_recomendadas: objects, _parcial: true }
 }
 
+// ── Cascada de modelos IA: Gemini 3.5 Flash → GPT-4o-mini → DeepSeek ─────────
+
+async function analizarConIA(sp, up, etiqEtapa = 'pass') {
+  const BACKOFF_503 = [3_000, 8_000, 20_000]
+  // Si Gemini está marcado como degradado, intentar igualmente 1 vez (puede haberse recuperado)
+  const maxIntentos = isHealthy('gemini-3.5-flash-text') ? 3 : 1
+  for (let intento = 1; intento <= maxIntentos; intento++) {
+    try {
+      const res = await geminiAnalisisPerfil(sp, up)
+      recordSuccess('gemini-3.5-flash-text')
+      return res
+    } catch (e) {
+      const msg   = String(e?.message || '').toLowerCase()
+      const is503 = msg.includes('503') || msg.includes('high demand') || msg.includes('fetch failed') || msg.includes('overload')
+      if (is503 && intento < maxIntentos) {
+        const wait = BACKOFF_503[intento - 1]
+        console.warn(`[IA] ${etiqEtapa} Gemini 503 — intento ${intento}/${maxIntentos}, esperando ${wait / 1000}s...`)
+        await new Promise(r => setTimeout(r, wait))
+        continue
+      }
+      recordFailure('gemini-3.5-flash-text')
+      console.warn(`[IA] ${etiqEtapa} Gemini falló: ${String(e?.message || '').slice(0, 80)}`)
+      break
+    }
+  }
+
+  if (process.env.OPENAI_API_KEY && isHealthy('gpt-4o-mini-text')) {
+    try {
+      console.log(`[IA] ${etiqEtapa} → GPT-4o-mini`)
+      const r = await openaiClient.chat.completions.create({
+        model:    'gpt-4o-mini',
+        messages: [{ role: 'system', content: sp }, { role: 'user', content: up }],
+        temperature: 0.3,
+      }, { signal: AbortSignal.timeout(120_000) })
+      recordSuccess('gpt-4o-mini-text')
+      const text = r.choices[0].message.content
+      return { texto: text, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
+    } catch (e) {
+      recordFailure('gpt-4o-mini-text')
+      console.warn(`[IA] ${etiqEtapa} GPT-4o-mini falló: ${String(e?.message || '').slice(0, 80)}`)
+    }
+  }
+
+  if (isHealthy('deepseek-chat')) {
+    try {
+      console.log(`[IA] ${etiqEtapa} → DeepSeek`)
+      const res = await deepseekAnalisisPerfil(sp, up)
+      recordSuccess('deepseek-chat')
+      return res
+    } catch (e) {
+      recordFailure('deepseek-chat')
+      console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
+    }
+  }
+
+  throw new Error(`Todos los modelos de IA fallaron en ${etiqEtapa}.`)
+}
+
 // ── Endpoint: Analizar perfil vs cargos OPEC ─────────────────────────────────
 
 const SYSTEM_PROMPT_ANALISIS_PERFIL = `Eres una IA agente de Praxia especializada en analisis de hojas de vida, concursos de meritos del sector publico colombiano, empleo publico, verificacion de requisitos minimos, comparacion contra OPEC y orientacion estrategica para candidatos.
@@ -1717,7 +1776,7 @@ export async function analizarPerfilCV(req, res) {
   try {
     const userId  = req.user.id
     const isAdmin = req.user.role === 'admin'
-    const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw, modelo = 'deepseek' } = req.body
+    const { convocatoria_id, perfil_texto, ciudad_filtro, preferencias: prefRaw } = req.body
 
     // ── Verificar saldo de ticket (sin consumir aún — se descuenta solo si el análisis exitoso) ──
     if (!isAdmin) {
@@ -1735,71 +1794,16 @@ export async function analizarPerfilCV(req, res) {
       console.log('[IA] admin bypass — sin consumo de ticket')
     }
 
-    // Cascada: Gemini 2.5 Flash → DeepSeek v4-flash (sin límite tokens) → GPT-4o-mini
-    const analizarConIA = async (sp, up, etiqEtapa = 'pass') => {
-      // Intento 1-3: Gemini con backoff exponencial en 503
-      const BACKOFF_503 = [3_000, 8_000, 20_000]
-      if (isHealthy('gemini-3.5-flash-text')) {
-        for (let intento = 1; intento <= 3; intento++) {
-          try {
-            const res = await geminiAnalisisPerfil(sp, up)
-            recordSuccess('gemini-3.5-flash-text')
-            return res
-          } catch (e) {
-            const msg   = String(e?.message || '').toLowerCase()
-            const is503 = msg.includes('503') || msg.includes('high demand') || msg.includes('fetch failed') || msg.includes('overload')
-            if (is503 && intento < 3) {
-              const wait = BACKOFF_503[intento - 1]
-              console.warn(`[IA] ${etiqEtapa} Gemini 503 — intento ${intento}/3, esperando ${wait / 1000}s...`)
-              await new Promise(r => setTimeout(r, wait))
-              continue
-            }
-            recordFailure('gemini-3.5-flash-text')
-            console.warn(`[IA] ${etiqEtapa} Gemini falló: ${String(e?.message || '').slice(0, 80)}`)
-            break
-          }
-        }
-      }
-
-      // Intento 2: GPT-4o-mini
-      if (process.env.OPENAI_API_KEY && isHealthy('gpt-4o-mini-text')) {
-        try {
-          console.log(`[IA] ${etiqEtapa} → GPT-4o-mini`)
-          const r = await openaiClient.chat.completions.create({
-            model:    'gpt-4o-mini',
-            messages: [{ role: 'system', content: sp }, { role: 'user', content: up }],
-            temperature: 0.3,
-          }, { signal: AbortSignal.timeout(120_000) })
-          recordSuccess('gpt-4o-mini-text')
-          const text = r.choices[0].message.content
-          return { texto: text, tokensIn: r.usage?.prompt_tokens || 0, tokensOut: r.usage?.completion_tokens || 0 }
-        } catch (e) {
-          recordFailure('gpt-4o-mini-text')
-          console.warn(`[IA] ${etiqEtapa} GPT-4o-mini falló: ${String(e?.message || '').slice(0, 80)}`)
-        }
-      }
-
-      // Intento 3: DeepSeek (último recurso)
-      if (isHealthy('deepseek-chat')) {
-        try {
-          console.log(`[IA] ${etiqEtapa} → DeepSeek`)
-          const res = await deepseekAnalisisPerfil(sp, up)
-          recordSuccess('deepseek-chat')
-          return res
-        } catch (e) {
-          recordFailure('deepseek-chat')
-          console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
-        }
-      }
-
-      throw new Error(`Todos los modelos de IA fallaron en ${etiqEtapa}.`)
-    }
     const file        = req.file
     const jobId       = req.body.jobId || null
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!file && !perfil_texto?.trim()) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
+    if (analisesEnCurso.has(userId)) {
+      return res.status(429).json({ error: 'Ya tienes un análisis en curso. Espera a que termine antes de iniciar otro.' })
+    }
+    analisesEnCurso.add(userId)
 
     // ── Responder inmediatamente — análisis corre en background ──────────────
     // El ticket se consume en background DESPUÉS del análisis exitoso (invariante mantenida)
@@ -1817,6 +1821,7 @@ export async function analizarPerfilCV(req, res) {
         console.log(`[IA] cola: user=${userId} en espera (activos=${analisesActivos})`)
       }
       try { await waitSlotAnalisis() } catch {
+        analisesEnCurso.delete(userId)
         emitErr('Alta demanda en este momento. Por favor intenta de nuevo en un par de minutos.')
         return
       }
@@ -2130,6 +2135,7 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
           : err.message
         emitErr(msg)
       } finally {
+        analisesEnCurso.delete(userId)
         releaseSlotAnalisis()
       }
     }) // fin setImmediate

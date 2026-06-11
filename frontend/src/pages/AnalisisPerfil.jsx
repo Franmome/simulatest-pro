@@ -1636,9 +1636,10 @@ export default function AnalisisPerfil() {
       if (!res.ok) throw new Error(json.error)
       // POST responde inmediatamente; el resultado real llega por SSE
       return await new Promise((resolve, reject) => {
-        resolveResult = resolve
-        rejectResult  = reject
-        setTimeout(() => reject(new Error('El análisis tardó demasiado. Intenta de nuevo.')), 10 * 60 * 1000)
+        let timeoutId
+        resolveResult = (val) => { clearTimeout(timeoutId); resolve(val) }
+        rejectResult  = (err) => { clearTimeout(timeoutId); reject(err) }
+        timeoutId = setTimeout(() => reject(new Error('El análisis tardó demasiado. Intenta de nuevo.')), 10 * 60 * 1000)
       })
     })
 
