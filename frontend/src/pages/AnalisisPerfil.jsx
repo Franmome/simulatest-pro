@@ -1569,6 +1569,9 @@ export default function AnalisisPerfil() {
     const convNombre = convocatorias.find(c => String(c.id) === convId)?.nombre || ''
     const jobId      = crypto.randomUUID()
 
+    let resolveResult = null
+    let rejectResult  = null
+
     // ── Conectar SSE para progreso en tiempo real ────────────────────────────
     let evtSource = null
     try {
@@ -1587,10 +1590,24 @@ export default function AnalisisPerfil() {
           if (data.pct !== undefined) setPctEtapa(data.pct)
         } catch { /* no crítico */ }
       })
-      evtSource.addEventListener('listo', () => evtSource?.close())
+      evtSource.addEventListener('listo', (e) => {
+        try {
+          const data = e.data ? JSON.parse(e.data) : {}
+          resolveResult?.({ ...data, _convNombre: convNombre })
+        } catch {
+          resolveResult?.({ _convNombre: convNombre })
+        }
+        evtSource?.close()
+      })
       evtSource.addEventListener('error', (e) => {
         if (e.data) {
-          try { const d = JSON.parse(e.data); if (d.mensaje) setError(d.mensaje) } catch { /* */ }
+          try {
+            const d = JSON.parse(e.data)
+            if (d.mensaje) {
+              rejectResult?.(new Error(d.mensaje))
+              setError(d.mensaje)
+            }
+          } catch { /* */ }
         }
         evtSource?.close()
       })
@@ -1614,7 +1631,12 @@ export default function AnalisisPerfil() {
       const res  = await fetch(`${BASE}/api/ia/analisis-perfil`, { method: 'POST', headers, body: fd })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      return { ...json, _convNombre: convNombre }
+      // POST responde inmediatamente; el resultado real llega por SSE
+      return await new Promise((resolve, reject) => {
+        resolveResult = resolve
+        rejectResult  = reject
+        setTimeout(() => reject(new Error('El análisis tardó demasiado. Intenta de nuevo.')), 10 * 60 * 1000)
+      })
     })
 
     clearInterval(stepTimer)

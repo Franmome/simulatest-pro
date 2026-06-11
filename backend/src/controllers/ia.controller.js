@@ -60,7 +60,7 @@ export function progresoAnalisis(req, res) {
   }
 
   const onProgress = (d) => sendEvent('progreso', d)
-  const onDone     = ()  => { sendEvent('listo', {}); cleanup(); res.end() }
+  const onDone     = (data) => { sendEvent('listo', data || {}); cleanup(); res.end() }
   const onError    = (m) => { sendEvent('error', { mensaje: m }); cleanup(); res.end() }
 
   function cleanup() {
@@ -1794,26 +1794,34 @@ export async function analizarPerfilCV(req, res) {
 
       throw new Error(`Todos los modelos de IA fallaron en ${etiqEtapa}.`)
     }
+    const file        = req.file
+    const jobId       = req.body.jobId || null
     const preferencias = (() => { try { return prefRaw ? JSON.parse(prefRaw) : {} } catch { return {} } })()
-    const file  = req.file
-    const jobId = req.body.jobId || null
-    const emit  = (data) => emitJobProgress(jobId, data)
-
-    console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0} jobId=${jobId}`)
-
-    // ── Cola de concurrencia — máximo MAX_ANALISIS simultáneos ───────────────
-    if (analisesActivos >= MAX_ANALISIS) {
-      emit({ en_cola: true, msg: 'alta_demanda' })
-      console.log(`[IA] cola: user=${userId} en espera (activos=${analisesActivos})`)
-    }
-    try { await waitSlotAnalisis() } catch {
-      return res.status(503).json({ error: 'Alta demanda en este momento. Por favor intenta de nuevo en un par de minutos.' })
-    }
 
     if (!convocatoria_id) return res.status(400).json({ error: 'Debes seleccionar una convocatoria.' })
     if (!file && !perfil_texto?.trim()) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
 
-    try { // ── slot liberado en finally ──────────────────────────────────────
+    // ── Responder inmediatamente — análisis corre en background ──────────────
+    // El ticket se consume en background DESPUÉS del análisis exitoso (invariante mantenida)
+    res.json({ jobId, en_proceso: true })
+
+    const emit    = (data) => emitJobProgress(jobId, data)
+    const emitErr = (msg)  => { const em = jobEmitters.get(jobId); if (em) em.emit('jobError', msg) }
+
+    console.log(`[IA] analisis-perfil inicio: user=${userId} conv=${convocatoria_id} file=${file?.originalname || 'sin-archivo'} size=${file?.size || 0} jobId=${jobId}`)
+
+    setImmediate(async () => {
+      // ── Cola de concurrencia ─────────────────────────────────────────────
+      if (analisesActivos >= MAX_ANALISIS) {
+        emit({ en_cola: true, msg: 'alta_demanda' })
+        console.log(`[IA] cola: user=${userId} en espera (activos=${analisesActivos})`)
+      }
+      try { await waitSlotAnalisis() } catch {
+        emitErr('Alta demanda en este momento. Por favor intenta de nuevo en un par de minutos.')
+        return
+      }
+
+      try {
 
     // ── Etapa 1: extracción de texto del CV ──────────────────────────────────
     emit({ etapa: 1, pct: 3, msg: 'Leyendo hoja de vida...' })
@@ -1823,23 +1831,19 @@ export async function analizarPerfilCV(req, res) {
 
     // QC gate — bloquear análisis si no se pudo leer el CV
     if (file && cvText.replace(/\s/g, '').length < 200) {
-      const em = jobEmitters.get(jobId)
-      if (em) em.emit('jobError', 'No se pudo leer tu hoja de vida. Verifica que el PDF no esté protegido o corrupto, e intenta de nuevo.')
-      return res.status(422).json({
-        error: 'No se pudo extraer texto de tu hoja de vida. Asegúrate de que el archivo no esté protegido, y que tenga texto visible (no solo escáner sin calidad). Intenta de nuevo.',
-        sin_ticket: true, // el frontend NO consume ticket en este caso
-      })
+      emitErr('No se pudo leer tu hoja de vida. Verifica que el PDF no esté protegido o corrupto, e intenta de nuevo.')
+      return
     }
 
     emit({ etapa: 1, pct: 20, msg: `Hoja de vida leída — ${Math.round(cvText.length / 1000)}K caracteres` })
-    if (!perfil_texto?.trim() && !cvText) return res.status(400).json({ error: 'Debes proporcionar tu perfil o subir tu hoja de vida.' })
+    if (!perfil_texto?.trim() && !cvText) { emitErr('Debes proporcionar tu perfil o subir tu hoja de vida.'); return }
 
     const [allOpec, conv] = await Promise.all([
       fetchAllOpecs(parseInt(convocatoria_id)),
       supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
     ])
 
-    if (!allOpec?.length) return res.status(404).json({ error: 'Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.' })
+    if (!allOpec?.length) { emitErr('Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.'); return }
 
     // Filtrar por ciudad si se especificó (comparación normalizada sin tildes)
     const ciudadKey = normCiudad(ciudad_filtro || '')
@@ -1892,9 +1896,8 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
     let perfilData = rPerfil ? rescueAnalisis(rPerfil.texto) : null
     if (!perfilData) {
-      const em = jobEmitters.get(jobId)
-      if (em) em.emit('jobError', 'No se pudo analizar tu perfil. Intenta de nuevo.')
-      return res.status(500).json({ error: 'No se pudo extraer el perfil del candidato. Intenta de nuevo.' })
+      emitErr('No se pudo analizar tu perfil. Intenta de nuevo.')
+      return
     }
     emit({ etapa: 2, pct: 45, msg: 'Perfil profesional identificado' })
 
@@ -2111,9 +2114,7 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
 
     emit({ etapa: 5, pct: 100, msg: '¡Análisis completado!' })
     const em = jobEmitters.get(jobId)
-    if (em) em.emit('done')
-
-    return res.json({
+    if (em) em.emit('done', {
       analisis, opecs_pendientes: opecsPendientes, pocas_opec_local,
       analisis_id:       savedRow?.id            || null,
       ciudad_filtro:     ciudad_filtro            || null,
@@ -2121,15 +2122,22 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
       plataforma_nombre: conv?.plataforma_nombre  || null,
       motor: 'rutas_v1',
     })
-    } finally { releaseSlotAnalisis() } // ── liberar slot siempre ──
+      } catch (err) {
+        console.error(`[IA] analizarPerfilCV ERROR: user=${userId} msg="${err.message}" stack=${err.stack?.split('\n')[1]?.trim() || ''}`)
+        const esTimeout = err.message?.toLowerCase().includes('timeout')
+        const msg = esTimeout
+          ? 'El análisis tardó demasiado. Intenta de nuevo — la IA puede estar cargada en este momento.'
+          : err.message
+        emitErr(msg)
+      } finally {
+        releaseSlotAnalisis()
+      }
+    }) // fin setImmediate
 
   } catch (err) {
-    console.error(`[IA] analizarPerfilCV ERROR: user=${req.user?.id} msg="${err.message}" stack=${err.stack?.split('\n')[1]?.trim() || ''}`)
-    const esTimeout = err.message?.toLowerCase().includes('timeout')
-    const msg = esTimeout
-      ? 'El análisis tardó demasiado. Intenta de nuevo — la IA puede estar cargada en este momento.'
-      : err.message
-    return res.status(500).json({ error: msg })
+    // Solo errores de fase 1 (validación)
+    console.error(`[IA] analizarPerfilCV ERROR fase1: ${err.message}`)
+    return res.status(500).json({ error: err.message })
   }
 }
 
