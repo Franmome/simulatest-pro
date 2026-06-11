@@ -2379,7 +2379,7 @@ export default function AnalisisPerfil() {
                 {
                   icon: 'confirmation_number', color: 'text-primary bg-primary/10',
                   title: 'Sistema de tickets',
-                  body: 'Cada análisis de perfil cuesta 1 ticket. Los tickets se compran individualmente con Wompi (pasarela de pago segura de Colombia) a $2.000 COP por análisis. Los tickets no vencen — los puedes usar cuando quieras. Puedes ver tu saldo en la parte de abajo del formulario.',
+                  body: 'Cada análisis de perfil cuesta 1 ticket. Los tickets se compran individualmente con Wompi (pasarela de pago segura de Colombia). Los tickets no vencen — los puedes usar cuando quieras. Puedes ver tu saldo en la parte de abajo del formulario.',
                 },
                 {
                   icon: 'route', color: 'text-teal-600 bg-teal-50',
