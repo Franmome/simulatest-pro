@@ -1206,7 +1206,7 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
       <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-surface-container border border-outline-variant/20">
         <span className="material-symbols-outlined text-on-surface-variant/60 text-sm flex-shrink-0 mt-0.5">info</span>
         <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-          {/* ESCRIBE TU DISCLAIMER AQUÍ */}
+          PraxIA usa agentes de IA y puede cometer errores, por favor verifica los resultados.
         </p>
       </div>
     </div>
