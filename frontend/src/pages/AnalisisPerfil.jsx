@@ -1605,10 +1605,13 @@ export default function AnalisisPerfil() {
             const d = JSON.parse(e.data)
             if (d.mensaje) {
               rejectResult?.(new Error(d.mensaje))
-              setError(d.mensaje)
+              evtSource?.close()
+              return
             }
           } catch { /* */ }
         }
+        // Caída de red o Railway cortó la conexión sin datos
+        rejectResult?.(new Error('Se perdió la conexión con el servidor. Verifica tu conexión e intenta de nuevo.'))
         evtSource?.close()
       })
     } catch { /* EventSource no disponible: el timer de fallback sigue andando */ }

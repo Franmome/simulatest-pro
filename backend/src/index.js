@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express  from 'express'
 import cors     from 'cors'
 
+import { ALLOWED_ORIGINS } from './utils/allowedOrigins.js'
 import authRoutes        from './routes/auth.routes.js'
 import evaluacionRoutes  from './routes/evaluacion.routes.js'
 import paqueteRoutes     from './routes/paquete.routes.js'
@@ -15,12 +16,7 @@ const app  = express()
 const PORT = process.env.PORT || 3000
 
 // ─── Middlewares globales ──────────────────────────────────
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://simulatest-pro-production.up.railway.app'
-  ]
-}))
+app.use(cors({ origin: ALLOWED_ORIGINS }))
 app.use(express.json({ limit: '10mb' }))
 
 // ─── Rutas ────────────────────────────────────────────────
@@ -50,10 +46,6 @@ app.get('/api/version', (_req, res) => {
 })
 
 // ─── Manejo de errores global ─────────────────────────────
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'https://simulatest-pro-production.up.railway.app',
-]
 app.use((err, req, res, _next) => {
   // Garantizar CORS headers incluso en respuestas de error
   const origin = req.headers.origin

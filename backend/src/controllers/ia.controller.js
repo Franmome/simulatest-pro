@@ -14,6 +14,7 @@ import { checkTokenBalance, recordTokenUsage, getActivePurchase } from '../utils
 import { buildUserContext } from '../utils/contextBuilder.js'
 import { getPrompt } from '../utils/promptLoader.js'
 import { recordSuccess, recordFailure, isHealthy, healthSnapshot } from '../utils/modelHealthCache.js'
+import { ALLOWED_ORIGINS } from '../utils/allowedOrigins.js'
 
 const supabase      = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 const genAI         = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
@@ -41,14 +42,13 @@ function emitJobProgress(jobId, data) {
 // Endpoint SSE — el frontend se conecta antes de lanzar el POST de análisis
 export function progresoAnalisis(req, res) {
   const { jobId } = req.params
-  const ORIGINS   = ['http://localhost:5173', 'https://simulatest-pro-production.up.railway.app']
   const origin    = req.headers.origin
 
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no') // Railway nginx
-  if (origin && ORIGINS.includes(origin)) {
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Credentials', 'true')
   }
