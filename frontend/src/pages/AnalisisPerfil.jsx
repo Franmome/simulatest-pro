@@ -1201,6 +1201,14 @@ function ResultsNew({ analisis, onReset, navigate, opecsPendientes = [], cargand
         <span className="material-symbols-outlined text-sm">person_search</span>
         Analizar otro perfil
       </button>
+
+      {/* Disclaimer IA — edita el texto manualmente aquí */}
+      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-surface-container border border-outline-variant/20">
+        <span className="material-symbols-outlined text-on-surface-variant/60 text-sm flex-shrink-0 mt-0.5">info</span>
+        <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+          {/* ESCRIBE TU DISCLAIMER AQUÍ */}
+        </p>
+      </div>
     </div>
   )
 }
@@ -1314,6 +1322,7 @@ export default function AnalisisPerfil() {
   const [showTicketConfirm, setShowTicketConfirm] = useState(false)
   const [reportando, setReportando] = useState(false)
   const [enCola, setEnCola] = useState(false)
+  const [fileSizeWarning, setFileSizeWarning] = useState(null)
   const [ticketBalance, setTicketBalance] = useState(null)
   const [comprando, setComprando] = useState(false)
   const comprandoRef   = useRef(false)
@@ -1499,6 +1508,10 @@ export default function AnalisisPerfil() {
   function addFiles(fileList) {
     const valid = Array.from(fileList).filter(f => ACCEPTED_EXTS.includes(f.name.split('.').pop().toLowerCase()))
     setFiles(prev => [...prev, ...valid])
+    const biggest = valid.reduce((max, f) => Math.max(max, f.size), 0)
+    if (biggest > 20 * 1024 * 1024) setFileSizeWarning('heavy')
+    else if (biggest > 10 * 1024 * 1024) setFileSizeWarning('warn')
+    else setFileSizeWarning(null)
   }
 
   function removeFile(idx) {
@@ -1960,6 +1973,22 @@ export default function AnalisisPerfil() {
                           </button>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {fileSizeWarning === 'heavy' && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700">
+                      <span className="material-symbols-outlined text-red-500 text-sm flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                      <p className="text-[11px] text-red-700 dark:text-red-300 leading-snug">
+                        Archivo muy pesado (+20 MB). El análisis puede tardar varios minutos o fallar. Comprime o reduce la resolución del PDF antes de subir para mejores resultados.
+                      </p>
+                    </div>
+                  )}
+                  {fileSizeWarning === 'warn' && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+                      <span className="material-symbols-outlined text-amber-500 text-sm flex-shrink-0 mt-0.5">info</span>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                        Archivo grande (+10 MB). Si el análisis tarda mucho, intenta con una versión más liviana del PDF.
+                      </p>
                     </div>
                   )}
                 </div>

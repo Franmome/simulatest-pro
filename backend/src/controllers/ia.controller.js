@@ -207,7 +207,7 @@ const MAX_INLINE = 4 * 1024 * 1024  // 4 MB — por encima usamos Files API
 // Estrategia 1a: Gemini Vision inline (PDF pequeño < 4 MB)
 async function geminiVisionInline(buffer, mimeType) {
   const part = { inlineData: { data: buffer.toString('base64'), mimeType } }
-  const res  = await geminiGenerar([CV_PROMPT, part], null, 'gemini-2.5-flash', 90_000)
+  const res  = await geminiGenerar([CV_PROMPT, part], null, 'gemini-3.5-flash', 90_000)
   return res.texto || ''
 }
 
@@ -220,7 +220,7 @@ async function geminiVisionFilesApi(buffer, filename) {
     tmpPath   = join(tmpdir(), `praxia_cv_${Date.now()}_${filename}`)
     await writeFile(tmpPath, buffer)
     const uploaded = await fm.uploadFile(tmpPath, { mimeType: 'application/pdf', displayName: filename })
-    const model    = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const model    = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
     const timeoutP = new Promise((_, rej) => setTimeout(() => rej(new Error('Gemini Files timeout')), 120_000))
     const result   = await Promise.race([
       model.generateContent([CV_PROMPT, { fileData: { mimeType: 'application/pdf', fileUri: uploaded.file.uri } }]),
@@ -254,7 +254,7 @@ async function pdfjsExtract(buffer) {
   const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs')
     .catch(() => import('pdfjs-dist/legacy/build/pdf.mjs').catch(() => null))
   if (!pdfjsLib) return ''
-  const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise
+  const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise
   let text = ''
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     const page    = await pdfDoc.getPage(i)
@@ -301,33 +301,33 @@ async function extractCvText(file, emitProg) {
   console.log(`[PDF] ${file.originalname} (${sizeMB} MB, ${isLarge ? 'Files API' : 'inline'})`)
 
   // 1a. Gemini Vision inline (PDFs < 4 MB)
-  if (!isLarge && isHealthy('gemini-2.5-flash')) {
+  if (!isLarge && isHealthy('gemini-3.5-flash')) {
     try {
       emitProg?.({ etapa: 1, pct: 5, msg: 'Leyendo hoja de vida con IA...' })
       const text = await geminiVisionInline(file.buffer, 'application/pdf')
       if (text.replace(/\s/g, '').length > 200) {
-        recordSuccess('gemini-2.5-flash')
+        recordSuccess('gemini-3.5-flash')
         console.log('[PDF] Gemini inline:', text.length, 'chars')
         return text
       }
     } catch (e) {
-      recordFailure('gemini-2.5-flash')
+      recordFailure('gemini-3.5-flash')
       console.warn('[PDF] Gemini inline falló:', e.message)
     }
   }
 
   // 1b. Gemini Files API (PDFs ≥ 4 MB o fallback del inline)
-  if (isHealthy('gemini-2.5-flash-files')) {
+  if (isHealthy('gemini-3.5-flash-files')) {
     try {
       emitProg?.({ etapa: 1, pct: 10, msg: isLarge ? 'PDF grande detectado, cargando...' : 'Reintentando extracción...' })
       const text = await geminiVisionFilesApi(file.buffer, file.originalname || 'cv.pdf')
       if (text.replace(/\s/g, '').length > 200) {
-        recordSuccess('gemini-2.5-flash-files')
+        recordSuccess('gemini-3.5-flash-files')
         console.log('[PDF] Gemini Files API:', text.length, 'chars')
         return text
       }
     } catch (e) {
-      recordFailure('gemini-2.5-flash-files')
+      recordFailure('gemini-3.5-flash-files')
       console.warn('[PDF] Gemini Files API falló:', e.message)
     }
   }
@@ -458,7 +458,7 @@ function formatError(err) {
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
-async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-2.5-flash', timeoutMs = 90_000) {
+async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-3.5-flash', timeoutMs = 90_000) {
   const modelConfig = systemInstruction
     ? { model: modelId, systemInstruction }
     : { model: modelId }
@@ -479,7 +479,7 @@ async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-
 }
 
 async function geminiTexto(prompt) {
-  const model    = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model    = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
   const timeoutP = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout (90s)')), 90_000))
   const result   = await Promise.race([model.generateContent(prompt), timeoutP])
   const usage    = result.response.usageMetadata
@@ -491,7 +491,7 @@ async function geminiTexto(prompt) {
 }
 
 async function geminiChat(systemCtx, historial, mensaje) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
   const chat  = model.startChat({
     history: historial.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -554,7 +554,7 @@ async function conFallback(modelo, deepFn, gemFn) {
         supabase.from('system_errors').insert({
           severity:    'warning',
           error_code:  'GEMINI_503',
-          description: 'Gemini 2.5 Flash reportó alta demanda — 3 intentos fallidos',
+          description: 'Gemini 3.5 Flash reportó alta demanda — 3 intentos fallidos',
           status:      'open',
         }).catch(e => console.error('[conFallback] system_errors insert:', e.message))
         throw new Error('El servicio de IA está experimentando alta demanda. Por favor intenta de nuevo en unos minutos.')
@@ -591,7 +591,7 @@ async function deepseekAnalisisPerfil(systemPrompt, userPrompt, maxTokens) {
 }
 
 async function geminiAnalisisPerfil(systemPrompt, userPrompt) {
-  const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model  = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
   const timeoutP = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('Gemini análisis timeout (100s)')), 100_000)
   )
@@ -974,7 +974,7 @@ export async function verificarOpec(req, res) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       tools: [{ googleSearch: {} }],
     })
 
@@ -1739,11 +1739,11 @@ export async function analizarPerfilCV(req, res) {
     const analizarConIA = async (sp, up, etiqEtapa = 'pass') => {
       // Intento 1-3: Gemini con backoff exponencial en 503
       const BACKOFF_503 = [3_000, 8_000, 20_000]
-      if (isHealthy('gemini-2.5-flash-text')) {
+      if (isHealthy('gemini-3.5-flash-text')) {
         for (let intento = 1; intento <= 3; intento++) {
           try {
             const res = await geminiAnalisisPerfil(sp, up)
-            recordSuccess('gemini-2.5-flash-text')
+            recordSuccess('gemini-3.5-flash-text')
             return res
           } catch (e) {
             const msg   = String(e?.message || '').toLowerCase()
@@ -1754,27 +1754,14 @@ export async function analizarPerfilCV(req, res) {
               await new Promise(r => setTimeout(r, wait))
               continue
             }
-            recordFailure('gemini-2.5-flash-text')
+            recordFailure('gemini-3.5-flash-text')
             console.warn(`[IA] ${etiqEtapa} Gemini falló: ${String(e?.message || '').slice(0, 80)}`)
             break
           }
         }
       }
 
-      // Intento 2: DeepSeek v4-flash — SIN max_tokens hardcodeado (soporta 384K)
-      if (isHealthy('deepseek-chat')) {
-        try {
-          console.log(`[IA] ${etiqEtapa} → DeepSeek v4-flash`)
-          const res = await deepseekAnalisisPerfil(sp, up) // sin maxTokens param
-          recordSuccess('deepseek-chat')
-          return res
-        } catch (e) {
-          recordFailure('deepseek-chat')
-          console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
-        }
-      }
-
-      // Intento 3: GPT-4o-mini (último recurso)
+      // Intento 2: GPT-4o-mini
       if (process.env.OPENAI_API_KEY && isHealthy('gpt-4o-mini-text')) {
         try {
           console.log(`[IA] ${etiqEtapa} → GPT-4o-mini`)
@@ -1789,6 +1776,19 @@ export async function analizarPerfilCV(req, res) {
         } catch (e) {
           recordFailure('gpt-4o-mini-text')
           console.warn(`[IA] ${etiqEtapa} GPT-4o-mini falló: ${String(e?.message || '').slice(0, 80)}`)
+        }
+      }
+
+      // Intento 3: DeepSeek (último recurso)
+      if (isHealthy('deepseek-chat')) {
+        try {
+          console.log(`[IA] ${etiqEtapa} → DeepSeek`)
+          const res = await deepseekAnalisisPerfil(sp, up)
+          recordSuccess('deepseek-chat')
+          return res
+        } catch (e) {
+          recordFailure('deepseek-chat')
+          console.warn(`[IA] ${etiqEtapa} DeepSeek falló: ${String(e?.message || '').slice(0, 80)}`)
         }
       }
 
@@ -2736,7 +2736,7 @@ export async function cerebrosHealth(req, res) {
 
   // Gemini: sin API de billing pública — ping con llamada mínima
   try {
-    const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const model  = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
     const result = await model.generateContent('ping')
     results.gemini = { ok: !!result.response.text(), nota: 'pago por uso — sin saldo prepago' }
   } catch (e) {
