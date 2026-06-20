@@ -1,6 +1,72 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+/* ─── Mockup visual: Análisis de Oferta ─────────────────────────────────── */
+function OfertaMockup() {
+  const ofertas = [
+    { empresa: 'Ministerio TIC',   cargo: 'Analista de Sistemas',    pct: 91, color: 'bg-emerald-500', aplica: true  },
+    { empresa: 'Banco de Bogotá',  cargo: 'Especialista Financiero', pct: 54, color: 'bg-amber-400',   aplica: true  },
+    { empresa: 'Empresa XYZ',      cargo: 'Director Operaciones',    pct: 28, color: 'bg-red-400',     aplica: false },
+  ]
+  return (
+    <div className="relative w-full h-full overflow-hidden select-none pointer-events-none">
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-600/15 via-cyan-500/10 to-sky-400/10" />
+      <div className="absolute inset-0 opacity-[0.04]"
+           style={{ backgroundImage: 'radial-gradient(circle, #0891b2 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+
+      {/* HV card — izquierda */}
+      <div className="absolute top-5 left-4 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-3 w-28"
+           style={{ transform: 'rotate(-1deg)' }}>
+        <div className="flex items-center gap-1.5 mb-2">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-extrabold text-[8px]">HV</span>
+          </div>
+          <div className="flex-1">
+            <div className="h-1.5 bg-slate-200 rounded-full w-full mb-1" />
+            <div className="h-1 bg-slate-100 rounded-full w-4/5" />
+          </div>
+        </div>
+        <div className="space-y-1">
+          {[85, 70, 60].map((w, i) => (
+            <div key={i} className="h-1 bg-slate-100 dark:bg-slate-700 rounded-full" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-1 bg-teal-50 rounded-lg px-1.5 py-0.5">
+          <div className="w-1 h-1 rounded-full bg-teal-500 animate-pulse" />
+          <span className="text-[7px] font-bold text-teal-700">Comparando...</span>
+        </div>
+      </div>
+
+      {/* Oferta cards — derecha */}
+      <div className="absolute top-3 right-3 space-y-1.5">
+        {ofertas.map((o, i) => (
+          <div key={i} className="bg-white dark:bg-slate-800 rounded-xl shadow-lg px-2.5 py-2 flex items-center gap-2 w-36"
+               style={{ transform: `rotate(${[1.5, -1, 0.5][i]}deg)` }}>
+            <div className={`w-5 h-5 rounded-full ${o.color} flex items-center justify-center flex-shrink-0`}>
+              <span className="text-white font-black text-[8px]">{o.pct}%</span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[8px] font-black text-slate-700 dark:text-slate-200 truncate">{o.cargo}</p>
+              <p className="text-[7px] text-slate-400 truncate">{o.empresa}</p>
+            </div>
+            <span className={`text-[8px] font-extrabold ${o.aplica ? 'text-emerald-600' : 'text-red-400'}`}>
+              {o.aplica ? '✓' : '✗'}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Badge ACTIVO */}
+      <div className="absolute top-3 left-3">
+        <span className="inline-flex items-center gap-1 bg-teal-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow">
+          <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+          ACTIVO
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function getSaludo() {
   const h = new Date().getHours()
   if (h >= 5  && h < 12) return 'Buenos días'
@@ -338,7 +404,55 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── Card 2: Paquete de Estudio ── */}
+          {/* ── Card 2: Análisis de Oferta ── */}
+          <div
+            onClick={() => navigate('/analisis-oferta')}
+            className="group relative rounded-2xl overflow-hidden border border-teal-500/20 bg-surface cursor-pointer
+                       hover:shadow-2xl hover:shadow-teal-500/15 hover:-translate-y-1 transition-all duration-300"
+          >
+            <div className="h-56 sm:h-60 relative">
+              <OfertaMockup />
+            </div>
+            <div className="h-px bg-gradient-to-r from-transparent via-teal-500/30 to-transparent" />
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-2xl bg-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-teal-600/30 group-hover:scale-105 transition-transform">
+                  <span className="material-symbols-outlined text-white text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>work_history</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-on-surface leading-none mb-1">Análisis de Oferta</h3>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-green-600 dark:text-green-400 uppercase tracking-wide">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                    IA · Disponible ahora
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-on-surface-variant leading-relaxed mb-5">
+                Sube tu hoja de vida y las ofertas de trabajo que te interesan. La IA compara tu perfil con cada oferta
+                y te dice si aplicas, tus puntos fuertes y las brechas a cerrar.
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-6">
+                {['Compatibilidad por oferta', 'Semáforo verde/rojo', 'Brechas detectadas', 'Recomendación IA'].map(f => (
+                  <div key={f} className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-teal-600 flex-shrink-0"
+                          style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    <span className="text-xs text-on-surface font-medium">{f}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); navigate('/analisis-oferta') }}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 text-white rounded-xl font-bold text-sm
+                           hover:bg-teal-700 active:scale-[0.98] transition-all shadow-md shadow-teal-600/25
+                           group-hover:shadow-lg group-hover:shadow-teal-600/35"
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>manage_search</span>
+                Analizar mis ofertas
+              </button>
+            </div>
+          </div>
+
+          {/* ── Card 3: Paquete de Estudio ── */}
           <div className="relative rounded-2xl overflow-hidden border border-outline-variant/25 bg-surface opacity-75">
 
             {/* Área visual */}

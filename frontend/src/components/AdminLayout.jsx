@@ -12,7 +12,7 @@ const navItems = [
   { to: '/admin/errores',      icon: 'report_problem', label: 'Errores del Sistema', hint: 'Monitoreo técnico' },
   { to: '/admin/ia-training',  icon: 'model_training',  label: 'Entrenamiento IA',    hint: 'Prompts y cerebros' },
   { to: '/admin/tokens',       icon: 'monitoring',      label: 'Consumo de Tokens',   hint: 'Gemini · DeepSeek' },
-  { to: '/admin/analisis',     icon: 'confirmation_number', label: 'Análisis de Perfil', hint: 'Tickets · Wompi' },
+  { to: '/admin/analisis',     icon: 'confirmation_number', label: 'Análisis de OPEC',   hint: 'Tickets · Wompi' },
   { to: '/admin/oferta',       icon: 'work_history',        label: 'Análisis de Oferta',  hint: 'Tickets · Prompt · Wompi' },
   { to: '/admin/reportes',     icon: 'flag',               label: 'Reportes de Usuarios', hint: 'Problemas reportados' },
 ]

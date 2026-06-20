@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext'
 const NAV_DEFS = [
   { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard' },
   { icon: 'assignment',        label: 'Paquetes',          path: '/catalogo',  adminOnly: true },
-  { icon: 'manage_accounts',   label: 'Análisis',          path: '/analisis-perfil' },
+  { icon: 'manage_accounts',   label: 'Análisis OPEC',     path: '/analisis-perfil' },
+  { icon: 'work_history',      label: 'Oferta',            path: '/analisis-oferta' },
 ]
 
 export default function BottomNav() {

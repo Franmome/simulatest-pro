@@ -8,6 +8,7 @@ const NAV_DEFS = [
   { icon: 'home',              labelKey: 'nav.dashboard',  path: '/dashboard',        hint: 'Vista principal'           },
   { icon: 'assignment',        label: 'Paquetes',           path: '/catalogo',          hint: 'Simulacros y pruebas',      adminOnly: true },
   { icon: 'manage_accounts',   label: 'Análisis de perfil', path: '/analisis-perfil',  hint: 'Tu perfil vs convocatoria' },
+  { icon: 'work_history',      label: 'Análisis de oferta', path: '/analisis-oferta',   hint: 'Tu HV vs ofertas de trabajo' },
   { icon: 'history_edu',       label: 'Registros',          path: '/registros',         hint: 'Historial de pruebas y análisis' },
 ]
 
