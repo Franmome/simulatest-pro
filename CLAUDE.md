@@ -18,7 +18,7 @@ Plataforma colombiana para aspirantes a cargos del sector público (CNSC, Procur
 - Backend: Node.js (ESM) + Express, corre en **Railway** (servicio `simulatest-api`)
 - Frontend: React + Vite + TailwindCSS, corre en **Railway** (servicio `simulatest-pro`)
 - Base de datos: **Supabase** (Postgres)
-- IA: Gemini 2.5 Flash (principal) + DeepSeek V3 (fallback)
+- IA: Gemini 3.5 Flash (principal) + GPT-4o-mini (fallback) + DeepSeek V3 (último recurso)
 - Pagos: **Wompi** (checkout + webhook)
 - Deploy: push a `main` → Railway despliega automáticamente
 
@@ -31,7 +31,7 @@ backend/
   src/
     index.js                      ← CORS, middlewares globales, servidor
     controllers/
-      ia.controller.js            ← TODO lo de IA: análisis perfil, tickets, chat, simulacros (2800+ líneas)
+      ia.controller.js            ← TODO lo de IA: análisis perfil, tickets, chat, simulacros (2900+ líneas)
       wompi.controller.js         ← Webhook Wompi + generación de checkout
       evaluacion.controller.js    ← CRUD evaluaciones/preguntas
       paquete.controller.js       ← CRUD paquetes del catálogo
@@ -42,6 +42,8 @@ backend/
       tokenTracker.js             ← Saldo de tokens IA por purchase_id
       contextBuilder.js           ← Construye contexto del usuario para prompts
       promptLoader.js             ← Carga prompts desde BD o defaults
+      allowedOrigins.js           ← Lista ÚNICA de origins permitidos (CORS + SSE) — editar aquí al cambiar dominio
+      modelHealthCache.js         ← Rastrea fallos por modelo con TTL 5 min; max 2 fallos antes de degradar
 
 frontend/
   src/
@@ -59,20 +61,28 @@ frontend/
 
 ---
 
-## 3. Modelos de IA correctos — NUNCA cambiar estos nombres
+## 3. Modelos de IA — estado actual
 
-| Función | Modelo correcto | Modelo INCORRECTO (no usar) |
-|---------|----------------|----------------------------|
-| `geminiGenerar()` | `gemini-2.5-flash` | ~~gemini-3.x~~, ~~gemini-2.0-flash~~ |
-| `geminiAnalisisPerfil()` | `gemini-2.5-flash` | ~~gemini-3.1-flash-lite~~ |
-| `geminiChat()` | `gemini-2.5-flash` | ~~gemini-3.1-flash-lite~~ ← BUG CONOCIDO |
-| `deepseekTexto()` | `deepseek-chat` | ~~deepseek-v4-flash~~ ← BUG CONOCIDO |
-| `deepseekAnalisisPerfil()` | `deepseek-chat` | ~~deepseek-v4-flash~~ ← BUG CONOCIDO |
-| `deepseekChat()` | `deepseek-chat` | ~~deepseek-v4-flash~~ ← BUG CONOCIDO |
+| Función | Modelo actual | Notas |
+|---------|--------------|-------|
+| `geminiGenerar()` | `gemini-3.5-flash` | timeout 90s obligatorio |
+| `geminiAnalisisPerfil()` | `gemini-3.5-flash` | timeout 100s |
+| `geminiChat()` | `gemini-3.5-flash` | — |
+| `deepseekTexto()` | `deepseek-chat` | — |
+| `deepseekAnalisisPerfil()` | `deepseek-chat` | — |
+| `deepseekChat()` | `deepseek-chat` | — |
+| `openaiClient` (GPT) | `gpt-4o-mini` | fallback en cascada de análisis y visión PDF |
 
-**Bugs pendientes de corregir (6 lugares en ia.controller.js):**
-- Línea 288: `gemini-3.1-flash-lite` → `gemini-2.5-flash`
-- Líneas 309, 364, 375, 402, 864: `deepseek-v4-flash` → `deepseek-chat`
+**Cascada del análisis de perfil** (`analizarConIA` — nivel módulo en ia.controller.js):
+```
+1. Gemini 3.5 Flash — hasta 3 reintentos con backoff (3s/8s/20s) si 503
+   Si marcado como degradado: intenta 1 vez igualmente (puede haberse recuperado)
+2. GPT-4o-mini — si Gemini falla o está degradado
+3. DeepSeek — último recurso
+```
+
+**INVARIANTE:** Nunca cambiar estos nombres sin verificar que el modelo existe en la API.
+**INVARIANTE:** Nunca añadir una llamada a Gemini sin `Promise.race(timeout)`.
 
 ---
 
@@ -88,26 +98,40 @@ Este es el flujo más importante. **Nunca romper ningún paso.**
 2. Frontend → POST /api/ia/analisis-perfil (FormData: pdf + convocatoria_id + preferencias)
    → multer: uploadPerfil.single('pdf') — SIN límite de tamaño
 
-3. Backend: analizarPerfilCV() — ia.controller.js:1510
-   a. VERIFICAR ticket (SELECT user_analisis_tickets) — sin consumir todavía
-   b. Extraer texto del CV: Gemini Vision para PDF/imagen, mammoth para Word
-   c. PASS 1: geminiAnalisisPerfil() con SP_PERFIL → extrae perfil estructurado
-      - 3 reintentos si Gemini da 503
-      - Fallback a DeepSeek si Gemini falla
-      - ⚠️ Si DeepSeek tiene modelo inválido (bug pendiente), el fallback también falla
-   d. PASS 2: motor de scoring determinista sobre TODAS las OPECs (sin IA)
-   e. PASS 3: geminiAnalisisPerfil() con SP_RUTAS → asigna 4 rutas estratégicas
-      - Fallback determinista si la IA falla (devuelve ranking básico)
-   f. GUARDAR en user_profile_analysis (Supabase)
-   g. CONSUMIR ticket (DESPUÉS del éxito, con optimistic locking)
-      .eq('user_id', userId).eq('tickets', ticketActual.tickets)
-   h. return res.json({ analisis, opecs_pendientes, analisis_id, ... })
+3. Backend: analizarPerfilCV() — arquitectura ASYNC (evita timeout Railway ~120s)
+   FASE 1 (síncrona, <1s):
+   a. Verificar ticket (sin consumir aún)
+   b. Validar convocatoria_id, archivo presente
+   c. Verificar que no haya análisis en curso del mismo usuario (analisesEnCurso Set)
+   d. res.json({ jobId, en_proceso: true })  ← responde YA al frontend
+   e. setImmediate(async () => { ... })       ← análisis corre en background
 
-4. Frontend recibe → setAnalisis() → render ResultsNew o ResultsOld
+   FASE 2 (background, sin límite de tiempo):
+   f. Esperar slot de concurrencia (máx 5 simultáneos — waitSlotAnalisis)
+   g. Extraer texto del CV: Gemini Vision para PDF/imagen, mammoth para Word
+   h. PASS 1: analizarConIA() con SP_PERFIL → extrae perfil estructurado
+      - Fallback: Gemini 3.5 Flash → GPT-4o-mini → DeepSeek
+   i. PASS 2: motor de scoring determinista sobre TODAS las OPECs (sin IA)
+   j. PASS 3: analizarConIA() con SP_RUTAS → asigna 4 rutas estratégicas
+      - Fallback determinista si la IA falla (devuelve ranking básico)
+   k. GUARDAR en user_profile_analysis (Supabase)
+   l. CONSUMIR ticket (DESPUÉS del éxito, con optimistic locking)
+   m. em.emit('done', { analisis, opecs_pendientes, analisis_id, ... })
+      → SSE entrega el resultado al frontend
+   n. finally: analisesEnCurso.delete(userId) + releaseSlotAnalisis()
+
+4. Frontend recibe resultado por SSE (evento 'listo') → setAnalisis() → render ResultsNew o ResultsOld
    → Todo renderizado con safeStr() + ErrorBoundary (protege contra React error #31)
 
-INVARIANTE CRÍTICA: El ticket SIEMPRE se consume DESPUÉS de res.json().
+INVARIANTE CRÍTICA: El ticket SIEMPRE se consume DESPUÉS de em.emit('done').
 Nunca mover el consumo de ticket antes de que el análisis esté completo.
+
+INVARIANTE ASYNC: El resultado del análisis llega por SSE, NO por el body del POST.
+El POST solo devuelve { jobId, en_proceso: true }. No esperes datos de análisis en el res.json() del POST.
+
+INVARIANTE DOUBLE-SPEND: analisesEnCurso.add(userId) se llama ANTES de res.json().
+analisesEnCurso.delete(userId) se llama en el finally del setImmediate Y en el catch de waitSlotAnalisis.
+Nunca remover estas llamadas.
 ```
 
 ---
@@ -143,43 +167,38 @@ El webhook parsea partes[5] === "TICKET" y partes[6] = cantidad.
 
 ## 6. CORS y manejo de errores — Invariantes
 
-El CORS está configurado en **DOS lugares** en `backend/src/index.js`:
-1. Middleware `cors()` (línea ~17) — lista de origins permitidos
-2. Error handler global (línea ~51) — repite los headers CORS manualmente
-
-**¿Por qué dos lugares?** Railway puede matar la conexión con 502 antes de que el middleware actúe. El error handler manual garantiza que incluso respuestas de error lleven CORS headers.
-
-```js
-// AMBAS listas deben mantenerse sincronizadas:
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'https://simulatest-pro-production.up.railway.app',
-  // Al migrar a dominio propio: añadir 'https://praxia.app'
-]
+Los origins permitidos están en **UN SOLO LUGAR**:
 ```
+backend/src/utils/allowedOrigins.js
+```
+Este archivo es importado por `index.js` (middleware cors + error handler) y por `ia.controller.js` (SSE handler de progreso). **Al comprar dominio o migrar a Cloud Run, solo editar `allowedOrigins.js`.**
 
-**INVARIANTE:** Si añades una nueva origin (ej. dominio propio), actualízala en AMBOS lugares.
+**¿Por qué el SSE tiene su propio CORS?** El SSE usa `res.write()` directo (no el ciclo normal de Express), por eso necesita setear los headers manualmente. Antes era una lista duplicada hardcodeada; ahora importa la misma constante.
+
+**¿Por qué el error handler global también repite CORS?** Railway puede matar la conexión con 502 antes de que el middleware actúe. El error handler manual garantiza que incluso respuestas de error lleven CORS headers.
+
+**INVARIANTE:** Para añadir una nueva origin (dominio propio, Cloud Run URL), editar ÚNICAMENTE `allowedOrigins.js`. Los demás archivos ya la importan automáticamente.
 
 ---
 
 ## 7. Timeouts Gemini — Invariante crítica
 
-Todas las llamadas a Gemini DEBEN tener `Promise.race` con timeout. Railway cierra conexiones sin CORS headers si el proceso dura >90s en el proxy.
+El análisis de perfil ya NO sufre el timeout de Railway (~120s) porque responde en <1s y trabaja en background. Sin embargo, otros endpoints que llaman Gemini directamente siguen expuestos.
+
+**INVARIANTE:** Nunca añadir una nueva llamada a Gemini sin `Promise.race(timeout)`.
 
 ```js
 // CORRECTO — tiene timeout
-async function geminiGenerar(parts, ..., timeoutMs = 90_000) {
+async function geminiGenerar(parts, systemInstruction = null, modelId = 'gemini-3.5-flash', timeoutMs = 90_000) {
   const timeoutP = new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`Gemini timeout`)), timeoutMs)
   )
   return await Promise.race([model.generateContent(...), timeoutP])
 }
 
-// ⚠️ BUG PENDIENTE — geminiTexto() NO tiene timeout (línea 276)
+// ⚠️ BUG PENDIENTE — geminiTexto() NO tiene timeout (línea ~276)
 // Afecta: verificarOpec, analizarSala, generarPracticaDesdeIA
 ```
-
-**INVARIANTE:** Nunca añadir una nueva llamada a Gemini sin `Promise.race(timeout)`.
 
 ---
 
@@ -212,6 +231,7 @@ async function geminiGenerar(parts, ..., timeoutMs = 90_000) {
 SUPABASE_URL, SUPABASE_SERVICE_KEY
 GEMINI_API_KEY
 DEEPSEEK_API_KEY
+OPENAI_API_KEY                    ← requerido para fallback GPT-4o-mini en análisis y visión PDF
 WOMPI_PUBLIC_KEY, WOMPI_INTEGRITY_SECRET, WOMPI_EVENTS_SECRET
 FRONTEND_URL=https://simulatest-pro-production.up.railway.app
 RAILWAY_PUBLIC_DOMAIN (auto)
@@ -248,7 +268,7 @@ no borre toda la página — muestra un mensaje de error amigable en su lugar.
 
 ---
 
-## 11. Workflow de desarrollo (NUNCA hacer push directo a main con usuarios activos)
+## 11. Workflow de desarrollo
 
 ```
 feature/xxx  →  develop  →  main (producción)
@@ -264,31 +284,53 @@ hotfix/xxx   →  main (directamente, para bugs críticos)
 
 ## 12. Bugs conocidos (pendientes de fix)
 
-| # | Severidad | Descripción | Archivo:línea | Fix |
-|---|-----------|-------------|--------------|-----|
-| 1 | CRÍTICO | `gemini-3.1-flash-lite` modelo inválido en geminiChat | ia.controller.js:288 | Cambiar a `gemini-2.5-flash` |
-| 2 | CRÍTICO | `deepseek-v4-flash` modelo inválido (×5) | ia.controller.js:309,364,375,402,864 | Cambiar a `deepseek-chat` |
-| 3 | MEDIO | `geminiTexto()` sin timeout | ia.controller.js:276 | Añadir Promise.race(90_000) |
-| 4 | BAJO | Modal análisis no valida saldo 0 antes de abrir | AnalisisPerfil.jsx:1459 | Check ticketBalance antes de setShowTicketConfirm |
-| 5 | BAJO | `modo_pruebas` columna pendiente de migración | Supabase | SQL: ver sección 8 |
+| # | Severidad | Descripción | Archivo | Fix |
+|---|-----------|-------------|---------|-----|
+| 1 | MEDIO | `geminiTexto()` sin timeout | ia.controller.js:~276 | Añadir Promise.race(90_000) — afecta verificarOpec, analizarSala, generarPracticaDesdeIA |
+| 2 | BAJO | `modo_pruebas` columna pendiente de migración | Supabase | `ALTER TABLE users ADD COLUMN IF NOT EXISTS modo_pruebas boolean DEFAULT false;` |
+| 3 | BAJO | `SYSTEM_PROMPT_ANALISIS_PERFIL` constante ~3KB nunca usada | ia.controller.js:~1748 | Eliminar — el código usa SP_PERFIL y SP_RUTAS definidos dentro del handler |
+| 4 | BAJO | `top10Ids`, `descartadosIds`, `perfil_base` computados pero nunca leídos | ia.controller.js:~1876,1928,1930 | Eliminar las tres líneas |
+| 5 | BAJO | `masOpecs` (ver más OPECs) usa DeepSeek directo sin cascada de fallback | ia.controller.js:~2202 | Reemplazar `deepseekAnalisisPerfil(...)` por `analizarConIA(...)` |
+| 6 | BAJO | `fileSizeWarning` no se limpia al eliminar un archivo | AnalisisPerfil.jsx:~1517 | Añadir `setFileSizeWarning(null)` en `removeFile()` |
+| 7 | BAJO | Stale comment "gemini-3.1-flash-lite" en línea ~1354 | ia.controller.js:~1354 | Borrar el comentario — el código ya usa `geminiGenerar()` con 3.5-flash |
+| 8 | BAJO | Health cache: Gemini puede quedar degradado indefinidamente durante spikes sostenidos | modelHealthCache.js | El TTL de 5 min se reinicia con cada `recordFailure` — estudiar si conviene añadir un techo de intentos |
 
 ---
 
-## 13. Dominio personalizado — pendiente
+## 13. Dominio personalizado / migración a Cloud Run — pendiente
 
-Cuando se compre el dominio (praxia.app o similar), hay exactamente 4 archivos de código y 3 env vars en Railway que cambiar. Ver memoria: `project_migracion_dominio.md`.
+Cuando se compre el dominio (praxia.app o similar) y/o se migre a Google Cloud Run:
+
+**Código — UN SOLO archivo a editar:**
+```js
+// backend/src/utils/allowedOrigins.js
+export const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://simulatest-pro-production.up.railway.app',
+  'https://praxia.app',  // ← añadir aquí
+]
+```
+
+**Variables de entorno a actualizar (3):**
+- Backend: `FRONTEND_URL` → nueva URL del frontend
+- Frontend: `VITE_API_URL` → nueva URL del backend
+- Wompi: redirect URL del checkout (`/analisis-perfil?...`) si cambia el dominio del frontend
+
+**Wompi webhook:** La URL del webhook en el dashboard de Wompi apunta al backend — actualizar si cambia la URL del backend.
+
+Ver también memoria: `project_migracion_dominio.md`.
 
 ---
 
 ## 14. Reglas de oro para Claude Code en este proyecto
 
 1. **Leer el archivo completo antes de editar** si tiene más de 500 líneas
-2. **Nunca mover el consumo de ticket** — siempre DESPUÉS de res.json()
+2. **Nunca mover el consumo de ticket** — siempre DESPUÉS de em.emit('done') en el background job
 3. **Nunca cambiar el formato de referencia Wompi** sin actualizar el webhook
-4. **Nunca añadir llamada a Gemini sin timeout**
-5. **Nunca cambiar los modelos de IA** sin verificar que el nombre es válido
-6. **Siempre sincronizar** las dos listas de CORS origins (cors() y ALLOWED_ORIGINS)
+4. **Nunca añadir llamada a Gemini sin timeout** (`Promise.race`)
+5. **Nunca cambiar los modelos de IA** sin verificar que el nombre existe en la API
+6. **Para cambiar origins CORS**, editar solo `backend/src/utils/allowedOrigins.js` — se propaga automáticamente al middleware, error handler y SSE
 7. **Probar en localhost antes de push** — los usuarios reales están activos
 8. **No hacer push a main** si el cambio no es significativo y probado
 9. Antes de tocar `AnalisisPerfil.jsx`, leer el archivo completo — tiene 2200+ líneas con lógica interdependiente
-10. Antes de tocar `ia.controller.js`, leer las funciones afectadas — tiene 2800+ líneas
+10. Antes de tocar `ia.controller.js`, leer las funciones afectadas — tiene 2900+ líneas
