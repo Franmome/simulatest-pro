@@ -84,6 +84,7 @@ const MAX_ANALISIS    = 5
 let   analisesActivos = 0
 const colaAnalisis    = []
 const analisesEnCurso = new Set() // userId → evita double-spend de ticket
+const ofertasEnCurso  = new Set() // userId → evita double-spend en análisis de oferta
 
 function waitSlotAnalisis() {
   if (analisesActivos < MAX_ANALISIS) { analisesActivos++; return Promise.resolve() }
@@ -3159,4 +3160,319 @@ export async function setPrecioTicket(req, res) {
     await Promise.all(upserts)
     return res.json({ ok: true, precio_cop: precio, cantidad_tickets: cantidad || 1 })
   } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANÁLISIS DE OFERTA DE TRABAJO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const DEFAULT_OFERTA_PROMPT = `Eres un experto en recursos humanos y selección de personal con amplia experiencia en el mercado laboral colombiano e internacional.
+
+Tu tarea es comparar la hoja de vida de un candidato con una oferta de trabajo específica y determinar con precisión su compatibilidad.
+
+Analiza exhaustivamente:
+1. Formación académica requerida vs. formación del candidato
+2. Experiencia laboral requerida vs. experiencia del candidato (años, sector, funciones)
+3. Habilidades técnicas y competencias requeridas vs. habilidades del candidato
+4. Idiomas, certificaciones y requisitos adicionales
+5. Compatibilidad cultural y de perfil
+
+Devuelve ÚNICAMENTE este JSON válido sin texto adicional ni markdown:
+{"cargo_titulo":"","empresa":"","aplica":true,"porcentaje_compatibilidad":0,"semaforo":"verde","resumen_ejecutivo":"","puntos_fuertes":[],"brechas":[],"requisitos_criticos_cumplidos":[],"requisitos_criticos_faltantes":[],"recomendacion":"","salario_estimado":"","modalidad":""}
+
+Reglas para porcentaje_compatibilidad y semaforo:
+- 70-100%: semaforo "verde", aplica true — candidato califica con fortaleza
+- 40-69%: semaforo "amarillo", aplica true si porcentaje > 50% — califica con brechas menores
+- 0-39%: semaforo "rojo", aplica false — no califica para esta oferta`
+
+export async function analizarOfertaTrabajo(req, res) {
+  try {
+    const userId  = req.user.id
+    const isAdmin = req.user.role === 'admin'
+    const jobId   = req.body?.jobId || null
+
+    // ── Verificar ticket (sin consumir aún) ──────────────────────────────────
+    if (!isAdmin) {
+      const { data: ticketRow, error: ticketErr } = await supabase
+        .from('user_oferta_tickets')
+        .select('tickets')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (ticketErr || !ticketRow || ticketRow.tickets < 1) {
+        return res.status(402).json({ error: 'Sin tickets disponibles. Compra un ticket para continuar.', tickets_agotados: true })
+      }
+    }
+
+    const files       = req.files || {}
+    const cvFile      = files.cv?.[0]      || null
+    const ofertaFiles = files.ofertas      || []
+
+    if (!cvFile)           return res.status(400).json({ error: 'Debes subir tu hoja de vida.' })
+    if (!ofertaFiles.length) return res.status(400).json({ error: 'Debes subir al menos una oferta de trabajo.' })
+    if (ofertaFiles.length > 5) return res.status(400).json({ error: 'Máximo 5 ofertas por análisis.' })
+
+    if (ofertasEnCurso.has(userId)) {
+      return res.status(429).json({ error: 'Ya tienes un análisis en curso. Espera a que termine.' })
+    }
+    ofertasEnCurso.add(userId)
+
+    // ── Responder inmediatamente — análisis corre en background ──────────────
+    res.json({ jobId, en_proceso: true })
+
+    const emit    = (data) => emitJobProgress(jobId, data)
+    const emitErr = (msg)  => { const em = jobEmitters.get(jobId); if (em) em.emit('jobError', msg) }
+
+    console.log(`[IA] analisis-oferta inicio: user=${userId} cv=${cvFile.originalname} ofertas=${ofertaFiles.length} jobId=${jobId}`)
+
+    setImmediate(async () => {
+      if (analisesActivos >= MAX_ANALISIS) {
+        emit({ en_cola: true, msg: 'alta_demanda' })
+      }
+      try { await waitSlotAnalisis() } catch {
+        ofertasEnCurso.delete(userId)
+        emitErr('Alta demanda en este momento. Por favor intenta de nuevo en un par de minutos.')
+        return
+      }
+
+      try {
+        // 1. Extraer texto de la hoja de vida
+        emit({ etapa: 1, pct: 5, msg: 'Leyendo tu hoja de vida...' })
+        const cvText = await extractCvText(cvFile, emit)
+        if (cvFile?.buffer) cvFile.buffer = null
+
+        if (cvText.replace(/\s/g, '').length < 200) {
+          emitErr('No se pudo leer tu hoja de vida. Verifica que el archivo no esté protegido o dañado.')
+          return
+        }
+        emit({ etapa: 1, pct: 20, msg: `Hoja de vida leída (${Math.round(cvText.length / 1000)}K caracteres)` })
+
+        // 2. Extraer texto de cada oferta
+        const ofertasTextos = []
+        for (let i = 0; i < ofertaFiles.length; i++) {
+          const f = ofertaFiles[i]
+          emit({ etapa: 1, pct: 20 + Math.round(((i + 1) / ofertaFiles.length) * 20), msg: `Leyendo oferta ${i + 1} de ${ofertaFiles.length}...` })
+          const texto = await extractCvText(f, null)
+          if (f?.buffer) f.buffer = null
+          ofertasTextos.push({ nombre: f.originalname, texto: texto || '' })
+        }
+
+        // 3. Obtener prompt maestro desde config (con fallback al default)
+        let promptMaestro = DEFAULT_OFERTA_PROMPT
+        try {
+          const { data: cfgPrompt } = await supabase
+            .from('app_config').select('value').eq('key', 'oferta_analisis_prompt').maybeSingle()
+          if (cfgPrompt?.value?.trim()) promptMaestro = cfgPrompt.value.trim()
+        } catch { /* usa default */ }
+
+        // 4. Analizar cada oferta contra la HV (cascada Gemini → GPT → DeepSeek)
+        const resultadosOfertas = []
+        for (let i = 0; i < ofertasTextos.length; i++) {
+          const { nombre, texto } = ofertasTextos[i]
+          emit({ etapa: 2, pct: 40 + Math.round((i / ofertasTextos.length) * 45), msg: `Comparando con oferta ${i + 1} de ${ofertasTextos.length}...` })
+
+          const userPrompt = `HOJA DE VIDA DEL CANDIDATO:\n${cvText}\n\nOFERTA DE TRABAJO (${nombre}):\n${texto || '[no se pudo extraer texto de este archivo]'}\n\nCompara la hoja de vida con esta oferta y devuelve ÚNICAMENTE el JSON solicitado.`
+
+          let resultado = null
+          try {
+            const r = await analizarConIA(promptMaestro, userPrompt, `oferta-${i + 1}`)
+            if (r?.texto) resultado = rescueAnalisis(r.texto)
+          } catch (e) {
+            console.error(`[IA] oferta ${i + 1} error:`, e.message)
+          }
+
+          if (!resultado) {
+            resultado = {
+              cargo_titulo: nombre.replace(/\.[^.]+$/, ''),
+              empresa: 'Desconocida',
+              aplica: false,
+              porcentaje_compatibilidad: 0,
+              semaforo: 'rojo',
+              resumen_ejecutivo: 'No se pudo analizar esta oferta. Verifica que el archivo sea legible.',
+              puntos_fuertes: [],
+              brechas: ['Archivo no analizable'],
+              requisitos_criticos_cumplidos: [],
+              requisitos_criticos_faltantes: [],
+              recomendacion: 'Intenta con un archivo en mejor formato (PDF o Word con texto seleccionable).',
+              salario_estimado: '',
+              modalidad: '',
+            }
+          }
+          resultadosOfertas.push({ ...resultado, _archivo: nombre })
+        }
+
+        emit({ etapa: 3, pct: 90, msg: 'Guardando resultados...' })
+
+        // 5. Guardar en Supabase
+        const analisisCompleto = {
+          ofertas: resultadosOfertas,
+          generado_en: new Date().toISOString(),
+        }
+        const { data: savedRow } = await supabase
+          .from('user_oferta_analysis')
+          .insert({ user_id: userId, analisis: analisisCompleto, cantidad_ofertas: ofertasTextos.length })
+          .select('id')
+          .maybeSingle()
+
+        // 6. Consumir ticket DESPUÉS del éxito (invariante)
+        if (!isAdmin) {
+          const { data: tr } = await supabase
+            .from('user_oferta_tickets').select('tickets').eq('user_id', userId).maybeSingle()
+          if (tr && tr.tickets >= 1) {
+            await supabase.from('user_oferta_tickets')
+              .update({ tickets: tr.tickets - 1, updated_at: new Date().toISOString() })
+              .eq('user_id', userId)
+          }
+        }
+
+        // 7. Emitir resultado por SSE
+        const em = jobEmitters.get(jobId)
+        if (em) em.emit('done', { analisis: analisisCompleto, analisis_id: savedRow?.id || null })
+
+      } catch (err) {
+        console.error(`[IA] analizarOfertaTrabajo ERROR: user=${userId} msg="${err.message}"`)
+        emitErr('Ocurrió un error durante el análisis. Por favor intenta de nuevo.')
+      } finally {
+        ofertasEnCurso.delete(userId)
+        releaseSlotAnalisis()
+      }
+    })
+
+  } catch (err) {
+    console.error(`[IA] analizarOfertaTrabajo ERROR fase1: ${err.message}`)
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+export async function getOfertaTicketBalance(req, res) {
+  try {
+    const { data, error } = await supabase
+      .from('user_oferta_tickets').select('tickets').eq('user_id', req.user.id).maybeSingle()
+    if (error) return res.json({ balance: 0 })
+    return res.json({ balance: data?.tickets ?? 0 })
+  } catch { return res.json({ balance: 0 }) }
+}
+
+export async function generateWompiOfertaCheckout(req, res) {
+  const integritySecret = process.env.WOMPI_INTEGRITY_SECRET
+  const publicKey       = process.env.WOMPI_PUBLIC_KEY
+  if (!integritySecret || !publicKey) {
+    return res.status(500).json({ error: 'Pasarela de pago no configurada. Contacta al administrador.' })
+  }
+  const userId = req.user.id
+  let precioCOP = 5000
+  let cantidad  = 1
+  try {
+    const [cfgPrecio, cfgCant] = await Promise.all([
+      supabase.from('app_config').select('value').eq('key', 'ticket_oferta_precio_cop').maybeSingle(),
+      supabase.from('app_config').select('value').eq('key', 'ticket_oferta_cantidad').maybeSingle(),
+    ])
+    if (cfgPrecio.data?.value) precioCOP = parseInt(cfgPrecio.data.value) || 5000
+    if (cfgCant.data?.value)   cantidad  = Math.max(1, parseInt(cfgCant.data.value) || 1)
+  } catch { /* usa default */ }
+
+  const amountCents = precioCOP * 100
+  const ts  = Date.now()
+  const ref = `${userId}-OFERTA-${cantidad}-${ts}`
+  const integrity = crypto.createHash('sha256')
+    .update(`${ref}${amountCents}COP${integritySecret}`).digest('hex')
+  const redirectUrl = encodeURIComponent(
+    `${process.env.FRONTEND_URL || 'https://simulatest-pro-production.up.railway.app'}/analisis-oferta`
+  )
+  const url = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${amountCents}&reference=${ref}&signature:integrity=${integrity}&redirect-url=${redirectUrl}`
+  console.log(`[Wompi] oferta checkout: user=${userId} ref=${ref} amount=${amountCents}`)
+  return res.json({ url, precio_cop: precioCOP })
+}
+
+export async function getAdminOfertaTickets(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  try {
+    const { data } = await supabase
+      .from('user_oferta_tickets').select('user_id, tickets, updated_at')
+      .order('tickets', { ascending: false }).limit(100)
+    return res.json({ tickets: data || [] })
+  } catch { return res.json({ tickets: [] }) }
+}
+
+export async function adminAddOfertaTickets(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  const { user_id, cantidad = 1 } = req.body
+  if (!user_id || cantidad < 1) return res.status(400).json({ error: 'user_id y cantidad requeridos' })
+  try {
+    const { data: existing } = await supabase
+      .from('user_oferta_tickets').select('tickets').eq('user_id', user_id).maybeSingle()
+    if (existing) {
+      await supabase.from('user_oferta_tickets')
+        .update({ tickets: (existing.tickets || 0) + cantidad, updated_at: new Date().toISOString() })
+        .eq('user_id', user_id)
+    } else {
+      await supabase.from('user_oferta_tickets').insert({ user_id, tickets: cantidad })
+    }
+    return res.json({ ok: true })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+export async function getPrecioOfertaTicket(req, res) {
+  try {
+    const [cfgPrecio, cfgCant] = await Promise.all([
+      supabase.from('app_config').select('value').eq('key', 'ticket_oferta_precio_cop').maybeSingle(),
+      supabase.from('app_config').select('value').eq('key', 'ticket_oferta_cantidad').maybeSingle(),
+    ])
+    return res.json({
+      precio_cop:       parseInt(cfgPrecio.data?.value) || 5000,
+      cantidad_tickets: Math.max(1, parseInt(cfgCant.data?.value) || 1),
+    })
+  } catch { return res.json({ precio_cop: 5000, cantidad_tickets: 1 }) }
+}
+
+export async function setPrecioOfertaTicket(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  const precio   = parseInt(req.body.precio_cop)
+  const cantidad = parseInt(req.body.cantidad_tickets)
+  if (!precio || precio < 100 || precio > 1000000) return res.status(400).json({ error: 'Precio inválido (100–1.000.000 COP)' })
+  if (cantidad && (cantidad < 1 || cantidad > 100)) return res.status(400).json({ error: 'Cantidad inválida (1–100)' })
+  try {
+    const now = new Date().toISOString()
+    const upserts = [
+      supabase.from('app_config').upsert({ key: 'ticket_oferta_precio_cop', value: String(precio), updated_at: now }, { onConflict: 'key' }),
+    ]
+    if (cantidad) {
+      upserts.push(supabase.from('app_config').upsert({ key: 'ticket_oferta_cantidad', value: String(cantidad), updated_at: now }, { onConflict: 'key' }))
+    }
+    await Promise.all(upserts)
+    return res.json({ ok: true, precio_cop: precio, cantidad_tickets: cantidad || 1 })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+export async function getPromptOferta(req, res) {
+  try {
+    const { data } = await supabase
+      .from('app_config').select('value').eq('key', 'oferta_analisis_prompt').maybeSingle()
+    return res.json({ prompt: data?.value || DEFAULT_OFERTA_PROMPT })
+  } catch { return res.json({ prompt: DEFAULT_OFERTA_PROMPT }) }
+}
+
+export async function setPromptOferta(req, res) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' })
+  const { prompt } = req.body
+  if (!prompt?.trim()) return res.status(400).json({ error: 'El prompt no puede estar vacío.' })
+  try {
+    await supabase.from('app_config').upsert(
+      { key: 'oferta_analisis_prompt', value: prompt.trim(), updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    )
+    return res.json({ ok: true })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+export async function getMisAnalisisOfertas(req, res) {
+  try {
+    const { data, error } = await supabase
+      .from('user_oferta_analysis')
+      .select('id, analisis, cantidad_ofertas, created_at')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (error) return res.json({ analisis: [] })
+    return res.json({ analisis: data || [] })
+  } catch { return res.json({ analisis: [] }) }
 }

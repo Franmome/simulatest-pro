@@ -5,11 +5,12 @@ import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, progresoAnalisis, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, progresoAnalisis, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket, analizarOfertaTrabajo, getOfertaTicketBalance, generateWompiOfertaCheckout, getAdminOfertaTickets, adminAddOfertaTickets, getPrecioOfertaTicket, setPrecioOfertaTicket, getPromptOferta, setPromptOferta, getMisAnalisisOfertas } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
-const uploadPerfil = multer({ storage: multer.memoryStorage() }) // sin límite de tamaño
+const uploadPerfil  = multer({ storage: multer.memoryStorage() }) // sin límite de tamaño
+const uploadOferta  = multer({ storage: multer.memoryStorage() }) // cv + hasta 5 ofertas, sin límite
 
 router.post('/generar',         authMiddleware, upload.single('pdf'), generarBanco)
 router.post('/simulacro',       authMiddleware, upload.single('pdf'), generarSimulacroPersonal)
@@ -64,5 +65,18 @@ router.get('/admin/tickets',             authMiddleware, getAdminTickets)
 router.post('/admin/tickets/add',        authMiddleware, adminAddTickets)
 router.get('/tickets/precio',            authMiddleware, getPrecioTicket)
 router.post('/admin/tickets/precio',     authMiddleware, setPrecioTicket)
+
+// ── Análisis de oferta de trabajo ─────────────────────────────────────────────
+router.post('/analisis-oferta',               authMiddleware, uploadOferta.fields([{ name: 'cv', maxCount: 1 }, { name: 'ofertas', maxCount: 5 }]), analizarOfertaTrabajo)
+router.get('/analisis-oferta/progreso/:jobId', progresoAnalisis) // SSE — reutiliza jobEmitters (sin auth, jobId es el token)
+router.get('/oferta/tickets/balance',         authMiddleware, getOfertaTicketBalance)
+router.post('/oferta/tickets/checkout',       authMiddleware, generateWompiOfertaCheckout)
+router.get('/oferta/tickets/precio',          authMiddleware, getPrecioOfertaTicket)
+router.get('/admin/oferta/tickets',           authMiddleware, getAdminOfertaTickets)
+router.post('/admin/oferta/tickets/add',      authMiddleware, adminAddOfertaTickets)
+router.post('/admin/oferta/tickets/precio',   authMiddleware, setPrecioOfertaTicket)
+router.get('/admin/oferta/prompt',            authMiddleware, getPromptOferta)
+router.post('/admin/oferta/prompt',           authMiddleware, setPromptOferta)
+router.get('/mis-analisis-oferta',            authMiddleware, getMisAnalisisOfertas)
 
 export default router

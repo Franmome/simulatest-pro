@@ -59,6 +59,30 @@ export const webhookWompi = async (req, res) => {
       return res.sendStatus(200)
     }
 
+    // ── Manejo de tickets de análisis de oferta de trabajo ───────────────────
+    if (partes[5] === 'OFERTA') {
+      const cantidad = parseInt(partes[6]) || 1
+      console.log(`🎟️ Ticket oferta comprado: user=${user_id} cantidad=${cantidad}`)
+      const { data: existing } = await supabase
+        .from('user_oferta_tickets')
+        .select('tickets')
+        .eq('user_id', user_id)
+        .maybeSingle()
+      if (existing) {
+        await supabase.from('user_oferta_tickets')
+          .update({ tickets: (existing.tickets || 0) + cantidad, updated_at: new Date().toISOString() })
+          .eq('user_id', user_id)
+      } else {
+        await supabase.from('user_oferta_tickets').insert({ user_id, tickets: cantidad })
+      }
+      await supabase.from('transactions').insert({
+        user_id, package_id: null, amount: tx.amount_in_cents / 100,
+        status: 'approved', wompi_transaction_id: tx.id, created_at: new Date().toISOString(),
+      })
+      console.log(`✅ ${cantidad} ticket(s) oferta asignados a ${user_id}`)
+      return res.sendStatus(200)
+    }
+
     const package_id = parseInt(partes[5])
     if (!package_id) return res.sendStatus(200)
 
