@@ -384,7 +384,7 @@ export default function Simulacro() {
 
   const seleccionarOpcion = useCallback((optionId) => {
     setSeleccion(prev => {
-      if (esPractica && prev[pregActual]) return prev // ya bloqueada
+      if (prev[pregActual]) return prev // ya bloqueada en cualquier modo
       const nuevo = { ...prev, [pregActual]: optionId }
       seleccionRef.current = nuevo
       return nuevo
@@ -541,7 +541,11 @@ export default function Simulacro() {
               style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
             Enviar prueba
           </button>
-          <button onClick={() => navigate(-1)}
+          <button onClick={() => {
+            if (!window.confirm('¿Salir del simulacro? Perderás todo tu progreso actual.')) return
+            clearInterval(intervalRef.current)
+            navigate(-1)
+          }}
             className="w-full py-2 text-xs font-bold text-on-surface-variant hover:bg-slate-50 rounded-xl transition-all flex items-center justify-center gap-1.5">
             <span className="material-symbols-outlined text-sm">exit_to_app</span>
             Salir del simulacro

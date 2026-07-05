@@ -741,6 +741,14 @@ export default function DetallePrueba() {
     return () => clearInterval(iv)
   }, [generandoPractica]) // eslint-disable-line
 
+  // Cleanup del polling de práctica al desmontar el componente
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
+      if (practicaIntervalRef.current) clearInterval(practicaIntervalRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (!pollingPractica) {
       setPracticaProgress(0)
@@ -1338,8 +1346,13 @@ export default function DetallePrueba() {
 
     const texto = lineas.filter(l => l !== undefined).join('\n')
     const nombre = `Análisis de prueba · ${fecha}`
-    await supabase.from('user_cuaderno_fuentes').insert({ user_id: user.id, package_id: packageId, nombre, texto })
-    setModalCuaderno(m => ({ ...m, enviando: false, enviado: true }))
+    try {
+      const { error } = await supabase.from('user_cuaderno_fuentes').insert({ user_id: user.id, package_id: packageId, nombre, texto })
+      if (error) throw error
+      setModalCuaderno(m => ({ ...m, enviando: false, enviado: true }))
+    } catch {
+      setModalCuaderno(m => ({ ...m, enviando: false, errorEnvio: true }))
+    }
   }
 
   async function confirmarGenerarPractica() {
@@ -2166,7 +2179,7 @@ export default function DetallePrueba() {
               <div className="space-y-2 text-sm">
                 {[
                   { l: 'Preguntas', v: cantExamen || '—', ok: true },
-                  { l: 'Duración total', v: formatTiempo(nivelActual?.time_limit), ok: true },
+                  { l: 'Duración total', v: formatTiempo(nivelActual?.time_limit ?? 60), ok: true },
                   { l: 'Aprobación', v: `${nivelActual?.passing_score ?? 70}%`, ok: true },
                   { l: 'Retroalimentación', v: 'No disponible', ok: false },
                   { l: 'Cambiar respuesta', v: 'No permitido', ok: false },
@@ -2227,7 +2240,7 @@ export default function DetallePrueba() {
               ) : (
                 <>
                   <Row l="Preguntas" v={cantExamen} />
-                  <Row l="Duración" v={formatTiempo(nivelActual?.time_limit)} />
+                  <Row l="Duración" v={formatTiempo(nivelActual?.time_limit ?? 60)} />
                   <Row l="Aprobación" v={`${nivelActual?.passing_score ?? 70}%`} />
                   <Row l="Retroalimentación" v="✖ No disponible" />
                 </>
@@ -2994,6 +3007,16 @@ export default function DetallePrueba() {
                 <p className="font-bold text-slate-800">¡Enviado al Cuaderno!</p>
                 <p className="text-xs text-slate-500">El tutor IA ya sabe en qué áreas enfocarse contigo.</p>
                 <button onClick={() => setModalCuaderno(null)} className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-sm font-bold">Cerrar</button>
+              </div>
+            ) : modalCuaderno.errorEnvio ? (
+              <div className="text-center py-4 space-y-3">
+                <span className="material-symbols-outlined text-4xl text-error" style={{ fontVariationSettings: "'FILL' 1" }}>error_outline</span>
+                <p className="font-bold text-slate-800">No se pudo enviar</p>
+                <p className="text-xs text-slate-500">Hubo un problema al guardar. Verifica tu conexión e intenta de nuevo.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setModalCuaderno(m => ({ ...m, errorEnvio: false }))} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">Reintentar</button>
+                  <button onClick={() => setModalCuaderno(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold">Cerrar</button>
+                </div>
               </div>
             ) : (
               <>

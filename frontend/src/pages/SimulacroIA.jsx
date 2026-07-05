@@ -500,16 +500,18 @@ export default function SimulacroIA() {
   const [retroVisible,  setRetroVisible]  = useState(false)
 
   const [enviado,          setEnviado]          = useState(false)
+  const [errorGuardado,    setErrorGuardado]    = useState(null)
   const [segundos,         setSegundos]         = useState(60 * 60)
   const [timerWarn,        setTimerWarn]        = useState(false)
   const [tiempoPorPregunta,setTiempoPorPregunta]= useState(0)  // 0 = timer global
   const [timerExpired,     setTimerExpired]     = useState(false)
   const [visible,          setVisible]          = useState(true)   // animación entre preguntas
   const [showModal,        setShowModal]        = useState(false)  // modal finalizar
-  const intervalRef         = useRef(null)
-  const tiempoInicioPregRef = useRef(null)
-  const tiemposPregRef      = useRef({})
-  const tppRef              = useRef(0)  // ref para leer tpp dentro de callbacks
+  const intervalRef            = useRef(null)
+  const tiempoInicioPregRef    = useRef(null)
+  const tiemposPregRef         = useRef({})
+  const tppRef                 = useRef(0)
+  const preguntasOriginalesRef = useRef([])  // preguntas raw para re-parsear en repetir
 
   const TIEMPO_TOTAL = 60 * 60
 
@@ -532,6 +534,7 @@ export default function SimulacroIA() {
       if (!data) throw new Error('Simulacro no encontrado o no te pertenece.')
       if (!data.preguntas?.length) throw new Error('Este simulacro no tiene preguntas.')
 
+      preguntasOriginalesRef.current = data.preguntas
       setEvaluacionId(data.evaluacion_id || null)
 
       const preStart = location.state?.preStartConfig
@@ -622,6 +625,8 @@ export default function SimulacroIA() {
     setRetroVisible(false)
     if (pregActual < preguntas.length - 1) {
       irA(pregActual + 1)
+    } else {
+      enviar()
     }
   }
 
@@ -689,7 +694,9 @@ export default function SimulacroIA() {
       })
 
 
-    } catch { /* falla silenciosa */ }
+    } catch {
+      setErrorGuardado('No se pudieron guardar tus resultados en la base de datos. Tus respuestas locales siguen visibles, pero el registro no quedó guardado.')
+    }
   }
 
   // ── DEV ONLY: rellenar al azar y enviar (para QA rápido) ─────────────────────
@@ -716,29 +723,41 @@ export default function SimulacroIA() {
     setMarcadas([])
     setTimerWarn(false)
     setTimerExpired(false)
-    setPreguntas(prev => shuffleArray([...prev]))
+    setErrorGuardado(null)
+    // Re-parsea las preguntas originales con opciones re-shuffleadas
+    const rawPregs = preguntasOriginalesRef.current
+    if (rawPregs.length) {
+      setPreguntas(shuffleArray(rawPregs.map((p, i) => parsearPregunta(shuffleOpciones(p), i))))
+    }
     setPregActual(0)
     setEnviado(false)
     if (tppRef.current === 0) arrancarTimer()
-    // Per-question mode: useEffect se encarga al cambiar pregActual/enviado
   }
 
   if (loading) return <LoadingScreen />
   if (error)   return <ErrorScreen mensaje={error} onVolver={() => navigate(-1)} />
 
   if (enviado) return (
-    <ResultadosIA
-      preguntas={preguntas}
-      seleccion={seleccion}
-      tiempos={tiemposPregRef.current}
-      cargo={cargo}
-      modelo="gemini"
-      simulacroId={id}
-      esPractica={modoPractica}
-      esExamen={modoExamen}
-      onRepetir={repetir}
-      onVolver={() => navigate(-1)}
-    />
+    <>
+      {errorGuardado && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-error px-4 py-3 text-white text-xs font-bold text-center shadow-lg flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-sm">error</span>
+          {errorGuardado}
+        </div>
+      )}
+      <ResultadosIA
+        preguntas={preguntas}
+        seleccion={seleccion}
+        tiempos={tiemposPregRef.current}
+        cargo={cargo}
+        modelo="gemini"
+        simulacroId={id}
+        esPractica={modoPractica}
+        esExamen={modoExamen}
+        onRepetir={repetir}
+        onVolver={() => navigate(-1)}
+      />
+    </>
   )
 
   const pActual    = preguntas[pregActual]
@@ -962,11 +981,13 @@ export default function SimulacroIA() {
         </div>
       )}
 
-      {/* ── Botón DEV (temporal QA) ── */}
-      <button onClick={devResponderAlAzar}
-        className="fixed bottom-20 right-4 z-40 bg-rose-500 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-full shadow-lg opacity-70 hover:opacity-100 transition-opacity">
-        DEV
-      </button>
+      {/* ── Botón DEV — solo admin ── */}
+      {user?.role === 'admin' && (
+        <button onClick={devResponderAlAzar}
+          className="fixed bottom-20 right-4 z-40 bg-rose-500 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-full shadow-lg opacity-70 hover:opacity-100 transition-opacity">
+          DEV
+        </button>
+      )}
 
       {/* ── Footer navegación ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-40">
