@@ -380,7 +380,7 @@ function AsignacionCerebros({ records, onCambiar }) {
 
 // ── Modal nueva/editar convocatoria ──────────────────────────────────────────
 
-const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '', plataforma_nombre: '', plataforma_url: '', prompt_contexto: '', prompt_rutas: '' }
+const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '', plataforma_nombre: '', plataforma_url: '', prompt_contexto: '', prompt_rutas: '', prompt_maestro: '' }
 
 const ENTIDADES_COMUNES = [
   'Procuraduría General de la Nación',
@@ -930,6 +930,51 @@ function ProcuraduriaOpecPanel() {
 
   const currentConv = convocatorias.find(c => String(c.id) === String(convId)) || null
 
+  // ── Editor de prompt maestro por convocatoria ─────────────────────────────
+  const [promptMaestroOpen,   setPromptMaestroOpen]   = useState(false)
+  const [promptMaestroText,   setPromptMaestroText]   = useState('')
+  const [savingPromptMaestro, setSavingPromptMaestro] = useState(false)
+  const [savedPromptMaestroOk, setSavedPromptMaestroOk] = useState(false)
+
+  // Sincroniza el textarea cuando cambia la convocatoria seleccionada
+  useEffect(() => {
+    setPromptMaestroText(currentConv?.prompt_maestro || '')
+    setSavedPromptMaestroOk(false)
+  }, [convId]) // eslint-disable-line
+
+  const handleSavePromptMaestro = async () => {
+    if (!currentConv) return
+    setSavingPromptMaestro(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/convocatorias/${currentConv.id}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ ...currentConv, prompt_maestro: promptMaestroText }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error') }
+      await fetchConvocatorias(currentConv.id)
+      setSavedPromptMaestroOk(true)
+      setTimeout(() => setSavedPromptMaestroOk(false), 3000)
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingPromptMaestro(false) }
+  }
+
+  const handleBorrarPromptMaestro = async () => {
+    if (!currentConv) return
+    if (!window.confirm('¿Borrar el prompt maestro de esta convocatoria? La IA usará el prompt global del sistema.')) return
+    setPromptMaestroText('')
+    setSavingPromptMaestro(true)
+    try {
+      const headers = await authHeaders()
+      await fetch(`${BASE}/api/ia/convocatorias/${currentConv.id}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ ...currentConv, prompt_maestro: '' }),
+      })
+      await fetchConvocatorias(currentConv.id)
+    } catch (e) { alert('Error: ' + e.message) }
+    finally { setSavingPromptMaestro(false) }
+  }
+
   const handleEditConv = () => {
     if (currentConv) setConvModal({ ...currentConv })
   }
@@ -1095,12 +1140,80 @@ function ProcuraduriaOpecPanel() {
             <span className="material-symbols-outlined text-xl">delete</span>
           </button>
         )}
+        {currentConv && (
+          <button onClick={() => setPromptMaestroOpen(o => !o)}
+            title="Prompt dedicado para esta convocatoria"
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${currentConv.prompt_maestro ? 'bg-amber-100 hover:bg-amber-200 text-amber-700' : 'bg-purple-100 hover:bg-purple-200 text-purple-700'}`}>
+            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
+          </button>
+        )}
         <button onClick={() => setConvModal({})}
           title="Crear nueva convocatoria"
           className="w-11 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 transition-colors shadow-sm">
           <span className="material-symbols-outlined text-xl">add</span>
         </button>
       </div>
+
+      {/* ── Panel editor de prompt maestro ── */}
+      {promptMaestroOpen && currentConv && (
+        <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-700">
+          <div className="px-5 py-3 border-b border-slate-700 flex items-center gap-3 flex-wrap">
+            <span className="material-symbols-outlined text-purple-400 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-white">Prompt maestro dedicado</p>
+              <p className="text-[11px] text-slate-400">{currentConv.nombre}</p>
+            </div>
+            {currentConv.prompt_maestro
+              ? <span className="text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-full">Prompt personalizado activo</span>
+              : <span className="text-[10px] font-black bg-slate-700 text-slate-400 border border-slate-600 px-2.5 py-1 rounded-full">Usando prompt global del sistema</span>
+            }
+            <button onClick={() => setPromptMaestroOpen(false)} className="w-7 h-7 rounded-full hover:bg-slate-700 flex items-center justify-center">
+              <span className="material-symbols-outlined text-slate-400 text-base">close</span>
+            </button>
+          </div>
+
+          <div className="px-5 py-3 bg-slate-800/50 border-b border-slate-700">
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Este prompt <strong className="text-slate-200">reemplaza completamente</strong> el prompt global cuando se analiza un CV para esta convocatoria.
+              Si está vacío, se usa el prompt global de Entrenamiento IA. Escríbelo como si fuera el sistema de instrucciones completo para la IA.
+            </p>
+          </div>
+
+          <div className="p-5 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Instrucciones para la IA</p>
+              <p className="text-[10px] text-slate-500">{promptMaestroText.length.toLocaleString()} chars · {promptMaestroText.split('\n').length} líneas</p>
+            </div>
+            <textarea
+              value={promptMaestroText}
+              onChange={e => setPromptMaestroText(e.target.value)}
+              rows={18}
+              placeholder={`Escribe el prompt completo para esta convocatoria...\n\nEj:\nActúa como experto en selección de personal del sector público colombiano.\nEsta convocatoria es de la DIAN para cargos tributarios...\n\nDevuelve UNICAMENTE el siguiente JSON:\n{ "perfil": { ... } }`}
+              className="w-full bg-slate-950 text-slate-100 text-sm font-mono px-4 py-3 rounded-xl border border-slate-700 focus:outline-none focus:border-purple-500 resize-none leading-relaxed placeholder-slate-600"
+            />
+
+            <div className="flex items-center gap-3 pt-1">
+              <button onClick={handleSavePromptMaestro} disabled={savingPromptMaestro}
+                className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50">
+                {savingPromptMaestro
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <span className="material-symbols-outlined text-base">save</span>}
+                {savingPromptMaestro ? 'Guardando...' : savedPromptMaestroOk ? '✓ Guardado' : 'Guardar prompt'}
+              </button>
+              {currentConv.prompt_maestro && (
+                <button onClick={handleBorrarPromptMaestro} disabled={savingPromptMaestro}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-slate-600 hover:border-red-500 text-slate-400 hover:text-red-400 text-sm font-bold rounded-xl transition-colors disabled:opacity-50">
+                  <span className="material-symbols-outlined text-base">delete</span>
+                  Borrar y usar global
+                </button>
+              )}
+              <p className="text-[10px] text-slate-500 ml-auto">
+                Escribe las instrucciones como si le explicaras a una persona cómo comportarse. No necesitas saber código.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {convModal !== null && (
         <ConvocatoriaModal

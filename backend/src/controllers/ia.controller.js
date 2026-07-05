@@ -1846,7 +1846,7 @@ export async function analizarPerfilCV(req, res) {
 
     const [allOpec, conv] = await Promise.all([
       fetchAllOpecs(parseInt(convocatoria_id)),
-      supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
+      supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas, prompt_maestro').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
     ])
 
     if (!allOpec?.length) { emitErr('Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.'); return }
@@ -1876,6 +1876,7 @@ export async function analizarPerfilCV(req, res) {
     // Prompts específicos de esta convocatoria (NULL → no se inyecta nada)
     const convPromptContexto = conv?.prompt_contexto?.trim() || null
     const convPromptRutas    = conv?.prompt_rutas?.trim()    || null
+    const convPromptMaestro  = conv?.prompt_maestro?.trim()  || null
 
     // Inyecta contexto ANTES del marcador JSON para no alterar el schema de salida
     const inyectarCtxConv = (base, contexto) => {
@@ -1908,9 +1909,9 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     ].filter(Boolean).join('\n')
 
     // ── Paso 1: extraer perfil estructurado del candidato ─────────────────────────
-    const SP_PERFIL_FINAL = inyectarCtxConv(SP_PERFIL, convPromptContexto)
+    const SP_PERFIL_FINAL = convPromptMaestro ?? inyectarCtxConv(SP_PERFIL, convPromptContexto)
     emit({ etapa: 2, pct: 25, msg: 'Identificando tu perfil profesional...' })
-    console.log(`[IA] pass2a: extrayendo perfil del candidato${convPromptContexto ? ' (con contexto de convocatoria)' : ''}`)
+    console.log(`[IA] pass2a: extrayendo perfil del candidato${convPromptMaestro ? ' (prompt maestro de convocatoria)' : convPromptContexto ? ' (con contexto de convocatoria)' : ''}`)
     const rPerfil = await analizarConIA(SP_PERFIL_FINAL, promptPerfil, 'pass2a')
       .catch(e => { console.error('[IA] pass2a error:', e.message); return null })
 
@@ -2263,7 +2264,7 @@ export async function listConvocatorias(req, res) {
   const { todas } = req.query
   let query = supabase
     .from('convocatorias')
-    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas')
+    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas, prompt_maestro')
     .order('anio', { ascending: false })
     .order('nombre')
   if (!todas) query = query.eq('is_active', true)
@@ -2361,7 +2362,7 @@ export async function getCiudadesConvocatoria(req, res) {
 }
 
 export async function createConvocatoria(req, res) {
-  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas } = req.body
+  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas, prompt_maestro } = req.body
   if (!codigo?.trim()) return res.status(400).json({ error: 'El código es requerido.' })
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido.' })
   if (!entidad?.trim()) return res.status(400).json({ error: 'La entidad es requerida.' })
@@ -2375,6 +2376,7 @@ export async function createConvocatoria(req, res) {
       plataforma_url:    plataforma_url?.trim()    || null,
       prompt_contexto:   prompt_contexto?.trim()   || null,
       prompt_rutas:      prompt_rutas?.trim()      || null,
+      prompt_maestro:    prompt_maestro?.trim()    || null,
     })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
@@ -2383,7 +2385,7 @@ export async function createConvocatoria(req, res) {
 
 export async function updateConvocatoria(req, res) {
   const { id } = req.params
-  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas } = req.body
+  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas, prompt_maestro } = req.body
   const { data, error } = await supabase
     .from('convocatorias')
     .update({
@@ -2393,6 +2395,7 @@ export async function updateConvocatoria(req, res) {
       plataforma_url:    plataforma_url?.trim()    || null,
       prompt_contexto:   prompt_contexto?.trim()   || null,
       prompt_rutas:      prompt_rutas?.trim()      || null,
+      prompt_maestro:    prompt_maestro?.trim()    || null,
     })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
