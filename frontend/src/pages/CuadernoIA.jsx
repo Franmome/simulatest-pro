@@ -1207,33 +1207,39 @@ export default function CuadernoIA() {
   const [addingNota,  setAddingNota]  = useState(false)
   const [expandidas,  setExpandidas]  = useState({})
   const [errorNota,   setErrorNota]   = useState(null)   // null | { msg, notaId }
+  const [errorCarga,  setErrorCarga]  = useState('')
+  const [errorGenerar,setErrorGenerar]= useState('')
 
   useEffect(() => { cargarTodo() }, [packageId])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes])
 
   async function cargarTodo() {
-    const h = await hdrs()
-    const [histRes, notasRes, fuentesRes, pkgRes] = await Promise.all([
-      fetch(`${BASE}/api/cuaderno/${packageId}/historial`, { headers: h }),
-      fetch(`${BASE}/api/cuaderno/${packageId}/notas`,    { headers: h }),
-      fetch(`${BASE}/api/cuaderno/${packageId}/fuentes`,  { headers: h }),
-      supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
-    ])
-    if (histRes.ok)    { const d = await histRes.json();    setMensajes(d.mensajes || []) }
-    if (notasRes.ok)   { const d = await notasRes.json();   setNotas(d.notas || []) }
-    if (fuentesRes.ok) {
-      const d = await fuentesRes.json()
-      const todas = [...(d.admin || []), ...(d.user || [])]
-      setFuentes(todas)
-      setFuentesSeleccionadas(new Set(todas.map(f => `${f.id}:${f.origen}`)))
-    }
-    if (pkgRes.data)   setPkgNombre(pkgRes.data.name)
-
-    const tokRes = await fetch(`${BASE}/api/cuaderno/${packageId}/tokens`, { headers: h })
-    if (tokRes.ok) {
-      const td = await tokRes.json()
-      setTokensUsados(td.tokensUsados || 0)
-      setTokensLimite(td.tokensLimite || 2_000_000)
+    setErrorCarga('')
+    try {
+      const h = await hdrs()
+      const [histRes, notasRes, fuentesRes, pkgRes] = await Promise.all([
+        fetch(`${BASE}/api/cuaderno/${packageId}/historial`, { headers: h }),
+        fetch(`${BASE}/api/cuaderno/${packageId}/notas`,    { headers: h }),
+        fetch(`${BASE}/api/cuaderno/${packageId}/fuentes`,  { headers: h }),
+        supabase.from('packages').select('name').eq('id', packageId).maybeSingle(),
+      ])
+      if (histRes.ok)    { const d = await histRes.json();    setMensajes(d.mensajes || []) }
+      if (notasRes.ok)   { const d = await notasRes.json();   setNotas(d.notas || []) }
+      if (fuentesRes.ok) {
+        const d = await fuentesRes.json()
+        const todas = [...(d.admin || []), ...(d.user || [])]
+        setFuentes(todas)
+        setFuentesSeleccionadas(new Set(todas.map(f => `${f.id}:${f.origen}`)))
+      }
+      if (pkgRes.data)   setPkgNombre(pkgRes.data.name)
+      const tokRes = await fetch(`${BASE}/api/cuaderno/${packageId}/tokens`, { headers: h })
+      if (tokRes.ok) {
+        const td = await tokRes.json()
+        setTokensUsados(td.tokensUsados || 0)
+        setTokensLimite(td.tokensLimite || 2_000_000)
+      }
+    } catch {
+      setErrorCarga('Error al cargar el cuaderno. Revisa tu conexión e intenta de nuevo.')
     }
   }
 
@@ -1260,17 +1266,19 @@ export default function CuadernoIA() {
 
   async function guardarMsgComoNota(contenido) {
     setGuardandoMsg(contenido)
-    const h = await hdrs()
-    const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota`, {
-      method: 'POST', headers: h, body: JSON.stringify({ contenido, fuente: 'ia_chat' }),
-    })
-    if (res.ok) { const d = await res.json(); setNotas(prev => [d.nota, ...prev]) }
-    setGuardandoMsg(null)
+    try {
+      const h = await hdrs()
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota`, {
+        method: 'POST', headers: h, body: JSON.stringify({ contenido, fuente: 'ia_chat' }),
+      })
+      if (res.ok) { const d = await res.json(); setNotas(prev => [d.nota, ...prev]) }
+    } catch {}
+    finally { setGuardandoMsg(null) }
   }
 
   // ── Generación ──
   async function generar(tipo) {
-    setGenerando(tipo); setVista(tipo); setVistaData(null)
+    setGenerando(tipo); setVista(tipo); setVistaData(null); setErrorGenerar('')
 
     if (tipo === 'audio') {
       try {
@@ -1280,8 +1288,10 @@ export default function CuadernoIA() {
         if (res.ok) {
           setAudioUrl(data.audioUrl)
           if (data.nota) setNotas(prev => [data.nota, ...prev])
+        } else {
+          setErrorGenerar(data.error || 'Error al generar el audio. Intenta de nuevo.')
         }
-      } catch {}
+      } catch { setErrorGenerar('Error de conexión al generar el audio.') }
       finally { setGenerando(null) }
       return
     }
@@ -1295,8 +1305,10 @@ export default function CuadernoIA() {
       if (res.ok) {
         setVistaData(normalizarDatos(tipo, data.datos))
         if (data.nota) setNotas(prev => [data.nota, ...prev])
+      } else {
+        setErrorGenerar(data.error || `Error al generar ${ACCIONES.find(a => a.tipo === tipo)?.label || tipo}. Intenta de nuevo.`)
       }
-    } catch { setVistaData(null) }
+    } catch { setErrorGenerar('Error de conexión.') }
     finally { setGenerando(null) }
   }
 
@@ -1375,27 +1387,38 @@ export default function CuadernoIA() {
   async function agregarNota() {
     if (!nuevaNota.trim()) return
     setAddingNota(true)
-    const h = await hdrs()
-    const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota`, {
-      method: 'POST', headers: h, body: JSON.stringify({ contenido: nuevaNota.trim(), fuente: 'manual' }),
-    })
-    if (res.ok) { const d = await res.json(); setNotas(prev => [d.nota, ...prev]); setNuevaNota('') }
-    setAddingNota(false)
+    try {
+      const h = await hdrs()
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota`, {
+        method: 'POST', headers: h, body: JSON.stringify({ contenido: nuevaNota.trim(), fuente: 'manual' }),
+      })
+      if (res.ok) { const d = await res.json(); setNotas(prev => [d.nota, ...prev]); setNuevaNota('') }
+    } catch {}
+    finally { setAddingNota(false) }
   }
 
   async function borrarNota(id) {
+    const prevNotas = notas
     setNotas(prev => prev.filter(n => n.id !== id))
-    const h = await hdrs()
-    await fetch(`${BASE}/api/cuaderno/${packageId}/nota/${id}`, { method: 'DELETE', headers: h })
+    try {
+      const h = await hdrs()
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota/${id}`, { method: 'DELETE', headers: h })
+      if (!res.ok) setNotas(prevNotas)
+    } catch { setNotas(prevNotas) }
   }
 
   async function toggleFijar(nota) {
     const nuevo = !nota.fijada
     setNotas(prev => prev.map(n => n.id === nota.id ? { ...n, fijada: nuevo } : n))
-    const h = await hdrs()
-    await fetch(`${BASE}/api/cuaderno/${packageId}/nota/${nota.id}/fijar`, {
-      method: 'PATCH', headers: h, body: JSON.stringify({ fijada: nuevo }),
-    })
+    try {
+      const h = await hdrs()
+      const res = await fetch(`${BASE}/api/cuaderno/${packageId}/nota/${nota.id}/fijar`, {
+        method: 'PATCH', headers: h, body: JSON.stringify({ fijada: nuevo }),
+      })
+      if (!res.ok) setNotas(prev => prev.map(n => n.id === nota.id ? { ...n, fijada: nota.fijada } : n))
+    } catch {
+      setNotas(prev => prev.map(n => n.id === nota.id ? { ...n, fijada: nota.fijada } : n))
+    }
   }
 
   // ── Helpers para notas de artefactos ──
@@ -1419,7 +1442,7 @@ export default function CuadernoIA() {
     s = s.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
     try { return JSON.parse(s) } catch {}
     const m = s.match(/(\[[\s\S]*\]|\{[\s\S]*\})/)
-    if (m) return JSON.parse(m[1])
+    if (m) { try { return JSON.parse(m[1]) } catch {} }
     throw new SyntaxError('JSON inválido en artefacto')
   }
 
@@ -1467,6 +1490,19 @@ export default function CuadernoIA() {
       return
     }
     let texto = nota.contenido
+    try {
+      const d = normalizarDatos(nota.fuente, limpiarYParsear(nota.contenido))
+      if (nota.fuente === 'resumen') {
+        if (d && typeof d === 'object') {
+          const partes = []
+          if (d.ejecutivo) partes.push(`RESUMEN EJECUTIVO\n${d.ejecutivo}`)
+          if (d.ejes?.length) partes.push(`EJES TEMÁTICOS\n${d.ejes.map(e => `▶ ${e.titulo}\n${e.puntos?.map(p => `  • ${p}`).join('\n')}`).join('\n\n')}`)
+          if (d.glosario?.length) partes.push(`GLOSARIO\n${d.glosario.map(g => `${g.termino}: ${g.definicion}`).join('\n')}`)
+          if (d.reflexion) partes.push(`REFLEXIÓN FINAL\n${d.reflexion}`)
+          texto = partes.join('\n\n---\n\n') || JSON.stringify(d, null, 2)
+        }
+      }
+    } catch {}
     if (nota.fuente !== 'resumen') {
       try {
         const d = normalizarDatos(nota.fuente, limpiarYParsear(nota.contenido))
@@ -1504,6 +1540,22 @@ export default function CuadernoIA() {
 
   // ── Render vista central ──
   function CenterContent() {
+    if (errorCarga) return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 bg-[#1a1b1e] p-8">
+        <span className="material-symbols-outlined text-red-400 text-5xl">error_outline</span>
+        <p className="font-bold text-[#e3e4e8] text-center">{errorCarga}</p>
+        <button onClick={cargarTodo} className="text-xs text-[#81c995] underline underline-offset-2">Reintentar</button>
+      </div>
+    )
+
+    if (errorGenerar) return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 bg-[#1a1b1e] p-8">
+        <span className="material-symbols-outlined text-red-400 text-5xl">error_outline</span>
+        <p className="font-bold text-[#e3e4e8] text-center">{errorGenerar}</p>
+        <button onClick={() => { setErrorGenerar(''); setVista('chat') }} className="text-xs text-[#81c995] underline underline-offset-2">Volver al chat</button>
+      </div>
+    )
+
     if (vista !== 'chat' && generando === vista) return (
       <div className="flex flex-col items-center justify-center h-full gap-4 bg-[#1a1b1e]">
         <div className="w-14 h-14 bg-[#2d2e34] rounded-2xl flex items-center justify-center border border-[#3a3b41]">
@@ -1596,9 +1648,9 @@ export default function CuadernoIA() {
                 placeholder="Haz una pregunta o crea algo"
                 className="flex-1 resize-none bg-transparent text-sm text-[#e3e4e8] placeholder-[#8e9099] focus:outline-none max-h-36 overflow-y-auto"
                 style={{ lineHeight: '1.5' }} />
-              {totalFuentes > 0 && (
+              {fuentesSeleccionadasCount > 0 && (
                 <span className="text-[11px] text-[#8e9099] font-semibold whitespace-nowrap flex-shrink-0 mb-0.5">
-                  {totalFuentes} fuente{totalFuentes !== 1 ? 's' : ''}
+                  {fuentesSeleccionadasCount} fuente{fuentesSeleccionadasCount !== 1 ? 's' : ''}
                 </span>
               )}
               <button onClick={() => enviar()} disabled={!input.trim() || enviando}
@@ -1614,6 +1666,7 @@ export default function CuadernoIA() {
 
   // ── Cantidad de fuentes activas (para mostrar en el input) ──────────────────
   const totalFuentes = fuentesAdmin.length + fuentesUser.length
+  const fuentesSeleccionadasCount = fuentesSeleccionadas.size
 
   return (
     <div className={`fixed inset-0 z-50 flex flex-col bg-[#1a1b1e] overflow-hidden transition-opacity duration-500 ${visible ? 'opacity-100' : 'opacity-0'}`}>
@@ -1725,9 +1778,9 @@ export default function CuadernoIA() {
                 {fuentesAdmin.map(f => {
                   const sel = fuentesSeleccionadas.has(`${f.id}:admin`)
                   return (
-                    <div key={f.id} className="flex items-center gap-1.5">
+                    <div key={f.id} className="flex items-center gap-1.5 min-w-0">
                       <button onClick={() => setModalFuente(f)}
-                        className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
+                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
                         <span className="material-symbols-outlined text-red-500 text-base flex-shrink-0"
                               style={{ fontVariationSettings: "'FILL' 1" }}>picture_as_pdf</span>
                         <span className="truncate text-[13px] text-[#e3e4e8]">{f.title || f.nombre}</span>
@@ -1753,9 +1806,9 @@ export default function CuadernoIA() {
                 {fuentesUser.map(f => {
                   const sel = fuentesSeleccionadas.has(`${f.id}:user`)
                   return (
-                    <div key={f.id} className="flex items-center gap-1.5 group">
+                    <div key={f.id} className="flex items-center gap-1.5 group min-w-0">
                       <button onClick={() => setModalFuente(f)}
-                        className="flex-1 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
+                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2 py-2 rounded-xl hover:bg-[#2d2e34] transition-colors">
                         <span className={`material-symbols-outlined text-base flex-shrink-0 ${f.tipo === 'youtube' ? 'text-red-500' : 'text-blue-400'}`}
                               style={{ fontVariationSettings: "'FILL' 1" }}>
                           {f.tipo === 'youtube' ? 'smart_display' : 'description'}
@@ -1789,7 +1842,7 @@ export default function CuadernoIA() {
 
         {/* ══ CENTER: Vista dinámica ══ */}
         <main className={`flex-1 overflow-hidden bg-[#1a1b1e] ${tabMobile === 'studio' || tabMobile === 'fuentes' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
-          <CenterContent />
+          {CenterContent()}
         </main>
 
         {/* ══ RIGHT: Studio (NotebookLM style) ══ */}
