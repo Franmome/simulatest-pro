@@ -1846,7 +1846,7 @@ export async function analizarPerfilCV(req, res) {
 
     const [allOpec, conv] = await Promise.all([
       fetchAllOpecs(parseInt(convocatoria_id)),
-      supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
+      supabase.from('convocatorias').select('nombre, entidad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas').eq('id', parseInt(convocatoria_id)).maybeSingle().then(r => r.data),
     ])
 
     if (!allOpec?.length) { emitErr('Esta convocatoria aun no tiene cargos cargados. El equipo los esta importando.'); return }
@@ -1873,6 +1873,20 @@ export async function analizarPerfilCV(req, res) {
     const entidadNombre = conv?.entidad || 'Entidad publica colombiana'
     const convNombre    = conv?.nombre  || 'Convocatoria publica'
 
+    // Prompts específicos de esta convocatoria (NULL → no se inyecta nada)
+    const convPromptContexto = conv?.prompt_contexto?.trim() || null
+    const convPromptRutas    = conv?.prompt_rutas?.trim()    || null
+
+    // Inyecta contexto ANTES del marcador JSON para no alterar el schema de salida
+    const inyectarCtxConv = (base, contexto) => {
+      if (!contexto) return base
+      const idx = base.indexOf('Devuelve UNICAMENTE')
+      if (idx === -1) return base + `\n\n--- CONTEXTO ESPECIFICO DE ESTA CONVOCATORIA ---\n${contexto}`
+      return base.slice(0, idx).trimEnd() +
+        `\n\n--- CONTEXTO ESPECIFICO DE ESTA CONVOCATORIA ---\n${contexto}\n\n` +
+        base.slice(idx)
+    }
+
     // Si hay PDF, es la fuente principal; el textarea es complemento opcional
     const perfil_base = cvText
       ? (perfil_texto?.trim() ? `INFO ADICIONAL DEL CANDIDATO:\n${perfil_texto.trim()}\n\nHOJA DE VIDA (PDF):\n${cvText}` : cvText)
@@ -1894,9 +1908,10 @@ Devuelve UNICAMENTE este JSON valido sin texto adicional ni markdown:
     ].filter(Boolean).join('\n')
 
     // ── Paso 1: extraer perfil estructurado del candidato ─────────────────────────
+    const SP_PERFIL_FINAL = inyectarCtxConv(SP_PERFIL, convPromptContexto)
     emit({ etapa: 2, pct: 25, msg: 'Identificando tu perfil profesional...' })
-    console.log(`[IA] pass2a: extrayendo perfil del candidato`)
-    const rPerfil = await analizarConIA(SP_PERFIL, promptPerfil, 'pass2a')
+    console.log(`[IA] pass2a: extrayendo perfil del candidato${convPromptContexto ? ' (con contexto de convocatoria)' : ''}`)
+    const rPerfil = await analizarConIA(SP_PERFIL_FINAL, promptPerfil, 'pass2a')
       .catch(e => { console.error('[IA] pass2a error:', e.message); return null })
 
     // ── Resultado de pass2a ───────────────────────────────────────────────────────
@@ -2007,9 +2022,12 @@ Devuelve UNICAMENTE este JSON valido sin markdown:
     emit({ etapa: 3, pct: 65, msg: `${viables.length} cargos compatibles encontrados` })
     emit({ etapa: 4, pct: 70, msg: 'Construyendo tus 4 rutas estratégicas...' })
 
+    const extrasRutas  = [convPromptContexto, convPromptRutas].filter(Boolean).join('\n\n')
+    const SP_RUTAS_FINAL = inyectarCtxConv(SP_RUTAS, extrasRutas || null)
+
     let rutasData = null
     try {
-      const rRutas = await analizarConIA(SP_RUTAS, promptRutas, 'pass2b')
+      const rRutas = await analizarConIA(SP_RUTAS_FINAL, promptRutas, 'pass2b')
       console.log('[IA] pass2b (rutas) tokensOut:', rRutas.tokensOut)
       rutasData = rescueAnalisis(rRutas.texto)
     } catch (e) {
@@ -2245,7 +2263,7 @@ export async function listConvocatorias(req, res) {
   const { todas } = req.query
   let query = supabase
     .from('convocatorias')
-    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url')
+    .select('id, codigo, nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas')
     .order('anio', { ascending: false })
     .order('nombre')
   if (!todas) query = query.eq('is_active', true)
@@ -2343,7 +2361,7 @@ export async function getCiudadesConvocatoria(req, res) {
 }
 
 export async function createConvocatoria(req, res) {
-  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad, plataforma_nombre, plataforma_url } = req.body
+  const { codigo, nombre, entidad, anio, descripcion, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas } = req.body
   if (!codigo?.trim()) return res.status(400).json({ error: 'El código es requerido.' })
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido.' })
   if (!entidad?.trim()) return res.status(400).json({ error: 'La entidad es requerida.' })
@@ -2355,6 +2373,8 @@ export async function createConvocatoria(req, res) {
       departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null,
       plataforma_nombre: plataforma_nombre?.trim() || null,
       plataforma_url:    plataforma_url?.trim()    || null,
+      prompt_contexto:   prompt_contexto?.trim()   || null,
+      prompt_rutas:      prompt_rutas?.trim()      || null,
     })
     .select('*').single()
   if (error) return res.status(500).json({ error: error.message })
@@ -2363,7 +2383,7 @@ export async function createConvocatoria(req, res) {
 
 export async function updateConvocatoria(req, res) {
   const { id } = req.params
-  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url } = req.body
+  const { nombre, entidad, anio, descripcion, is_active, departamento, ciudad, plataforma_nombre, plataforma_url, prompt_contexto, prompt_rutas } = req.body
   const { data, error } = await supabase
     .from('convocatorias')
     .update({
@@ -2371,6 +2391,8 @@ export async function updateConvocatoria(req, res) {
       departamento: departamento?.trim() || null, ciudad: ciudad?.trim() || null,
       plataforma_nombre: plataforma_nombre?.trim() || null,
       plataforma_url:    plataforma_url?.trim()    || null,
+      prompt_contexto:   prompt_contexto?.trim()   || null,
+      prompt_rutas:      prompt_rutas?.trim()      || null,
     })
     .eq('id', id).select('*').single()
   if (error) return res.status(500).json({ error: error.message })
@@ -3166,6 +3188,34 @@ export async function setPrecioTicket(req, res) {
 // ANÁLISIS DE OFERTA DE TRABAJO
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function buildOpecTextoOferta(opec) {
+  const lineas = [
+    `OFERTA DE TRABAJO (base de datos Praxia):`,
+    `Cargo: ${opec.denominacion}`,
+    opec.entidad           ? `Entidad: ${opec.entidad}` : null,
+    opec.nivel             ? `Nivel jerárquico: ${opec.nivel}` : null,
+    opec.num_convocatoria  ? `Convocatoria N°: ${opec.num_convocatoria}` : null,
+    opec.numero_opec       ? `Código OPEC: ${opec.numero_opec}` : null,
+    opec.dependencia       ? `Dependencia: ${opec.dependencia}` : null,
+    opec.salario           ? `Salario básico: $${Number(opec.salario).toLocaleString('es-CO')} COP` : null,
+    opec.grado             ? `Grado salarial: ${opec.grado}` : null,
+    opec.vacantes          ? `Vacantes: ${opec.vacantes}` : null,
+    opec.estudio_texto     ? `Requisitos de estudio: ${opec.estudio_texto}` : null,
+    opec.exp_texto         ? `Experiencia requerida: ${opec.exp_texto}` : null,
+    opec.exp_anios         ? `Meses de experiencia requeridos: ${opec.exp_anios}` : null,
+    opec.proposito         ? `Propósito del cargo: ${opec.proposito}` : null,
+    opec.requiere_posgrado ? `Requiere posgrado: Sí` : null,
+    opec.requiere_tarjeta  ? `Requiere tarjeta profesional: Sí` : null,
+    (Array.isArray(opec.funciones) && opec.funciones.length)
+      ? `Funciones principales:\n${opec.funciones.slice(0, 12).map(f => `- ${f}`).join('\n')}` : null,
+    (Array.isArray(opec.conocimientos) && opec.conocimientos.length)
+      ? `Conocimientos requeridos: ${opec.conocimientos.join(', ')}` : null,
+    (Array.isArray(opec.ubicaciones) && opec.ubicaciones.length)
+      ? `Ciudad(es): ${opec.ubicaciones.map(u => u.ciudad).filter(Boolean).join(', ')}` : null,
+  ].filter(Boolean)
+  return lineas.join('\n')
+}
+
 const DEFAULT_OFERTA_PROMPT = `Eres un experto en recursos humanos y selección de personal con amplia experiencia en el mercado laboral colombiano e internacional.
 
 Tu tarea es comparar la hoja de vida de un candidato con una oferta de trabajo específica y determinar con precisión su compatibilidad.
@@ -3204,12 +3254,14 @@ export async function analizarOfertaTrabajo(req, res) {
     }
 
     const files       = req.files || {}
-    const cvFile      = files.cv?.[0]      || null
-    const ofertaFiles = files.ofertas      || []
+    const cvFile      = files.cv?.[0] || null
+    const ofertaFiles = files.ofertas || []
+    const opecIds     = (() => { try { return req.body?.opec_ids ? JSON.parse(req.body.opec_ids) : [] } catch { return [] } })()
 
-    if (!cvFile)           return res.status(400).json({ error: 'Debes subir tu hoja de vida.' })
-    if (!ofertaFiles.length) return res.status(400).json({ error: 'Debes subir al menos una oferta de trabajo.' })
-    if (ofertaFiles.length > 5) return res.status(400).json({ error: 'Máximo 5 ofertas por análisis.' })
+    if (!cvFile) return res.status(400).json({ error: 'Debes subir tu hoja de vida.' })
+    if (!ofertaFiles.length && !opecIds.length) return res.status(400).json({ error: 'Debes subir al menos una oferta o seleccionar OPECs de la base de datos.' })
+    if (ofertaFiles.length > 5) return res.status(400).json({ error: 'Máximo 5 archivos de oferta.' })
+    if (opecIds.length > 8)     return res.status(400).json({ error: 'Máximo 8 OPECs de la base de datos.' })
 
     if (ofertasEnCurso.has(userId)) {
       return res.status(429).json({ error: 'Ya tienes un análisis en curso. Espera a que termine.' })
@@ -3222,7 +3274,7 @@ export async function analizarOfertaTrabajo(req, res) {
     const emit    = (data) => emitJobProgress(jobId, data)
     const emitErr = (msg)  => { const em = jobEmitters.get(jobId); if (em) em.emit('jobError', msg) }
 
-    console.log(`[IA] analisis-oferta inicio: user=${userId} cv=${cvFile.originalname} ofertas=${ofertaFiles.length} jobId=${jobId}`)
+    console.log(`[IA] analisis-oferta inicio: user=${userId} cv=${cvFile.originalname} archivos=${ofertaFiles.length} opec_ids=${opecIds.length} jobId=${jobId}`)
 
     setImmediate(async () => {
       if (analisesActivos >= MAX_ANALISIS) {
@@ -3246,14 +3298,38 @@ export async function analizarOfertaTrabajo(req, res) {
         }
         emit({ etapa: 1, pct: 20, msg: `Hoja de vida leída (${Math.round(cvText.length / 1000)}K caracteres)` })
 
-        // 2. Extraer texto de cada oferta
+        // 2a. Extraer texto de archivos subidos
         const ofertasTextos = []
         for (let i = 0; i < ofertaFiles.length; i++) {
           const f = ofertaFiles[i]
-          emit({ etapa: 1, pct: 20 + Math.round(((i + 1) / ofertaFiles.length) * 20), msg: `Leyendo oferta ${i + 1} de ${ofertaFiles.length}...` })
+          emit({ etapa: 1, pct: 20 + Math.round(((i + 1) / Math.max(ofertaFiles.length, 1)) * 15), msg: `Leyendo oferta ${i + 1} de ${ofertaFiles.length}...` })
           const texto = await extractCvText(f, null)
           if (f?.buffer) f.buffer = null
-          ofertasTextos.push({ nombre: f.originalname, texto: texto || '' })
+          ofertasTextos.push({ nombre: f.originalname, texto: texto || '', _fuente: 'archivo' })
+        }
+
+        // 2b. Cargar OPECs desde base de datos
+        if (opecIds.length > 0) {
+          emit({ etapa: 1, pct: 35, msg: `Cargando ${opecIds.length} OPEC(s) desde base de datos...` })
+          const { data: opecs, error: opecErr } = await supabase
+            .from('opec_maestro')
+            .select('id, denominacion, nivel, codigo, numero_opec, entidad, estudio_texto, exp_texto, exp_anios, funciones, conocimientos, ubicaciones, salario, grado, vacantes, dependencia, num_convocatoria, proposito, requiere_posgrado, requiere_tarjeta')
+            .in('id', opecIds.map(Number))
+          if (!opecErr) {
+            for (const opec of (opecs || [])) {
+              ofertasTextos.push({
+                nombre: `${opec.denominacion}${opec.numero_opec ? ` (OPEC ${opec.numero_opec})` : ''}`,
+                texto: buildOpecTextoOferta(opec),
+                _opec_id: opec.id,
+                _fuente: 'bd',
+              })
+            }
+          }
+        }
+
+        if (!ofertasTextos.length) {
+          emitErr('No se encontraron ofertas para analizar. Intenta de nuevo.')
+          return
         }
 
         // 3. Obtener prompt maestro desde config (con fallback al default)
@@ -3461,6 +3537,26 @@ export async function setPromptOferta(req, res) {
       { onConflict: 'key' }
     )
     return res.json({ ok: true })
+  } catch (e) { return res.status(500).json({ error: e.message }) }
+}
+
+export async function buscarOpecsOferta(req, res) {
+  const { convocatoria_id, q, limit = 15 } = req.query
+  if (!convocatoria_id) return res.status(400).json({ error: 'convocatoria_id es requerido' })
+  try {
+    let query = supabase
+      .from('opec_maestro')
+      .select('id, denominacion, nivel, codigo, numero_opec, entidad, estudio_texto, exp_texto, exp_anios, funciones, conocimientos, ubicaciones, salario, grado, vacantes, dependencia, num_convocatoria, proposito, requiere_posgrado, requiere_tarjeta')
+      .eq('convocatoria_id', parseInt(convocatoria_id))
+      .eq('is_active', true)
+      .limit(Math.min(parseInt(limit) || 15, 50))
+    if (q?.trim()) {
+      const term = q.trim()
+      query = query.or(`numero_opec.ilike.%${term}%,denominacion.ilike.%${term}%,codigo.ilike.%${term}%`)
+    }
+    const { data, error } = await query.order('denominacion')
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ opecs: data || [] })
   } catch (e) { return res.status(500).json({ error: e.message }) }
 }
 

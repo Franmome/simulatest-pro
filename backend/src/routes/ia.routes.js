@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, progresoAnalisis, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket, analizarOfertaTrabajo, getOfertaTicketBalance, generateWompiOfertaCheckout, getAdminOfertaTickets, adminAddOfertaTickets, getPrecioOfertaTicket, setPrecioOfertaTicket, getPromptOferta, setPromptOferta, getMisAnalisisOfertas } from '../controllers/ia.controller.js'
+import { generarBanco, generarSimulacroPersonal, chatIA, analizarSala, getTokens, verificarOpec, getAdminUsers, analizarResultadosSimulacro, testGenerador, generarPaqueteConIA, generarPracticaDesdeIA, analizarPerfilCV, progresoAnalisis, masOpecs, listConvocatorias, getCiudadesConvocatoria, createConvocatoria, updateConvocatoria, deleteConvocatoria, listProcuraduriaOpecs, createProcuraduriaOpec, updateProcuraduriaOpec, deleteProcuraduriaOpec, deleteOpecsMasivo, statsProcuraduriaOpecs, importOpecMaestro, getMisAnalisis, updateMiAnalisis, deleteMiAnalisis, getMisAnalisisSimulacros, generarModoPractica, cerebrosHealth, getTicketBalance, generateWompiTicketCheckout, getAdminTickets, adminAddTickets, getPrecioTicket, setPrecioTicket, analizarOfertaTrabajo, getOfertaTicketBalance, generateWompiOfertaCheckout, getAdminOfertaTickets, adminAddOfertaTickets, getPrecioOfertaTicket, setPrecioOfertaTicket, getPromptOferta, setPromptOferta, getMisAnalisisOfertas, buscarOpecsOferta } from '../controllers/ia.controller.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -78,5 +78,6 @@ router.post('/admin/oferta/tickets/precio',   authMiddleware, setPrecioOfertaTic
 router.get('/admin/oferta/prompt',            authMiddleware, getPromptOferta)
 router.post('/admin/oferta/prompt',           authMiddleware, setPromptOferta)
 router.get('/mis-analisis-oferta',            authMiddleware, getMisAnalisisOfertas)
+router.get('/oferta/buscar-opecs',            authMiddleware, buscarOpecsOferta)
 
 export default router

@@ -380,7 +380,7 @@ function AsignacionCerebros({ records, onCambiar }) {
 
 // ── Modal nueva/editar convocatoria ──────────────────────────────────────────
 
-const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '', plataforma_nombre: '', plataforma_url: '' }
+const CONV_EMPTY = { codigo: '', nombre: '', entidad: '', anio: new Date().getFullYear(), descripcion: '', departamento: '', ciudad: '', plataforma_nombre: '', plataforma_url: '', prompt_contexto: '', prompt_rutas: '' }
 
 const ENTIDADES_COMUNES = [
   'Procuraduría General de la Nación',
@@ -538,6 +538,45 @@ function ConvocatoriaModal({ conv, onClose, onSaved }) {
                   className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 font-mono text-xs" />
                 <p className="text-[10px] text-on-surface-variant mt-1">Esta URL aparecerá como botón "Inscribirse" en el análisis de perfil del usuario.</p>
               </div>
+            </div>
+          </div>
+
+          {/* Instrucciones de IA por convocatoria */}
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm text-purple-500">psychology</span>
+              Instrucciones de IA para esta convocatoria
+            </p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">
+              Opcional. Si están vacíos, la IA usa las instrucciones globales del sistema.
+            </p>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">
+                Contexto de la entidad
+                <span className="ml-1 font-normal text-on-surface-variant">({(form.prompt_contexto || '').length}/800 caracteres)</span>
+              </label>
+              <textarea
+                value={form.prompt_contexto || ''}
+                onChange={e => set('prompt_contexto', e.target.value.slice(0, 800))}
+                rows={3}
+                placeholder="Ej: Esta es una convocatoria de la DIAN para cargos tributarios. Prioriza candidatos con experiencia en fiscalización, derecho tributario o contaduría pública. El sector privado financiero también es válido como experiencia relacionada."
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-purple-400 resize-none"
+              />
+              <p className="text-[10px] text-on-surface-variant mt-1">Describe qué perfil busca la entidad y qué factores pesan más. Se usa en el análisis de perfil del candidato.</p>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-on-surface mb-1 block">
+                Instrucciones del proceso de selección
+                <span className="ml-1 font-normal text-on-surface-variant">({(form.prompt_rutas || '').length}/2000 caracteres)</span>
+              </label>
+              <textarea
+                value={form.prompt_rutas || ''}
+                onChange={e => set('prompt_rutas', e.target.value.slice(0, 2000))}
+                rows={4}
+                placeholder="Ej: Este proceso usa prueba de competencias funcionales (60%) + entrevista de perfil (40%). Los candidatos deben acreditar tarjeta profesional vigente. La prueba escrita es eliminatoria. Recomienda a los candidatos estudiar las funciones específicas del cargo y los decretos asociados a la entidad."
+                className="w-full px-3 py-2.5 text-sm border-2 border-slate-200 rounded-xl focus:outline-none focus:border-purple-400 resize-none"
+              />
+              <p className="text-[10px] text-on-surface-variant mt-1">Describe el proceso de selección, pruebas, ponderaciones y documentos requeridos. Se usa para generar las rutas estratégicas del candidato.</p>
             </div>
           </div>
         </div>
@@ -889,6 +928,43 @@ function ProcuraduriaOpecPanel() {
     } catch (e) { console.error(e) }
   }
 
+  const currentConv = convocatorias.find(c => String(c.id) === String(convId)) || null
+
+  const handleEditConv = () => {
+    if (currentConv) setConvModal({ ...currentConv })
+  }
+
+  const handleToggleConvActive = async () => {
+    if (!currentConv) return
+    const accion = currentConv.is_active ? 'desactivar' : 'activar'
+    if (!window.confirm(`¿${accion.charAt(0).toUpperCase() + accion.slice(1)} la convocatoria "${currentConv.nombre}"?`)) return
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/convocatorias/${currentConv.id}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ ...currentConv, is_active: !currentConv.is_active }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error') }
+      fetchConvocatorias(currentConv.id)
+    } catch (e) { alert('Error: ' + e.message) }
+  }
+
+  const handleDeleteConv = async () => {
+    if (!currentConv) return
+    if (currentConv.is_active) {
+      alert('No se puede eliminar una convocatoria activa. Primero desactívala.')
+      return
+    }
+    if (!window.confirm(`¿Eliminar la convocatoria "${currentConv.nombre}"?\n\nEsta acción no se puede deshacer.`)) return
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${BASE}/api/ia/convocatorias/${currentConv.id}`, { method: 'DELETE', headers })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error eliminando') }
+      setConvId('')
+      fetchConvocatorias()
+    } catch (e) { alert('Error: ' + e.message) }
+  }
+
   const handleImport = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -995,6 +1071,30 @@ function ProcuraduriaOpecPanel() {
             )}
           </div>
         </div>
+        {currentConv && (
+          <button onClick={handleEditConv}
+            title="Editar convocatoria"
+            className="w-11 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 transition-colors">
+            <span className="material-symbols-outlined text-xl">edit</span>
+          </button>
+        )}
+        {currentConv && (
+          <button onClick={handleToggleConvActive}
+            title={currentConv.is_active ? 'Desactivar convocatoria' : 'Activar convocatoria'}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${currentConv.is_active ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700' : 'bg-amber-100 hover:bg-amber-200 text-amber-700'}`}>
+            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: currentConv.is_active ? "'FILL' 1" : "'FILL' 0" }}>
+              {currentConv.is_active ? 'toggle_on' : 'toggle_off'}
+            </span>
+          </button>
+        )}
+        {currentConv && (
+          <button onClick={handleDeleteConv}
+            disabled={currentConv.is_active}
+            title={currentConv.is_active ? 'No se puede eliminar una convocatoria activa' : 'Eliminar convocatoria'}
+            className="w-11 h-11 rounded-2xl bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center shrink-0 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            <span className="material-symbols-outlined text-xl">delete</span>
+          </button>
+        )}
         <button onClick={() => setConvModal({})}
           title="Crear nueva convocatoria"
           className="w-11 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 transition-colors shadow-sm">
