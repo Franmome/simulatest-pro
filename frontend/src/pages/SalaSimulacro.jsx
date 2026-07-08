@@ -108,14 +108,33 @@ export default function SalaSimulacro() {
     setRoom(roomData)
     roomRef.current = roomData
 
-    const { data: qData } = await supabase
-      .from('questions').select('id, text, options(id, text, letter, is_correct)')
-      .eq('level_id', roomData.level_id).limit(roomData.max_questions)
-    if (!qData?.length) return
+    let pregsBase = []
+
+    if (roomData.sala_pack_id) {
+      const { data: pack } = await supabase
+        .from('sala_packs').select('preguntas').eq('id', roomData.sala_pack_id).single()
+      if (!pack?.preguntas?.length) return
+      pregsBase = pack.preguntas.map((p, i) => ({
+        id: `sp-${i}`,
+        text: p.texto,
+        options: (p.opciones || []).map((o, j) => ({
+          id: `sp-${i}-${j}`,
+          text: o.texto,
+          letter: o.letra,
+          is_correct: o.es_correcta,
+        })),
+      }))
+    } else {
+      const { data: qData } = await supabase
+        .from('questions').select('id, text, options(id, text, letter, is_correct)')
+        .eq('level_id', roomData.level_id).limit(roomData.max_questions)
+      if (!qData?.length) return
+      pregsBase = qData
+    }
 
     const shuffled = roomData.orden === 'original'
-      ? [...qData]
-      : [...qData].sort(() => Math.random() - 0.5)
+      ? pregsBase.slice(0, roomData.max_questions)
+      : [...pregsBase].sort(() => Math.random() - 0.5).slice(0, roomData.max_questions)
     setPreguntas(shuffled)
     preguntasRef.current = shuffled
 

@@ -57,7 +57,9 @@ export default function SalaLobby() {
   }, [messages])
 
   async function cargarSala() {
-    const { data } = await supabase.from('rooms').select('*, levels(name, evaluations(title))').eq('id', roomId).maybeSingle()
+    const { data } = await supabase.from('rooms')
+      .select('*, levels(name, evaluations(title)), sala_packs(nombre)')
+      .eq('id', roomId).maybeSingle()
     setRoom(data)
   }
 
@@ -173,7 +175,7 @@ export default function SalaLobby() {
 
           <h2 className="text-2xl font-extrabold mb-1">Lobby</h2>
           <p className="text-on-surface-variant text-sm mb-4">
-            {room?.levels?.evaluations?.title} — {room?.levels?.name}
+            {room?.sala_packs?.nombre ?? `${room?.levels?.evaluations?.title} — ${room?.levels?.name}`}
           </p>
 
           <div className="p-3 bg-primary-fixed/30 rounded-xl text-sm text-primary mb-4 flex items-center gap-2">

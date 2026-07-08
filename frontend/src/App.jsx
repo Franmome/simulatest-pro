@@ -48,6 +48,7 @@ const AdminTokens      = lazy(() => import('./pages/admin/AdminTokens'))
 const AdminAnalisis    = lazy(() => import('./pages/admin/AdminAnalisis'))
 const AdminOferta      = lazy(() => import('./pages/admin/AdminOferta'))
 const AdminReportes    = lazy(() => import('./pages/admin/AdminReportes'))
+const AdminSalaPacks   = lazy(() => import('./pages/admin/AdminSalaPacks'))
 
 function AdminFallback() {
   return (
@@ -120,6 +121,7 @@ export default function App() {
             <Route path="analisis"                element={<Suspense fallback={<AdminFallback />}><AdminAnalisis /></Suspense>} />
             <Route path="oferta"                  element={<Suspense fallback={<AdminFallback />}><AdminOferta /></Suspense>} />
             <Route path="reportes"                element={<Suspense fallback={<AdminFallback />}><AdminReportes /></Suspense>} />
+            <Route path="sala-packs"             element={<Suspense fallback={<AdminFallback />}><AdminSalaPacks /></Suspense>} />
           </Route>
 
           {/* 🔄 Redirección por defecto (por si acaso) */}

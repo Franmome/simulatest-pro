@@ -17,17 +17,54 @@ export default function Salas() {
   const [pregsPorNivel, setPregsPorNivel] = useState({})
   const [form, setForm] = useState({
     level_id: '',
+    sala_pack_id: '',
     timer: 90,
     max_questions: 20,
     max_questions_custom: '',
     orden: 'aleatorio',
   })
+  const [sourceTab, setSourceTab] = useState('packs')
+  const [salaPacks, setSalaPacks] = useState([])
+  const [misNiveles, setMisNiveles] = useState([])
+  const [misNivelesLoading, setMisNivelesLoading] = useState(false)
   const [codigo, setCodigo] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
 
-  useEffect(() => { cargarNiveles() }, [])
+  useEffect(() => { cargarNiveles(); cargarSalaPacks() }, [])
+
+  async function cargarSalaPacks() {
+    const { data } = await supabase.from('sala_packs')
+      .select('id, nombre, descripcion, preguntas, is_active')
+      .eq('is_active', true)
+      .order('nombre')
+    setSalaPacks(data || [])
+  }
+
+  async function cargarMisNiveles() {
+    if (misNiveles.length || misNivelesLoading) return
+    setMisNivelesLoading(true)
+    try {
+      const now = new Date().toISOString()
+      const { data: purs } = await supabase
+        .from('purchases').select('package_version_id')
+        .eq('user_id', user.id).eq('status', 'active').gte('end_date', now)
+      const pvIds = (purs || []).map(p => p.package_version_id).filter(Boolean)
+      if (!pvIds.length) return
+      const { data: evVers } = await supabase
+        .from('evaluation_versions').select('evaluation_id')
+        .in('package_version_id', pvIds)
+      const evalIds = [...new Set((evVers || []).map(v => v.evaluation_id).filter(Boolean))]
+      if (!evalIds.length) return
+      const { data: lvls } = await supabase
+        .from('levels').select('id, name, evaluations(title)')
+        .in('evaluation_id', evalIds).order('id')
+      setMisNiveles(lvls || [])
+    } finally {
+      setMisNivelesLoading(false)
+    }
+  }
 
   async function cargarNiveles() {
     const { data } = await supabase
@@ -51,20 +88,27 @@ export default function Salas() {
   }
 
   const selectedLevel = niveles.find(n => String(n.id) === form.level_id)
-  const totalPregsNivel = form.level_id ? (pregsPorNivel[parseInt(form.level_id)] || 0) : 0
+  const selectedPack  = salaPacks.find(p => p.id === form.sala_pack_id)
+  const totalPregsNivel = sourceTab === 'packs'
+    ? (selectedPack?.preguntas?.length || 0)
+    : (form.level_id ? (pregsPorNivel[parseInt(form.level_id)] || 0) : 0)
   const cantidadFinal = form.max_questions_custom !== ''
     ? Math.min(parseInt(form.max_questions_custom) || 1, totalPregsNivel)
     : Math.min(form.max_questions, totalPregsNivel)
 
   async function crearSala() {
-    if (!form.level_id) { setError('Selecciona un nivel'); return }
+    if (sourceTab === 'packs' && !form.sala_pack_id) { setError('Selecciona un pack'); return }
+    if (sourceTab === 'mis'   && !form.level_id)      { setError('Selecciona un nivel'); return }
     if (cantidadFinal < 1) { setError('Selecciona una cantidad válida de preguntas'); return }
     setLoading(true)
     setError('')
     try {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase()
+      const roomPayload = sourceTab === 'packs'
+        ? { id: code, code, host_id: user.id, level_id: null, sala_pack_id: form.sala_pack_id, timer_per_question: form.timer, max_questions: cantidadFinal, orden: form.orden, status: 'lobby' }
+        : { id: code, code, host_id: user.id, level_id: parseInt(form.level_id), sala_pack_id: null, timer_per_question: form.timer, max_questions: cantidadFinal, orden: form.orden, status: 'lobby' }
       const { data: room, error: roomErr } = await supabase.from('rooms')
-        .insert({ id: code, code, host_id: user.id, level_id: parseInt(form.level_id), timer_per_question: form.timer, max_questions: cantidadFinal, orden: form.orden, status: 'lobby' })
+        .insert(roomPayload)
         .select('id').maybeSingle()
       if (roomErr) throw roomErr
       const { data: part, error: partErr } = await supabase.from('room_participants')
@@ -183,25 +227,85 @@ export default function Salas() {
                 <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
               </div>
 
-              {/* Nivel */}
-              <div className="space-y-1.5">
+              {/* Fuente de preguntas */}
+              <div className="space-y-2">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm">quiz</span>Nivel / Prueba
+                  <span className="material-symbols-outlined text-sm">quiz</span>Fuente de preguntas
                 </label>
-                <select value={form.level_id}
-                  onChange={e => setForm(f => ({ ...f, level_id: e.target.value, max_questions_custom: '' }))}
-                  className={inputCls}>
-                  <option value="">Selecciona un nivel...</option>
-                  {niveles.map(nv => (
-                    <option key={nv.id} value={nv.id}>
-                      {nv.evaluations?.title} — {nv.name} ({pregsPorNivel[nv.id] || 0} preguntas)
-                    </option>
+
+                {/* Sub-tab */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { key: 'packs', icon: 'sports_esports', label: 'Packs publicados' },
+                    { key: 'mis',   icon: 'package_2',      label: 'Mis paquetes'     },
+                  ].map(t => (
+                    <button key={t.key}
+                      onClick={() => {
+                        setSourceTab(t.key)
+                        if (t.key === 'mis') cargarMisNiveles()
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold border-2 transition-all
+                        ${sourceTab === t.key ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/40'}`}>
+                      <span className="material-symbols-outlined text-sm">{t.icon}</span>{t.label}
+                    </button>
                   ))}
-                </select>
-                {form.level_id && totalPregsNivel > 0 && (
+                </div>
+
+                {sourceTab === 'packs' ? (
+                  salaPacks.length === 0 ? (
+                    <div className="p-4 bg-surface-container-low rounded-xl text-center text-xs text-on-surface-variant">
+                      <span className="material-symbols-outlined text-2xl mb-1 block opacity-30">sports_esports</span>
+                      No hay packs publicados aún
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                      {salaPacks.map(pack => (
+                        <button key={pack.id}
+                          onClick={() => setForm(f => ({ ...f, sala_pack_id: pack.id, max_questions_custom: '' }))}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
+                            ${form.sala_pack_id === pack.id ? 'border-primary bg-primary/10' : 'border-outline-variant/30 hover:border-primary/40'}`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0
+                            ${form.sala_pack_id === pack.id ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant'}`}>
+                            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>sports_esports</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm truncate">{pack.nombre}</p>
+                            {pack.descripcion && <p className="text-[10px] text-on-surface-variant truncate">{pack.descripcion}</p>}
+                            <p className="text-[10px] text-secondary font-bold">{pack.preguntas?.length || 0} preguntas</p>
+                          </div>
+                          {form.sala_pack_id === pack.id && (
+                            <span className="material-symbols-outlined text-primary text-sm shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : misNivelesLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : misNiveles.length === 0 ? (
+                  <div className="p-4 bg-surface-container-low rounded-xl text-center text-xs text-on-surface-variant">
+                    <span className="material-symbols-outlined text-2xl mb-1 block opacity-30">package_2</span>
+                    No tienes paquetes activos
+                  </div>
+                ) : (
+                  <select value={form.level_id}
+                    onChange={e => setForm(f => ({ ...f, level_id: e.target.value, max_questions_custom: '' }))}
+                    className={inputCls}>
+                    <option value="">Selecciona un nivel...</option>
+                    {misNiveles.map(nv => (
+                      <option key={nv.id} value={nv.id}>
+                        {nv.evaluations?.title} — {nv.name} ({pregsPorNivel[nv.id] || 0} preguntas)
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {totalPregsNivel > 0 && (
                   <p className="text-xs text-secondary flex items-center gap-1">
                     <span className="material-symbols-outlined text-sm">check_circle</span>
-                    {totalPregsNivel} preguntas disponibles en este nivel
+                    {totalPregsNivel} preguntas disponibles
                   </p>
                 )}
               </div>
@@ -384,14 +488,19 @@ export default function Salas() {
                   <span className="material-symbols-outlined text-sm">preview</span>Vista previa
                 </p>
 
-                {form.level_id && selectedLevel ? (
+                {(selectedPack || (form.level_id && selectedLevel)) ? (
                   <div className="space-y-4">
                     <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-4 border border-primary/10">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>quiz</span>
-                        <p className="font-extrabold text-primary text-sm leading-snug">{selectedLevel?.evaluations?.title}</p>
+                        <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          {selectedPack ? 'sports_esports' : 'quiz'}
+                        </span>
+                        <p className="font-extrabold text-primary text-sm leading-snug">
+                          {selectedPack ? selectedPack.nombre : selectedLevel?.evaluations?.title}
+                        </p>
                       </div>
-                      <p className="text-xs text-on-surface-variant ml-6">{selectedLevel?.name}</p>
+                      {!selectedPack && <p className="text-xs text-on-surface-variant ml-6">{selectedLevel?.name}</p>}
+                      {selectedPack?.descripcion && <p className="text-xs text-on-surface-variant ml-6">{selectedPack.descripcion}</p>}
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-center">

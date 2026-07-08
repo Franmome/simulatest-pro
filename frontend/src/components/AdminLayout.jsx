@@ -15,6 +15,7 @@ const navItems = [
   { to: '/admin/analisis',     icon: 'confirmation_number', label: 'Análisis de OPEC',   hint: 'Tickets · Wompi' },
   { to: '/admin/oferta',       icon: 'work_history',        label: 'Análisis de Oferta',  hint: 'Tickets · Prompt · Wompi' },
   { to: '/admin/reportes',     icon: 'flag',               label: 'Reportes de Usuarios', hint: 'Problemas reportados' },
+  { to: '/admin/sala-packs',   icon: 'sports_esports',     label: 'Packs para Salas',     hint: 'Preguntas para salas competencia' },
 ]
 
 function QuickChip({ children, tone = 'default' }) {
