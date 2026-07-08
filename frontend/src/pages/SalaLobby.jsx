@@ -20,6 +20,7 @@ export default function SalaLobby() {
   const [mensajesNoLeidos, setMensajesNoLeidos] = useState(0)
   const chatRef = useRef(null)
   const toastTimerRef = useRef(null)
+  const chatAbiertoRef = useRef(false)
 
   useEffect(() => {
     cargarSala()
@@ -32,7 +33,7 @@ export default function SalaLobby() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${roomId}` },
         (payload) => {
           setMessages(prev => [...prev, payload.new])
-          if (!chatAbierto && payload.new.participant_id !== participantId) {
+          if (!chatAbiertoRef.current && payload.new.participant_id !== participantId) {
             setMensajesNoLeidos(n => n + 1)
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
             setToast(`${payload.new.display_name}: ${payload.new.message}`)
@@ -48,7 +49,7 @@ export default function SalaLobby() {
         })
       .subscribe()
 
-    return () => supabase.removeChannel(sub)
+    return () => { supabase.removeChannel(sub); clearTimeout(toastTimerRef.current) }
   }, [roomId])
 
   useEffect(() => {
@@ -319,7 +320,7 @@ export default function SalaLobby() {
           <div className="fixed bottom-20 right-4 z-50 w-72 bg-white rounded-2xl shadow-2xl border border-outline-variant/20 overflow-hidden animate-fade-in">
             <div className="px-4 py-3 bg-primary text-white flex items-center justify-between">
               <span className="font-bold text-sm">Chat</span>
-              <button onClick={() => { setChatAbierto(false); setMensajesNoLeidos(0); setToast(null); clearTimeout(toastTimerRef.current) }}>
+              <button onClick={() => { chatAbiertoRef.current = false; setChatAbierto(false); setMensajesNoLeidos(0); setToast(null); clearTimeout(toastTimerRef.current) }}>
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
@@ -346,7 +347,9 @@ export default function SalaLobby() {
         )}
         <button
           onClick={() => {
-            setChatAbierto(v => !v)
+            const next = !chatAbiertoRef.current
+            chatAbiertoRef.current = next
+            setChatAbierto(next)
             setMensajesNoLeidos(0)
             setToast(null)
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current)

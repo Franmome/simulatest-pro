@@ -64,7 +64,7 @@ export default function Salas() {
     try {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase()
       const { data: room, error: roomErr } = await supabase.from('rooms')
-        .insert({ id: code, code, host_id: user.id, level_id: parseInt(form.level_id), timer_per_question: form.timer, max_questions: cantidadFinal, status: 'lobby' })
+        .insert({ id: code, code, host_id: user.id, level_id: parseInt(form.level_id), timer_per_question: form.timer, max_questions: cantidadFinal, orden: form.orden, status: 'lobby' })
         .select('id').maybeSingle()
       if (roomErr) throw roomErr
       const { data: part, error: partErr } = await supabase.from('room_participants')

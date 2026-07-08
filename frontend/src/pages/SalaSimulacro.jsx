@@ -65,10 +65,18 @@ export default function SalaSimulacro() {
               prev.includes(payload.new.rematch_requested_by) ? prev : [...prev, payload.new.rematch_requested_by]
             )
           }
-          if (payload.new.rematch_room_id) {
-            navigate(`/sala/${payload.new.rematch_room_id}/lobby`, {
-              state: { participantId, isHost: false, displayName }
-            })
+          if (payload.new.rematch_room_id && !isHost) {
+            ;(async () => {
+              const { data: newPart } = await supabase.from('room_participants').insert({
+                room_id: payload.new.rematch_room_id,
+                user_id: user.id,
+                display_name: displayName,
+                is_host: false
+              }).select('id').maybeSingle()
+              navigate(`/sala/${payload.new.rematch_room_id}/lobby`, {
+                state: { participantId: newPart?.id, isHost: false, displayName }
+              })
+            })()
           }
         })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
@@ -105,7 +113,9 @@ export default function SalaSimulacro() {
       .eq('level_id', roomData.level_id).limit(roomData.max_questions)
     if (!qData?.length) return
 
-    const shuffled = [...qData].sort(() => Math.random() - 0.5)
+    const shuffled = roomData.orden === 'original'
+      ? [...qData]
+      : [...qData].sort(() => Math.random() - 0.5)
     setPreguntas(shuffled)
     preguntasRef.current = shuffled
 
@@ -262,7 +272,7 @@ export default function SalaSimulacro() {
       }).select('id').maybeSingle()
 
       const { data: part } = await supabase.from('room_participants').insert({
-        room_id: newRoom.id, user_id: participantId,
+        room_id: newRoom.id, user_id: user.id,
         display_name: displayName, is_host: true
       }).select('id').maybeSingle()
 
@@ -387,7 +397,7 @@ export default function SalaSimulacro() {
               </div>
               <div>
                 <p className="font-extrabold text-sm">Análisis de la sala</p>
-                <p className="text-xs text-on-surface-variant">Powered by Claude AI</p>
+                <p className="text-xs text-on-surface-variant">Powered by Praxia IA</p>
               </div>
             </div>
 
